@@ -52,8 +52,6 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
-; The dist folder is large (models + ffmpeg); reserve enough headroom in the UI.
-DiskSpacePadding=64
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -63,7 +61,9 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 ; The entire built folder: the exe, its _internal bundle, models\, ffmpeg, notices.
-Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Exclude runtime artifacts a prior local run may have dropped here (the backend log
+; now lives in %LOCALAPPDATA%\Vibenative, but be defensive).
+Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.log"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

@@ -77,9 +77,27 @@ BOOT_TIMEOUT_S = int(os.environ.get("GENRE_BOOT_TIMEOUT", "150"))
 
 CREATE_NO_WINDOW = 0x08000000  # keep a console from flashing up (Windows only)
 
-# The backend's own stdout/stderr are captured here (truncated per launch) so its
-# startup log — including the "execution provider: ..." line — is inspectable.
-BACKEND_LOG = os.path.join(WIN_PROJECT, "desktop_backend.log")
+
+def _backend_log_path() -> str:
+    """Where the backend's startup log (incl. the 'execution provider: ...' line) is
+    written, truncated per launch. In a packaged/installed build the exe sits in a
+    read-only Program Files folder, so the log goes to a user-writable
+    %LOCALAPPDATA%\\Vibenative\\ instead of beside the exe; in dev it's the project root."""
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("LOCALAPPDATA") or os.path.dirname(os.path.abspath(sys.executable))
+        d = os.path.join(base, "Vibenative")
+    else:
+        d = WIN_PROJECT
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        import tempfile
+
+        d = tempfile.gettempdir()
+    return os.path.join(d, "desktop_backend.log")
+
+
+BACKEND_LOG = _backend_log_path()
 
 _LAUNCH_WARNING: str | None = None  # set if we fall back off the project venv
 
