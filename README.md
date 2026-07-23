@@ -4,9 +4,11 @@ Native-Windows rebuild of [Vibe_Identify](https://github.com/Sif0-Dyas/Vibe_Iden
 analysis engine: ONNX Runtime (+ DirectML GPU) instead of Essentia, same app,
 same database, no WSL.
 
-**Status: shipped.** Essentia is gone; the app runs natively on Windows via ONNX
-Runtime (DirectML on an RTX 5070), inside a chromeless desktop window. Validated
-against the WSL build as the oracle:
+**Status: shipped as a standalone Windows executable.** Essentia is gone; the app
+runs natively via ONNX Runtime (DirectML on an RTX 5070) inside a chromeless desktop
+window, and packages to a self-contained `dist\Vibe Identify\` folder — no Python,
+no venv, no WSL on the target machine (Flask runs in-process behind the exe; DirectML
+GPU works in the packaged build). Validated against the WSL build as the oracle:
 
 - **Genre** — native mel frontend + EffNet/Discogs-400 head reproduce the oracle
   embeddings to **cosine > 0.999 on all 121 tracks** (worst 0.99932); the converted
@@ -15,8 +17,9 @@ against the WSL build as the oracle:
 - **Key** — a faithful port of Essentia's KeyExtractor matches key + scale on
   **121/121 tracks (100%)**.
 - **App** — same routes, DB schema, and frontend as Vibe_Identify; the whole Flask
-  app + the pywebview desktop shell run on one Windows venv, **no WSL anywhere**.
-  GPU falls out for free (`DmlExecutionProvider`, CPU fallback).
+  app + the pywebview desktop shell run on one Windows venv in dev, or as a single
+  packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. GPU falls out for free
+  (`DmlExecutionProvider`, loud CPU fallback).
 
 Design + phase-by-phase details: `PROJECT_PLAN.md`, `PLAN_ADDENDUM.md`, and
 `tools/CONVERSION_NOTES.md`. The original WSL app stays untouched as the oracle and
