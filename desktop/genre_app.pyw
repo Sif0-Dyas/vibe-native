@@ -12,8 +12,16 @@ browser can't do:
   * an always-visible "add files" button that reuses the app's existing native
     file picker (#picker) + enqueue() upload path.
 
-The backend is the project venv's Python running ``-m vibenative`` (native ONNX
-engine — no WSL anywhere).
+Two backend modes (native ONNX engine, no WSL anywhere):
+
+  * SINGLE-PROCESS (default; how the packaged .exe runs): the Flask app runs in a
+    daemon thread inside THIS process — no child interpreter, no venv needed. This
+    is what makes a standalone one-folder build possible.
+  * TWO-PROCESS (fallback, GENRE_DESKTOP_MULTIPROC=1): spawn the project venv's
+    Python running ``-m vibenative`` as a child, as earlier phases did. Kept because
+    it's proven and handy in dev.
+
+Both share the same localhost polling / splash / error-page flow.
 
 Run:            pythonw genre_app.pyw        (or double-click "Vibe Identify.bat")
 Self-test:      python  genre_app.pyw --selftest   (no window; checks the pure logic)
@@ -24,11 +32,13 @@ different machine.
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import socket
 import subprocess  # nosec B404  # only launches the project venv python with a fixed arg list, no shell
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -192,6 +202,102 @@ def _shutdown_backend():
 
 
 # --------------------------------------------------------------------------- #
+# Single-process backend: Flask in a daemon thread inside this process. This is
+# the default and the ONLY mode the packaged .exe uses — no child interpreter, no
+# venv on the target machine.
+# --------------------------------------------------------------------------- #
+def use_single_process() -> bool:
+    """True (default) => run Flask in-process. Set GENRE_DESKTOP_MULTIPROC=1 to use
+    the proven two-process fallback (spawn ``python -m vibenative``) instead. The
+    packaged exe leaves this unset, so it runs single-process."""
+    return os.environ.get("GENRE_DESKTOP_MULTIPROC", "") != "1"
+
+
+def _ensure_std_streams():
+    """A --windowed PyInstaller build gives sys.stdout/stderr == None; werkzeug's
+    dev-server banner (and any stray print) writes to them and would crash with
+    'NoneType has no write'. Point them at a sink so those writes are harmless."""
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            try:
+                setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115
+            except OSError:
+                pass
+
+
+def _setup_inprocess_logging():
+    """Route the in-process backend's logs (incl. onnx_engine's 'execution
+    provider: ...' line) to BACKEND_LOG, matching what the two-process child wrote
+    to that file — so the same log is inspectable either way. --windowed builds have
+    no console, so a file is the only place these land."""
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    try:
+        fh = logging.FileHandler(BACKEND_LOG, mode="w", encoding="utf-8")
+    except OSError:
+        return
+    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root.addHandler(fh)
+
+
+def _start_inprocess() -> threading.Thread:
+    """Create the Flask app and serve it on this launch's port in a daemon thread.
+
+    The pinned port/token/FAKE flag are pushed into the environment BEFORE importing
+    vibenative, because config.py / db.py / the loopback auth guard read them at
+    import time. The daemon thread dies automatically when the window closes."""
+    os.environ["GENRE_PORT"] = str(PORT)
+    os.environ["GENRE_TOKEN"] = TOKEN
+    if FAKE:
+        os.environ["FAKE_ANALYZER"] = "1"
+    _ensure_std_streams()
+    _setup_inprocess_logging()
+    log = logging.getLogger("vibenative")
+
+    import vibenative  # bundled in the exe; editable-installed in the dev venv
+
+    app = vibenative.create_app()
+    if not FAKE:
+        from vibenative.decode import find_tool
+
+        missing = [t for t in ("ffmpeg", "ffprobe") if not find_tool(t)]
+        if missing:
+            log.warning(
+                "%s not found (PATH / exe-adjacent / WinGet) -- audio decode will fail. "
+                "New analysis needs ffmpeg; cached tracks still load.",
+                " + ".join(missing),
+            )
+    log.info("Vibenative running in-process -> %s", BASE_URL)
+
+    def _run():
+        # use_reloader=False: never fork a reloader from a daemon thread.
+        app.run(host="127.0.0.1", port=PORT, debug=False, threaded=True, use_reloader=False)
+
+    t = threading.Thread(target=_run, name="vibenative-flask", daemon=True)
+    t.start()
+    return t
+
+
+def _ensure_backend_started() -> tuple[bool, str | None]:
+    """Bring a backend up (or reuse one already answering). Returns (ok, error_html
+    detail). Single-process by default; two-process fallback when requested."""
+    global _STARTED_BY_US
+    if backend_up():
+        return True, None  # something's already serving our port -> reuse it
+    if use_single_process():
+        try:
+            _start_inprocess()
+        except Exception as e:  # import/bind failure -> show it rather than hang
+            return False, f"<b>the in-process backend failed to start:</b> {e}"
+        _STARTED_BY_US = True
+        return True, None
+    if start_backend() is None:
+        return False, "<b>Could not launch the backend interpreter.</b>"
+    _STARTED_BY_US = True
+    return True, None
+
+
+# --------------------------------------------------------------------------- #
 # The JS shim injected into the live page (only inside this shell). It wires the
 # native folder picker to the app's existing runBatch(), and adds an "add files"
 # button that reuses the app's own #picker. Nothing here touches app.js on disk.
@@ -280,7 +386,22 @@ LOADING_HTML = """
 
 
 def error_html(detail: str) -> str:
-    py = venv_python()
+    if getattr(sys, "frozen", False):
+        # packaged exe: no venv / no `python -m` to run by hand
+        manual = (
+            f"<p>The full backend log is at <code>{BACKEND_LOG}</code> — it has the real "
+            f"error. Make sure <code>models/</code> sits next to the exe.</p>"
+        )
+    else:
+        py = venv_python()
+        manual = (
+            "<p>Start it by hand to see the error, then relaunch this app:</p>"
+            f'<ul><li><code>cd "{WIN_PROJECT}"</code></li>'
+            f"<li><code>{py} -m vibenative</code></li></ul>"
+            f"<p>The full backend log is at <code>{BACKEND_LOG}</code>. Check "
+            f"<code>WIN_PROJECT</code> at the top of <code>genre_app.pyw</code> if the paths "
+            f"above look wrong.</p>"
+        )
     return f"""
 <!doctype html><meta charset="utf-8"><title>Vibedentify — can't start</title>
 <!-- Palette taken from the ACTIVE :root in vibenative/static/app.css — the
@@ -308,14 +429,7 @@ def error_html(detail: str) -> str:
   <p>The desktop window is fine, but the Vibedentify backend on
      <code>{BASE_URL}</code> didn't come up within {BOOT_TIMEOUT_S}s.</p>
   <p>{detail}</p>
-  <p>Start it by hand to see the error, then relaunch this app:</p>
-  <ul>
-    <li><code>cd "{WIN_PROJECT}"</code></li>
-    <li><code>{py} -m vibenative</code></li>
-  </ul>
-  <p>The full backend log is at <code>{BACKEND_LOG}</code>. Check
-     <code>WIN_PROJECT</code> at the top of <code>genre_app.pyw</code> if the paths
-     above look wrong.</p>
+  {manual}
 </div>
 """
 
@@ -350,14 +464,13 @@ class Api:
 
 def _boot_and_load(window):
     """Runs in pywebview's worker thread once the GUI is up: ensure the backend is
-    answering, then navigate the window to the real app."""
-    global _STARTED_BY_US
-    started = False
-    if not backend_up():
-        if start_backend() is None:
-            window.load_html(error_html("<b>Could not launch the backend interpreter.</b>"))
-            return
-        started = _STARTED_BY_US = True
+    answering (single-process thread, or two-process child), then navigate the
+    window to the real app."""
+    ok, err = _ensure_backend_started()
+    if not ok:
+        window.load_html(error_html(err))
+        return
+    started = _STARTED_BY_US
 
     deadline = time.time() + BOOT_TIMEOUT_S
     while time.time() < deadline:
@@ -368,9 +481,14 @@ def _boot_and_load(window):
             return
         time.sleep(0.6)
 
-    # Timed out. Most common misconfigurations: a wrong project path, or a missing
-    # project venv (so the backend interpreter had no vibenative/deps).
-    if not os.path.isdir(WIN_PROJECT):
+    # Timed out.
+    if use_single_process():
+        detail = (
+            "The in-process engine started but never answered within the timeout — the "
+            "first cold start can be slow while onnxruntime and the models load. See the "
+            "backend log for the real error."
+        )
+    elif not os.path.isdir(WIN_PROJECT):
         detail = (
             f"<b>the configured project folder was not found: <code>{WIN_PROJECT}</code></b>"
             f" — edit <code>GENRE_WIN_PROJECT</code> / <code>WIN_PROJECT</code> to point at "
@@ -389,6 +507,7 @@ def _boot_and_load(window):
 
 
 def main():
+    _ensure_std_streams()  # frozen --windowed: guard None stdout/stderr before anything writes
     import webview
 
     configure()  # pick this launch's port + token before anything uses BASE_URL
@@ -445,7 +564,15 @@ def _selftest() -> int:
         check("falls back to sys.executable", py, sys.executable)
         check("records a fallback warning", bool(_LAUNCH_WARNING), True)
 
-    print("backend launch command (native, no WSL):")
+    print("process mode:")
+    os.environ.pop("GENRE_DESKTOP_MULTIPROC", None)
+    check("single-process is the default", use_single_process(), True)
+    os.environ["GENRE_DESKTOP_MULTIPROC"] = "1"
+    check("two-process fallback via GENRE_DESKTOP_MULTIPROC=1", use_single_process(), False)
+    os.environ.pop("GENRE_DESKTOP_MULTIPROC", None)
+    check("back to single-process once unset", use_single_process(), True)
+
+    print("two-process fallback launch command (native, no WSL):")
     cmd = backend_cmd()
     print("  ", cmd)
     check("runs the native module", cmd[-2:], ["-m", "vibenative"])
