@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vibenative"
-version = "2.0.0"
+version = "2.1.0"  # keep in sync with vibenative.__version__
 description = "Native-Windows rebuild of Vibe_Identify — Flask + ONNX Runtime music genre / BPM / key analyzer with an interactive genre map."
 readme = "README.md"
 requires-python = ">=3.11"

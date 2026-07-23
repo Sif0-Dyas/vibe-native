@@ -1,4 +1,4 @@
-"""Vibedentify — Flask + Essentia music genre / BPM / key analyzer.
+"""Vibedentify — Flask + native ONNX music genre / BPM / key analyzer.
 
 The application is assembled by the :func:`create_app` factory so that tests
 (and any WSGI server) get a fresh, independently-configured instance.
@@ -8,11 +8,18 @@ import os
 
 from flask import Flask
 
-from . import config  # noqa: F401 -- imported first so .env loads before db/routes read env
-from .db import init_db
-from .routes import bp
+# THE single source of truth for the app/installer version. Surfaced in the UI footer
+# (so an installed build is identifiable) and read by the installer build script to
+# stamp Setup. Keep pyproject.toml's [project].version in sync with this.
+__version__ = "2.1.0"
 
-__all__ = ["create_app"]
+from . import (
+    config,  # noqa: E402, F401 -- imported after __version__ so routes can read it; loads .env early
+)
+from .db import init_db  # noqa: E402
+from .routes import bp  # noqa: E402
+
+__all__ = ["create_app", "__version__"]
 
 
 def create_app():

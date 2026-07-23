@@ -1432,3 +1432,6 @@ header .sub{ color:var(--dim); text-shadow:none; }
 @keyframes plpulse{ 0%{ transform:scale(1) } 40%{ transform:scale(1.45) } 100%{ transform:scale(1) } }
 .pop-add.added{ background:rgba(124,92,255,.12); border-color:var(--accent-b); color:#b9a6ff; }
 
+
+/* build version tag in the action bar (identifies installed builds) */
+.app-version{color:var(--dim);font-size:11px;opacity:.65;margin-left:4px;user-select:text;font-variant-numeric:tabular-nums}

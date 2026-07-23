@@ -124,7 +124,9 @@ def map_route():
 
 @bp.get("/")
 def index():
-    return render_template("index.html")
+    from .. import __version__
+
+    return render_template("index.html", app_version=__version__)
 
 
 @bp.get("/guide")
