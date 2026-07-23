@@ -84,6 +84,32 @@ Filename: "{app}\settings.ini"; Section: "vibenative"; Key: "db_path"; String: "
 var
   DbDirPage: TInputDirWizardPage;
 
+// Refuse anything below 64-bit Windows 10 version 1903 (build 18362) with a clear
+// message, before touching the machine. onnxruntime-directml + WebView2 need it.
+function InitializeSetup(): Boolean;
+var
+  V: TWindowsVersion;
+begin
+  Result := True;
+  if not IsWin64() then
+  begin
+    MsgBox('Vibe Identify requires 64-bit Windows.' + #13#10 +
+      'This machine is running 32-bit Windows, which is not supported.',
+      mbCriticalError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  GetWindowsVersionEx(V);
+  if (V.Major < 10) or ((V.Major = 10) and (V.Build < 18362)) then
+  begin
+    MsgBox('Vibe Identify requires 64-bit Windows 10 version 1903 (build 18362) or ' +
+      'newer.' + #13#10#13#10 + 'This machine reports Windows ' + IntToStr(V.Major) +
+      '.' + IntToStr(V.Minor) + ' (build ' + IntToStr(V.Build) + ').' + #13#10#13#10 +
+      'Please update Windows, then run this installer again.', mbCriticalError, MB_OK);
+    Result := False;
+  end;
+end;
+
 { Read the db_path recorded by a prior install and expand %USERPROFILE% so we can
   default the wizard to it (and target it at uninstall). '' if none/absent. }
 function ExistingDbPath(): String;

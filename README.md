@@ -91,3 +91,38 @@ Notes:
 - **ffmpeg licensing** — see the ffmpeg note above; a `ffmpeg-NOTICE.txt` ships in the
   folder.
 - The build is **manual** and intentionally not part of CI (too heavy).
+
+## Installer
+
+Wrap the folder in a proper Windows installer (Inno Setup):
+
+```
+.venv\Scripts\python tools\build_installer.py --build
+```
+
+`--build` runs `tools\build_exe.py` first; then it stamps the version from
+`vibenative.__version__` and runs Inno's `iscc` on `tools\installer.iss`, producing
+`dist\installer\VibeIdentify-Setup-<version>.exe` (~178 MB). Needs **Inno Setup 6** —
+if `iscc` isn't found the script prints `winget install --id JRSoftware.InnoSetup -e`.
+
+**Requirements (enforced by the installer):**
+- **64-bit Windows 10 version 1903 (build 18362) or newer** — older/32-bit is refused
+  with a clear message.
+- **Edge WebView2 runtime** — ships with Windows 11; on Windows 10 the installer
+  downloads and runs Microsoft's Evergreen bootstrapper automatically if it's missing.
+- ~1.5 GB free during install (the folder is ~540 MB; models + LGPL ffmpeg included).
+
+**What it does:** installs to `C:\Program Files\Vibe Identify`, adds a Start-menu
+shortcut (desktop shortcut optional), and includes a proper uninstaller. A wizard page
+asks where your **music database** lives (default: your user profile,
+`%USERPROFILE%\genre_v2.db`) — an existing library there is reused. Power users can
+still set the `GENRE_DB` environment variable to override. The database and analysis
+data live **outside** the install folder, so upgrading or reinstalling never touches
+them; the **uninstaller** asks whether to remove your data and defaults to **No**.
+
+**SmartScreen & antivirus (unsigned build):** the installer and exe are not
+code-signed, so the first launch on another machine shows **“Windows protected your
+PC.”** Click **More info → Run anyway**. Some antivirus engines occasionally
+false-positive on unsigned PyInstaller executables — if flagged, allow/exclude
+`Vibe Identify.exe`. Signing with a real code-signing certificate removes both prompts
+(out of scope here).
