@@ -84,7 +84,21 @@ Filename: "{app}\settings.ini"; Section: "vibenative"; Key: "db_path"; String: "
 var
   DbDirPage: TInputDirWizardPage;
 
+{ Read the db_path recorded by a prior install and expand %USERPROFILE% so we can
+  default the wizard to it (and target it at uninstall). '' if none/absent. }
+function ExistingDbPath(): String;
+var
+  Raw: String;
+begin
+  Raw := GetIniString('vibenative', 'db_path', '', ExpandConstant('{app}\settings.ini'));
+  if Raw <> '' then
+    StringChangeEx(Raw, '%USERPROFILE%', ExpandConstant('{userprofile}'), True);
+  Result := Raw;
+end;
+
 procedure InitializeWizard;
+var
+  Prior: String;
 begin
   DbDirPage := CreateInputDirPage(wpSelectDir,
     'Music database location',
@@ -94,7 +108,13 @@ begin
     'upgrade or reinstall keeps all your data. The default is your user-profile folder.',
     False, '');
   DbDirPage.Add('');
-  DbDirPage.Values[0] := ExpandConstant('{userprofile}');
+  { On an upgrade, default to the folder the previous install already uses so the
+    user's chosen DB location (and thus their library) is preserved, not reset. }
+  Prior := ExistingDbPath();
+  if Prior <> '' then
+    DbDirPage.Values[0] := ExtractFileDir(Prior)
+  else
+    DbDirPage.Values[0] := ExpandConstant('{userprofile}');
 end;
 
 function GetDbPath(Param: String): String;
@@ -108,4 +128,33 @@ begin
     Result := '%USERPROFILE%\genre_v2.db'
   else
     Result := AddBackslash(Dir) + 'genre_v2.db';
+end;
+
+// Uninstall: offer to remove the user's data, defaulting to NO. Never runs on an
+// upgrade/reinstall (Inno installs over the existing install folder without invoking
+// the uninstaller), and a silent uninstall keeps data untouched.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DbPath: String;
+begin
+  if CurUninstallStep <> usUninstall then
+    Exit;
+  if UninstallSilent() then
+    Exit;
+  if MsgBox(
+       'Also remove your music database and analysis data?' + #13#10#13#10 +
+       'This deletes your analyzed library, vibes, and tags (genre_v2.db) and any' + #13#10 +
+       'extracted training clips. Choose No to keep them for a future reinstall.',
+       mbConfirmation, MB_YESNO or MB_DEFBUTTON2) <> IDYES then
+    Exit;
+
+  DbPath := ExistingDbPath();
+  if DbPath = '' then
+    DbPath := ExpandConstant('{userprofile}\genre_v2.db');
+  DeleteFile(DbPath);
+  DeleteFile(DbPath + '-wal');
+  DeleteFile(DbPath + '-shm');
+  { extracted section clips + the runtime log dir }
+  DelTree(ExpandConstant('{userprofile}\genre_training'), True, True, True);
+  DelTree(ExpandConstant('{localappdata}\Vibenative'), True, True, True);
 end;
