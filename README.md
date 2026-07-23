@@ -61,5 +61,30 @@ shared build (gyan.dev "shared" / BtbN LGPL) or drop the bundled copy and rely o
 system-PATH ffmpeg. If ffmpeg is absent the app still runs (cached browsing works)
 and warns that new analysis needs it.
 
-A standalone single-`.exe` via PyInstaller is a possible future convenience — out
-of scope here (the `.bat` + venv is the supported launch).
+## Building the executable
+
+Package the app as a **standalone Windows folder** — no Python, no venv on the
+target machine. The desktop shell runs Flask in-process (a daemon thread), so the
+whole thing is one process behind `Vibe Identify.exe`.
+
+```
+.venv\Scripts\python -m pip install -r requirements-dev.txt   # brings PyInstaller
+.venv\Scripts\python tools\build_exe.py
+```
+
+That runs PyInstaller against `Vibe Identify.spec` (one-folder / **onedir**), then
+`tools/prepare_dist.py` copies the ONNX models and the system ffmpeg **beside the
+exe** (they are deliberately *not* baked into the bundle), and prints the final
+folder + size. Result: `dist\Vibe Identify\` — double-click `Vibe Identify.exe`.
+
+Notes:
+- **onedir, not onefile** — onefile re-extracts hundreds of MB of native DLLs to a
+  temp dir on every launch (slow) and breaks exe-adjacent resource resolution; onedir
+  keeps `models\` and `ffmpeg.exe` in a stable folder next to the exe. See the spec
+  header.
+- **GPU** — the DirectML EP (`DirectML.dll`) is bundled; the app uses
+  `DmlExecutionProvider` and falls back to CPU (logged loudly) only if it can't load.
+- **models** — must exist in `models\` first (`python tools\convert_models.py`).
+- **ffmpeg licensing** — see the ffmpeg note above; a `ffmpeg-NOTICE.txt` ships in the
+  folder.
+- The build is **manual** and intentionally not part of CI (too heavy).

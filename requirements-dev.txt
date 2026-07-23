@@ -3,3 +3,6 @@
 pytest-cov>=5
 ruff>=0.6
 bandit>=1.7
+# packaging (manual `python tools/build_exe.py`; not used by the test suite or CI)
+pyinstaller>=6
+pywebview>=5.0
