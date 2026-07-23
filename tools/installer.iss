@@ -130,6 +130,51 @@ begin
     Result := AddBackslash(Dir) + 'genre_v2.db';
 end;
 
+// --- WebView2 runtime -------------------------------------------------------
+// The desktop window is Edge WebView2. Windows 11 ships it; some Windows 10 boxes
+// don't. Detect the Evergreen runtime (its fixed client GUID) in HKLM (all-users)
+// or HKCU (per-user); if absent, download + run Microsoft's Evergreen bootstrapper.
+function IsWebView2Runtime(): Boolean;
+var
+  Pv: String;
+begin
+  Result := False;
+  if RegQueryStringValue(HKLM,
+       'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+       'pv', Pv) then
+    if (Pv <> '') and (Pv <> '0.0.0.0') then
+      Result := True;
+  if (not Result) and RegQueryStringValue(HKCU,
+       'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+       'pv', Pv) then
+    if (Pv <> '') and (Pv <> '0.0.0.0') then
+      Result := True;
+end;
+
+function OnWv2DownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  Result := True;  // keep going
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Rc: Integer;
+begin
+  Result := '';
+  if IsWebView2Runtime() then
+    Exit;
+  try
+    // ~2 MB Evergreen bootstrapper; it pulls the runtime itself (needs internet).
+    DownloadTemporaryFile('https://go.microsoft.com/fwlink/p/?LinkId=2124703',
+      'MicrosoftEdgeWebview2Setup.exe', '', @OnWv2DownloadProgress);
+    Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install',
+      '', SW_HIDE, ewWaitUntilTerminated, Rc);
+  except
+    // Offline / blocked: don't abort the install. The app shows a clear message at
+    // launch if WebView2 is still missing; the user can install it separately.
+  end;
+end;
+
 // Uninstall: offer to remove the user's data, defaulting to NO. Never runs on an
 // upgrade/reinstall (Inno installs over the existing install folder without invoking
 // the uninstaller), and a silent uninstall keeps data untouched.
