@@ -52,5 +52,14 @@ ready. See `desktop/README.md` for the folder-picker / security details.
 read from `GENRE_DB` (default `%USERPROFILE%\genre_v2.db`); bring an existing WSL
 library over once with `python tools/db_cutover.py`.
 
+**ffmpeg** is required for audio decode. In dev it's found on PATH (or the WinGet
+Links dir). In a packaged build it sits **next to the exe** — `tools/prepare_dist.py`
+copies the system ffmpeg in and writes a `ffmpeg-NOTICE.txt`. ffmpeg is invoked as a
+separate program (argv), never linked in, so it stays a mere aggregation; a winget
+"Gyan.FFmpeg" build is typically **GPL**, so for redistribution prefer an **LGPL**
+shared build (gyan.dev "shared" / BtbN LGPL) or drop the bundled copy and rely on a
+system-PATH ffmpeg. If ffmpeg is absent the app still runs (cached browsing works)
+and warns that new analysis needs it.
+
 A standalone single-`.exe` via PyInstaller is a possible future convenience — out
 of scope here (the `.bat` + venv is the supported launch).

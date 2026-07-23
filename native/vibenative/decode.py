@@ -23,6 +23,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .paths import exe_dir
+
 SR = 16000
 # Group-delay of Essentia's resampler in native-input samples, calibrated so the
 # reproduced 16 kHz audio matches Essentia's; validated to cos > 0.999 (worst
@@ -34,16 +36,21 @@ def _tool(name: str) -> str:
     exe = shutil.which(name)
     if exe:
         return exe
+    # Packaged build: tools/prepare_dist.py drops ffmpeg/ffprobe next to the exe
+    # (loose, or under an ffmpeg/ subdir) so the .exe never silently needs PATH ffmpeg.
+    for cand in (exe_dir() / f"{name}.exe", exe_dir() / "ffmpeg" / f"{name}.exe"):
+        if cand.is_file():
+            return str(cand)
     cand = Path(os.environ.get("LOCALAPPDATA", "")) / f"Microsoft/WinGet/Links/{name}.exe"
     if cand.exists():
         return str(cand)
-    raise FileNotFoundError(f"{name} not found on PATH — run `winget install ffmpeg`")
+    raise FileNotFoundError(f"{name} not found on PATH, next to the exe, or WinGet — install ffmpeg")
 
 
 def find_tool(name: str) -> str | None:
-    """Locate ffmpeg/ffprobe (PATH, then the WinGet Links dir); None if absent.
-    The soft-fail companion to :func:`_tool` for callers that degrade gracefully
-    when ffmpeg is missing (e.g. the segment-clip extractor)."""
+    """Locate ffmpeg/ffprobe (PATH, then exe-adjacent, then the WinGet Links dir);
+    None if absent. The soft-fail companion to :func:`_tool` for callers that degrade
+    gracefully when ffmpeg is missing (e.g. the segment-clip extractor)."""
     try:
         return _tool(name)
     except FileNotFoundError:
