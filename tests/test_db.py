@@ -7,9 +7,18 @@ upgrade to the same schema version with a structurally identical schema, and
 existing rows must survive the upgrade untouched.
 """
 
+import json
+import shutil
 import sqlite3
+from pathlib import Path
+
+import pytest
 
 from vibenative import db
+
+_ROOT = Path(__file__).resolve().parent.parent
+_BACKUP = _ROOT / "genre_v2.db.backup"  # local-only (gitignored); the WSL app's real DB
+_ORACLE_INDEX = _ROOT / "oracle" / "index.json"
 
 # The schema an old build produced, written out independently of MIGRATIONS so
 # this test genuinely catches a future divergence in migration 1 (e.g. someone
@@ -92,9 +101,9 @@ def test_fresh_and_legacy_converge(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", legacy)
     db.init_db()
 
-    # Both land on the same version...
-    assert _version(fresh) == 1
-    assert _version(legacy) == 1
+    # Both land on the same (latest) version...
+    assert _version(fresh) == 2
+    assert _version(legacy) == 2
 
     # ...with a structurally identical schema (incl. schema_version + the weight
     # column the migration added to the legacy vibe_tracks in place).
@@ -119,10 +128,76 @@ def test_init_db_is_idempotent(tmp_path, monkeypatch):
     before = _schema(path)
     db.init_db()  # second run applies nothing
     assert _schema(path) == before
-    assert _version(path) == 1
+    assert _version(path) == 2
     # exactly one version row, not one appended per run
     con = sqlite3.connect(path)
     try:
         assert con.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1
+    finally:
+        con.close()
+
+
+def _seed_oracle_mnt_row(dbpath):
+    """Insert a /mnt/c row pointing at an oracle track that EXISTS on this disk, so
+    migration 2's translation can be proven to resolve to a real file. Returns the
+    expected translated Windows Path, or None if no oracle file is available."""
+    if not _ORACLE_INDEX.exists():
+        return None
+    from vibenative.paths import wsl_to_windows
+
+    idx = json.loads(_ORACLE_INDEX.read_text())
+    for _h, m in idx.items():
+        mnt = m["file"]
+        if not str(mnt).startswith("/mnt/"):
+            continue
+        win = Path(wsl_to_windows(mnt))
+        if win.is_file():
+            con = sqlite3.connect(dbpath)
+            try:
+                con.execute(
+                    "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, created) "
+                    "VALUES(?,?,?,?,?)",
+                    ("seed_oracle", win.name, mnt, "seed", 0.0),
+                )
+                con.commit()
+            finally:
+                con.close()
+            return win
+    return None
+
+
+@pytest.mark.skipif(not _BACKUP.exists(), reason="genre_v2.db.backup not present (local-only)")
+def test_migration_2_translates_mnt_paths(tmp_path, monkeypatch):
+    """Migration 2 rewrites /mnt/<drive>/... filepaths to Windows drive-letter paths.
+    Runs against a COPY of the real WSL-app DB (never the backup itself), idempotently,
+    and proves a translated path resolves to a real file on disk."""
+    dbcopy = tmp_path / "genre_v2_copy.db"
+    shutil.copy2(_BACKUP, dbcopy)
+
+    # a control row whose translated path we can resolve to a real file
+    expected_win = _seed_oracle_mnt_row(dbcopy)
+
+    monkeypatch.setattr(db, "DB_PATH", dbcopy)
+    db.init_db()  # applies all migrations, including #2
+
+    con = sqlite3.connect(dbcopy)
+    try:
+        # every mnt-prefixed path was rewritten -> none remain
+        assert con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0] == 0
+        # the seeded row now resolves to a REAL file at its drive-letter path
+        if expected_win is not None:
+            fp = con.execute("SELECT filepath FROM tracks WHERE hash='seed_oracle'").fetchone()[0]
+            assert not fp.startswith("/mnt/")
+            assert Path(fp) == expected_win
+            assert Path(fp).is_file()  # the whole point: audio preview / clips resolve
+    finally:
+        con.close()
+
+    # idempotent: a second run finds no /mnt rows and changes nothing
+    db.init_db()
+    con = sqlite3.connect(dbcopy)
+    try:
+        assert con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0] == 0
+        assert _version(dbcopy) == 2
     finally:
         con.close()

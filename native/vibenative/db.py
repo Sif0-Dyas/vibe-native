@@ -82,9 +82,30 @@ def _migration_1(c):
         c.execute("ALTER TABLE vibe_tracks ADD COLUMN weight REAL DEFAULT 1.0")
 
 
+def _migration_2(c):
+    """v2 — translate legacy WSL mount filepaths to native Windows drive-letter
+    paths (Phase-4 port / addendum §5).
+
+    The WSL app stored server-side paths as ``/mnt/<drive>/...``; on Windows those
+    don't resolve, so audio preview, on-demand waveforms, and segment extraction
+    would break for inherited rows. Rewrite only the mnt-prefixed ``tracks.filepath``
+    values via the same ``paths.wsl_to_windows`` helper the routes use
+    (``/mnt/c/Users/x`` -> ``C:\\Users\\x``). ``tracks.filepath`` is the only stored
+    filesystem path in the schema. Idempotent: a translated path no longer matches
+    the ``/mnt/%`` filter, so a re-run touches nothing."""
+    from .paths import wsl_to_windows
+
+    rows = c.execute(
+        "SELECT rowid, filepath FROM tracks WHERE filepath LIKE '/mnt/%'"
+    ).fetchall()
+    for rowid, fp in rows:
+        c.execute("UPDATE tracks SET filepath=? WHERE rowid=?", (wsl_to_windows(fp), rowid))
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
+    (2, _migration_2),
 ]
 
 
