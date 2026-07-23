@@ -691,7 +691,13 @@ function finishRow(row, data, file){
   }
 
   /* BPM / key cell */
-  const lowConf = data.bpm_confidence != null && data.bpm_confidence < 1.5;
+  // bpm_confidence is the native TempoCNN engine's mean peak-softmax, range 0..1
+  // (Phase 5 cutover). Below this cutoff the beat read is octave-ambiguous, so we
+  // show the half/double-time alternate. Cutoff 0.4 sits in the empirical gap
+  // between octave-confused oracle tracks (<=0.37) and the confident cluster
+  // (>=0.46). Was < 1.5 when bpm_confidence came from Essentia RhythmExtractor2013
+  // on its ~0..5 scale; TempoCNN's 0..1 scale needs this lower threshold.
+  const lowConf = data.bpm_confidence != null && data.bpm_confidence < 0.4;
   const alt = data.bpm != null ? (data.bpm < 100 ? data.bpm * 2 : data.bpm / 2) : null;
   let bpmText = data.bpm != null ? data.bpm.toFixed(1) : '---';
   let bpmHtml;
