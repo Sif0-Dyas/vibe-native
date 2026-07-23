@@ -52,7 +52,7 @@ def _probe(path) -> tuple[int, int]:
     return int(s["sample_rate"]), int(s["channels"])
 
 
-def _linear_resample(x: np.ndarray, sr_in: int, sr_out: int = SR) -> np.ndarray:
+def _linear_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
     if sr_in == sr_out:
         return x
     step = sr_in / sr_out
@@ -65,13 +65,22 @@ def _linear_resample(x: np.ndarray, sr_in: int, sr_out: int = SR) -> np.ndarray:
     return (1.0 - frac) * x[i0] + frac * x[i1]
 
 
-def decode_16k_mono(path) -> np.ndarray:
-    """Decode any audio file to 16 kHz mono float32, matching Essentia MonoLoader."""
-    sr, ch = _probe(path)
+def decode_mono(path, sr: int = SR) -> np.ndarray:
+    """Decode any audio file to `sr` Hz mono float32, matching Essentia MonoLoader.
+
+    The RESAMPLE_PHASE calibration was fit for the 16 kHz genre path; the tempo
+    (11025) and key (44100) paths reuse it but have loose acceptance (BPM 2%/octave,
+    key exact-match), so the sub-sample offset is immaterial there."""
+    src_sr, ch = _probe(path)
     raw = subprocess.run(
         [_tool("ffmpeg"), "-v", "error", "-i", str(path), "-f", "f32le", "-ac", str(ch), "-"],
         capture_output=True, check=True,
     ).stdout
     a = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
     mono = a if ch == 1 else a.reshape(-1, ch).mean(axis=1)  # (L+R)/2
-    return _linear_resample(mono, sr, SR).astype(np.float32)
+    return _linear_resample(mono, src_sr, sr).astype(np.float32)
+
+
+def decode_16k_mono(path) -> np.ndarray:
+    """Decode to 16 kHz mono float32 (the genre/embedder path)."""
+    return decode_mono(path, SR)

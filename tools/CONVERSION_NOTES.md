@@ -138,3 +138,35 @@ help). Then dumped Essentia's real mel + decoded audio from the WSL Essentia ven
 - ffmpeg `(L+R)/2` == Essentia native mono → **decode/downmix exact** (cos 1.000000).
 - the sole residual was the resampler; linear + the −1.24 phase closes it to
   > 0.999 on all 121 (validated across 44.1 and 48 kHz sources).
+
+---
+
+# Phase 3 — Tempo + Key
+
+## Tempo (TempoCNN): **PASSED** — 96.7%
+
+Reproduces the oracle BPM within 2% OR a half/double multiple for **117/121 =
+96.7%** of tracks (acceptance ≥ 95%). Frontend = Essentia TensorflowInputTempoCNN
+= librosa **magnitude** mel (sr 11025, n_fft 1024, hop 512, power=1, 40 bands,
+fmin 20, fmax 5000, slaney norm, **no log**; non-centered frames) — verified vs
+Essentia's own mel to maxdiff 0.018. Class *i* → BPM = 30 + *i*·256/255
+(`deeptemp-k16-3.json`). Aggregation: **average the per-patch 256-bin softmaxes**
+(256-frame patches, hop 128) then argmax — beats Essentia's default "majority"
+vote against the oracle (96.7% vs 95.0%). Verified my ONNX pipeline on Essentia's
+own mel reproduces Essentia TempoCNN (125→125, etc.). The 4 misses: 2 are genuine
+TempoCNN-vs-RhythmExtractor2013 disagreements (mine == Essentia TempoCNN, both ≠
+oracle), 2 are octave picks where mine diverges from Essentia on ambiguous tracks.
+
+## Key (chroma correlation): **BELOW threshold — scaffold + diagnosis**
+
+Not done: ~30% exact (key+scale) vs the 90% acceptance. The framework is correct in
+shape — bgate profiles verbatim from `key.cpp`, Pearson correlation over 12
+rotations, HPCP bin 0 = A (tonic maps with +9) — but profile-correlation on a mean
+chroma is **insufficient**: feeding Essentia's OWN averaged HPCP through
+bgate-Pearson reproduces only **~55%** of KeyExtractor's oracle keys (tried
+bgate/temperley/krumhansl × pearson/cosine/dot — 55% best). So Essentia's Key
+algorithm does more than a mean-HPCP correlation (relative-strength tie-breaks;
+KeyExtractor's specific HPCP config: weightType/harmonics/bandPreset/nonLinear).
+**Reaching 90% needs a faithful native port of Essentia's HPCP (with KeyExtractor
+params) + Key.cpp — recommended as its own focused session.** The bgate profiles,
+correlation scaffold, and this diagnosis are preserved in `key.py`.
