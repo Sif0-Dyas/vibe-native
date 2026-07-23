@@ -19,3 +19,8 @@ oracle_tracks/
 models/*
 !models/.gitkeep
 !models/*.json
+
+# --- Phase 4 (app port) ---
+*.egg-info/
+node_modules/
+.eslintcache

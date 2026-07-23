@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vibedentify</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<!-- vibes side panel -->
+<div id="vibe-panel">
+  <div class="sib-hd">
+    <h2>Vibes</h2>
+    <button class="sib-close" id="vibe-close">close ✕</button>
+  </div>
+  <div class="sib-body" id="vibe-body"></div>
+</div>
+<!-- sibling editor panel -->
+<div id="sib-panel">
+  <div class="sib-hd">
+    <h2>Sibling Groups</h2>
+    <button class="sib-close" id="sib-close">close ✕</button>
+  </div>
+  <div class="sib-body" id="sib-body"></div>
+</div>
+<!-- likely-misread review panel -->
+<div id="flag-panel">
+  <div class="sib-hd">
+    <h2>Review reads</h2>
+    <button class="sib-close" id="flag-close">close ✕</button>
+  </div>
+  <div class="sib-body" id="flag-body"></div>
+</div>
+<!-- genre labeling accelerator panel -->
+<div id="label-panel">
+  <div class="sib-hd">
+    <h2>Label queue</h2>
+    <button class="sib-close" id="label-close">close ✕</button>
+  </div>
+  <div class="sib-body" id="label-body"></div>
+</div>
+<!-- playlist panel -->
+<div id="pl-panel">
+  <div class="sib-hd">
+    <h2>Playlist <span id="pl-count">0</span></h2>
+    <button class="sib-close" id="pl-close">close ✕</button>
+  </div>
+  <div class="pl-actions">
+    <button id="pl-playall" type="button">&#9654; play all</button>
+    <button id="pl-export" type="button">&#11015; .m3u</button>
+    <button id="pl-clear" type="button">clear</button>
+  </div>
+  <div class="sib-body" id="pl-body"></div>
+</div>
+
+<header>
+  <!-- animated EQ bars signature element -->
+  <div class="eq-bars" id="eq-bars"></div>
+  <div class="hd-left">
+    <h1>Vibe<em>dentify</em></h1>
+    <span class="sub">Scan and Sort!</span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="list" type="button">&#8801; List</button>
+    <button class="tab" data-view="map" type="button">&#10038; Map</button>
+    <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
+  </nav>
+  <div class="lensbar">
+    <span class="lblab">identity</span>
+    <select id="g-identity" title="overall genre read (side breakdown)">
+      <option value="v2">v2 · salience</option>
+      <option value="v1">v1 · flat %</option>
+    </select>
+    <span class="lblab">segmentation</span>
+    <select id="g-seg" title="waveform genre stream">
+      <option value="raw">raw</option>
+      <option value="hysteresis" selected>hysteresis</option>
+      <option value="sibling">sibling-merge</option>
+      <option value="family">family (PulseRoots)</option>
+      <option value="hyst+sib">hyst + sibling</option>
+    </select>
+    <button id="sib-btn" class="sib-btn" type="button" title="edit sibling-merge groups">siblings &#9881;</button>
+  </div>
+</header>
+
+<!-- ONE big drop-anywhere window; the list lives inside it -->
+<main id="drop" tabindex="0" aria-label="Drop audio files anywhere in this window">
+  <div class="listhead"><span>Track</span><span>BPM / Key</span><span>Genre</span></div>
+  <div id="rows">
+    <div id="empty">
+      <div class="big">Drop tracks here</div>
+      <div class="hint">Drag any number of audio files anywhere in this window,<br>
+        or use <b>Browse</b> below. MP3, FLAC, WAV, M4A, OGG, AIFF &amp; more.</div>
+    </div>
+  </div>
+</main>
+
+<!-- interactive genre constellation of the whole library -->
+<section id="map-view" hidden aria-label="Genre map">
+  <div class="map-top">
+    <div class="map-search-wrap">
+      <input id="map-search" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Search a track, artist, or genre&hellip;">
+      <div id="map-suggest" hidden></div>
+    </div>
+    <div class="map-mode" id="map-mode" title="layout: genre regions vs. pure sonic similarity">
+      <button class="mm active" data-mode="regions" type="button">&#9678; regions</button>
+      <button class="mm" data-mode="galaxy" type="button">&#10022; galaxy</button>
+      <button class="mm" data-mode="tree" type="button">&#8866; tree</button>
+    </div>
+    <button id="map-harmonic" class="map-toggle" type="button" title="harmonic mixing: with a track selected, highlight key + BPM compatible tracks">&#127911;</button>
+    <button id="map-edges" class="map-toggle on" type="button" title="show / hide the connection lines">&#8776;</button>
+    <select id="map-filter" class="map-filter" title="show only one genre (or just the flagged reads)">
+      <option value="">all genres</option>
+    </select>
+    <div class="map-lblwrap">
+      <button id="map-lbl-btn" class="map-toggle" type="button" title="label options (hide, colour, spacing, transparency)">&#127991;</button>
+      <div id="map-lbl-panel" class="map-panel" hidden>
+        <div class="mp-head">Labels</div>
+        <label class="mp-row"><input type="checkbox" id="lbl-fam" checked><span>Genre labels</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-sub" checked><span>Subgenre labels</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-subalways"><span>Always show subgenres</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-color"><span>Colour-match genres</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-counts"><span>Show track counts</span></label>
+        <div class="mp-sep"></div>
+        <label class="mp-field"><span>Isolate genre</span>
+          <select id="lbl-only" class="map-filter"><option value="">show all</option></select></label>
+        <label class="mp-field"><span>Transparency <i id="lbl-op-v">100%</i></span>
+          <input type="range" id="lbl-op" min="10" max="100" value="100"></label>
+        <label class="mp-field"><span>Distance <i id="lbl-dist-v">1.0×</i></span>
+          <input type="range" id="lbl-dist" min="50" max="250" value="100"></label>
+        <label class="mp-field"><span>Size <i id="lbl-size-v">1.0×</i></span>
+          <input type="range" id="lbl-size" min="60" max="170" value="100"></label>
+        <label class="mp-field"><span>Max genre labels <i id="lbl-maxf-v">all</i></span>
+          <input type="range" id="lbl-maxf" min="0" max="30" value="0"></label>
+        <label class="mp-field"><span>Max subgenre labels <i id="lbl-maxs-v">all</i></span>
+          <input type="range" id="lbl-maxs" min="0" max="40" value="0"></label>
+        <div class="mp-hint">tip: click a legend dot to recolour a genre or subgenre</div>
+        <div class="mp-btns">
+          <button id="lbl-reset" type="button" class="mp-reset">reset labels</button>
+          <button id="lbl-reset-col" type="button" class="mp-reset">reset colours</button>
+        </div>
+      </div>
+    </div>
+    <button id="map-play" class="map-toggle on" type="button" title="pause / play the orbit (Space)">&#9208;</button>
+    <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
+      <input type="range" id="map-spin" min="0" max="100" value="10">
+    </label>
+    <span class="map-hint" id="map-count">loading&hellip;</span>
+    <span class="spacer"></span>
+    <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
+    <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
+  </div>
+  <div id="map-stage">
+    <canvas id="map-canvas"></canvas>
+    <div id="map-legend"></div>
+    <div id="map-keys">
+      <button id="map-keys-head" type="button" title="show / hide navigation controls">&#9000; nav</button>
+      <div id="map-keys-body">
+        <div class="mk-row"><span>drag</span><b>orbit</b></div>
+        <div class="mk-row"><span>right-drag</span><b>pan</b></div>
+        <div class="mk-row"><span>scroll</span><b>zoom</b></div>
+        <div class="mk-sep"></div>
+        <div class="mk-row"><span>w / s</span><b>zoom</b></div>
+        <div class="mk-row"><span>a / d</span><b>orbit</b></div>
+        <div class="mk-row"><span>arrows</span><b>pan</b></div>
+        <div class="mk-row"><span>space</span><b>play / pause</b></div>
+        <div class="mk-row"><span>f / esc</span><b>fit / close</b></div>
+      </div>
+    </div>
+    <div id="map-tip" hidden></div>
+    <div id="map-pop" hidden></div>
+  </div>
+</section>
+
+<!-- user guide (rendered from docs/USAGE.md) -->
+<section id="guide-view">
+  <article id="guide-body" class="guide-body">Loading&hellip;</article>
+</section>
+
+<!-- bottom action bar -->
+<footer class="actionbar">
+  <label class="browse" for="picker">⊕ Browse files&hellip;</label>
+  <button id="batch-btn" type="button">⊕ batch folder</button>
+  <button id="vibe-btn" type="button">◈ vibes</button>
+  <button id="flag-btn" type="button" title="find likely-misread genres in your library">⚠ review reads</button>
+  <button id="label-btn" type="button" title="rank unlabeled tracks by similarity to a genre and confirm/reject them into training data">◎ label</button>
+  <button id="pl-btn" class="pl-open" type="button" title="playlist">☰ playlist <span class="pl-badge">0</span></button>
+  <span id="batch-status"></span>
+  <span class="spacer"></span>
+  <span id="count">0 tracks</span>
+  <button id="clear" type="button">Clear list</button>
+  <button id="export" type="button" disabled>Export .txt</button>
+  <input id="picker" type="file" multiple
+    accept=".mp3,.flac,.m4a,.mp4,.aac,.alac,.ogg,.oga,.opus,.wav,.aif,.aiff,.aifc,.wma,.wv,.ape,.mpc,.dsf,audio/*">
+</footer>
+
+<!-- persistent now-playing bar (reflects List + Map playback) -->
+<div id="nowbar" aria-label="Now playing">
+  <span class="nb-dot"></span>
+  <div class="nb-meta">
+    <div class="nb-title">—</div>
+    <div class="nb-artist"></div>
+  </div>
+  <button class="nb-btn nb-prev" type="button" title="previous" hidden>&#9198;</button>
+  <button class="nb-btn nb-play" type="button" title="play / pause">&#9654;</button>
+  <button class="nb-btn nb-next" type="button" title="next" hidden>&#9197;</button>
+  <span class="nb-time nb-cur">0:00</span>
+  <div class="nb-seek" title="seek"><div class="nb-seekfill"></div></div>
+  <span class="nb-time nb-dur">0:00</span>
+  <button class="nb-btn nb-close" type="button" title="stop">&#10005;</button>
+</div>
+
+<!-- load order matters: app.js defines shared helpers used by the others;
+     nowbar.js needs PLAYER (player.js) and is used by map.js -->
+<script src="/static/app.js"></script>
+<script src="/static/player.js"></script>
+<script src="/static/panels.js"></script>
+<script src="/static/nowbar.js"></script>
+<script src="/static/playlist.js"></script>
+<script src="/static/map.js"></script>
+</body>
+</html>
