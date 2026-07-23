@@ -18,7 +18,7 @@ verified against Essentia's actual output on all 121 oracle tracks (cos > 0.999)
 
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404  # only runs ffmpeg/ffprobe with fixed arg lists, never a shell
 from pathlib import Path
 
 import numpy as np
@@ -53,10 +53,22 @@ def find_tool(name: str) -> str | None:
 def _probe(path) -> tuple[int, int]:
     import json
 
-    out = subprocess.run(
-        [_tool("ffprobe"), "-v", "error", "-select_streams", "a:0", "-show_entries",
-         "stream=sample_rate,channels", "-of", "json", str(path)],
-        capture_output=True, text=True, check=True,
+    out = subprocess.run(  # nosec B603  # ffprobe from _tool(); args are a list (no shell), path is a local file
+        [
+            _tool("ffprobe"),
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=sample_rate,channels",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
     s = json.loads(out)["streams"][0]
     return int(s["sample_rate"]), int(s["channels"])
@@ -82,9 +94,10 @@ def decode_mono(path, sr: int = SR) -> np.ndarray:
     (11025) and key (44100) paths reuse it but have loose acceptance (BPM 2%/octave,
     key exact-match), so the sub-sample offset is immaterial there."""
     src_sr, ch = _probe(path)
-    raw = subprocess.run(
+    raw = subprocess.run(  # nosec B603  # ffmpeg from _tool(); args are a list (no shell), path is a local file
         [_tool("ffmpeg"), "-v", "error", "-i", str(path), "-f", "f32le", "-ac", str(ch), "-"],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     ).stdout
     a = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
     mono = a if ch == 1 else a.reshape(-1, ch).mean(axis=1)  # (L+R)/2

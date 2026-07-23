@@ -652,7 +652,6 @@ def test_lookup_cache_hit_never_queries(client, monkeypatch):
 
 def test_waveform_minmax_shape_and_norm():
     import numpy as np
-
     from vibenative.analysis import waveform_minmax
 
     # a loud transient in an otherwise quiet signal -> normalized so peak hits 1.0

@@ -11,10 +11,8 @@ pure NumPy.
 
 import numpy as np
 import pytest
-
-from vibenative import analysis
+from vibenative import analysis, tempo
 from vibenative import key as keymod
-from vibenative import tempo
 
 
 def test_musical_features_happy(monkeypatch):

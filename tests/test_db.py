@@ -13,7 +13,6 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-
 from vibenative import db
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -183,7 +182,10 @@ def test_migration_2_translates_mnt_paths(tmp_path, monkeypatch):
     con = sqlite3.connect(dbcopy)
     try:
         # every mnt-prefixed path was rewritten -> none remain
-        assert con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0] == 0
+        assert (
+            con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0]
+            == 0
+        )
         # the seeded row now resolves to a REAL file at its drive-letter path
         if expected_win is not None:
             fp = con.execute("SELECT filepath FROM tracks WHERE hash='seed_oracle'").fetchone()[0]
@@ -197,7 +199,10 @@ def test_migration_2_translates_mnt_paths(tmp_path, monkeypatch):
     db.init_db()
     con = sqlite3.connect(dbcopy)
     try:
-        assert con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0] == 0
+        assert (
+            con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0]
+            == 0
+        )
         assert _version(dbcopy) == 2
     finally:
         con.close()

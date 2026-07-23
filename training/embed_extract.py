@@ -42,7 +42,6 @@ def embed_file(path: Path):
     """Frame embeddings (n_frames x 1280) via the app's shared engine."""
     import numpy as np
     from essentia.standard import MonoLoader
-
     from vibenative.analysis import get_engine
 
     audio16 = MonoLoader(filename=str(path), sampleRate=16000, resampleQuality=4)()

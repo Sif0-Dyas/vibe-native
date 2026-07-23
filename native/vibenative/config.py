@@ -45,7 +45,9 @@ def _load_dotenv():
     pytest so a developer's local .env never leaks into the test run -- the parser
     itself is unit-tested directly via _apply_dotenv."""
     if "pytest" not in sys.modules:
-        _apply_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")  # native/vibenative -> native -> root
+        _apply_dotenv(
+            Path(__file__).resolve().parent.parent.parent / ".env"
+        )  # native/vibenative -> native -> root
 
 
 _load_dotenv()  # must run BEFORE the env-derived constants below

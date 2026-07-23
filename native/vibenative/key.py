@@ -150,8 +150,7 @@ def _spectral_peaks(spectrum):
 
         i = j
         if i + 1 >= size - 1:
-            if (i == size - 2 and a[i - 1] < a[i] and a[i + 1] < a[i]
-                    and a[i] > MAG_THRESH):
+            if i == size - 2 and a[i - 1] < a[i] and a[i + 1] < a[i] and a[i] > MAG_THRESH:
                 result_val, result_bin = _interpolate(a[i - 1], a[i], a[i + 1], i)
                 peaks.append((result_bin * scale, result_val))
             break
@@ -282,7 +281,7 @@ def _hpcp(freqs, mags):
                 continue
             hw2 = strength * strength
             pcp_bin = np.log2(f / REF_FREQ) * 12.0  # resolution*size = 12
-            left = int(np.ceil(pcp_bin - 0.5))       # windowSize/2 * resolution = 0.5
+            left = int(np.ceil(pcp_bin - 0.5))  # windowSize/2 * resolution = 0.5
             right = int(np.floor(pcp_bin + 0.5))
             for b in range(left, right + 1):
                 weight = np.cos(np.pi * abs(pcp_bin - b))  # cosine, resolution=windowSize=1
@@ -328,7 +327,7 @@ def _frames(audio):
     non-overlapping, last partial frame zero-padded."""
     n = len(audio)
     for start in range(0, n, HOP):
-        frame = audio[start:start + FRAME]
+        frame = audio[start : start + FRAME]
         if len(frame) < FRAME:
             frame = np.concatenate([frame, np.zeros(FRAME - len(frame), np.float32)])
         yield frame

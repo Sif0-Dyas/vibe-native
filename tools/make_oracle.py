@@ -42,7 +42,6 @@ def main() -> int:
     try:
         import numpy as np
         from essentia.standard import MonoLoader
-
         from vibedentify.analysis import analyze, get_engine
         from vibedentify.config import AUDIO_EXTS
         from vibedentify.db import file_hash
@@ -58,9 +57,7 @@ def main() -> int:
     out = Path(args.out).expanduser()
     out.mkdir(parents=True, exist_ok=True)
 
-    files = sorted(
-        p for p in tracks.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO_EXTS
-    )
+    files = sorted(p for p in tracks.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO_EXTS)
     if not files:
         print(f"no audio under {tracks}", file=sys.stderr)
         return 1

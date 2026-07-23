@@ -19,10 +19,11 @@ jobs:
           node-version: "20"
 
       - name: Install dependencies
-        # essentia-tensorflow is intentionally omitted here: it is imported
-        # lazily inside functions and the test suite runs in FAKE_ANALYZER mode,
-        # so the models are never loaded. Installing it (large, niche wheels)
-        # would only slow CI down without exercising any extra code path.
+        # onnxruntime-directml is intentionally omitted: it is a Windows-only wheel
+        # (no Linux runner install), the ONNX engine modules import it lazily, and
+        # the suite runs in FAKE_ANALYZER mode, so the models are never loaded. The
+        # real-mode engine + integration tests skip when the models/onnxruntime are
+        # absent, exactly as they do here.
         run: pip install flask mutagen numpy pytest pytest-cov ruff bandit pip-audit
 
       - name: Lint (ruff)
@@ -32,41 +33,35 @@ jobs:
 
       - name: Security scan (bandit)
         # SAST for the Python source. Known false-positives (fake-mode RNG seeds,
-        # the hardcoded-HTTPS model download, best-effort try/except around BPM/key)
-        # are triaged with inline `# nosec <id>` justifications, so a clean run is
-        # zero findings and any NEW finding fails the build.
-        run: bandit -r vibedentify/ -q
+        # best-effort try/except around BPM/key, the ffmpeg/ffprobe subprocess
+        # calls) carry inline `# nosec <id>` justifications, so a clean run is zero
+        # findings and any NEW finding fails the build.
+        run: bandit -r native/vibenative/ -q
 
       - name: Dependency audit (pip-audit)
-        # Audit the pinned runtime deps for known CVEs. essentia-tensorflow is
-        # filtered out for the same reason it's omitted from the install above:
-        # its niche pre-release wheel can't be resolved by pip-audit's sandbox,
-        # and it has no CVE history. Everything else (flask/mutagen/numpy) is
-        # audited, so a future advisory on those fails the build.
+        # Audit the pinned runtime deps for known CVEs. onnxruntime-directml is
+        # filtered out (its Windows-only wheel can't be resolved by pip-audit's
+        # Linux sandbox); everything else (flask/mutagen/numpy) is audited, so a
+        # future advisory on those fails the build.
         run: |
-          grep -v essentia requirements.txt > /tmp/req-audit.txt
+          grep -viE "onnxruntime" requirements.txt > /tmp/req-audit.txt
           pip-audit -r /tmp/req-audit.txt --no-deps
 
       - name: Lint JS (eslint)
-        # Static check for the split frontend (app.js / player.js / map.js share
-        # one global scope). no-undef catches the split's failure mode: a function
-        # moved to one file but still called from another (a cross-file
-        # ReferenceError no Python check would see).
+        # Static check for the split frontend (app.js / player.js / map.js share one
+        # global scope). no-undef catches the split's failure mode: a function moved
+        # to one file but still called from another (a cross-file ReferenceError no
+        # Python check would see).
         run: |
           npm ci
-          npx eslint vibedentify/static/
+          npx eslint native/vibenative/static/
 
       - name: Test (pytest + coverage floor)
-        # FAKE_ANALYZER keeps the model/inference path out of CI; the 50% floor
-        # is set below full coverage on purpose, since analysis.py's real-analysis
-        # path legitimately can't run here.
+        # FAKE_ANALYZER keeps the model/inference path out of CI; the 50% floor is
+        # set below full coverage on purpose, since analysis.py's real path and the
+        # ONNX engine modules (decode/frontend_mel/onnx_engine/tempo/key) legitimately
+        # can't run here — they have their own real-mode acceptance tests that skip
+        # when the models are absent.
         env:
           FAKE_ANALYZER: "1"
-        run: pytest -q --cov=vibedentify --cov-fail-under=50
-
-      - name: Desktop shell selftest
-        # Exercises the WSL/Windows path-translation + launch-command logic in
-        # desktop/genre_app.pyw. Its --selftest path is pure stdlib (pywebview is
-        # imported lazily only inside main()), so it needs no extra CI deps, and
-        # ntpath keeps win_to_wsl correct on this Linux runner.
-        run: python desktop/genre_app.pyw --selftest
+        run: pytest -q --cov=vibenative --cov-fail-under=50

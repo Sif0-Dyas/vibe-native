@@ -72,12 +72,19 @@ def convert_graphdef(pb: Path, out: Path, inputs: str, outputs: str) -> None:
         return
     print(f"  [conv] {pb.name} -> {out.name}  (in={inputs} out={outputs} opset={OPSET})")
     cmd = [
-        sys.executable, "-m", "tf2onnx.convert",
-        "--graphdef", str(pb),
-        "--output", str(out),
-        "--inputs", inputs,
-        "--outputs", outputs,
-        "--opset", str(OPSET),
+        sys.executable,
+        "-m",
+        "tf2onnx.convert",
+        "--graphdef",
+        str(pb),
+        "--output",
+        str(out),
+        "--inputs",
+        inputs,
+        "--outputs",
+        outputs,
+        "--opset",
+        str(OPSET),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not out.exists():
@@ -106,9 +113,22 @@ def _convert_effnet_from_savedmodel() -> None:
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(sm_dir)
     # a SavedModel dir has saved_model.pb at its root (possibly one level down)
-    root = sm_dir if (sm_dir / "saved_model.pb").exists() else next(sm_dir.glob("**/saved_model.pb")).parent
-    cmd = [sys.executable, "-m", "tf2onnx.convert", "--saved-model", str(root),
-           "--output", str(out), "--opset", str(OPSET)]
+    root = (
+        sm_dir
+        if (sm_dir / "saved_model.pb").exists()
+        else next(sm_dir.glob("**/saved_model.pb")).parent
+    )
+    cmd = [
+        sys.executable,
+        "-m",
+        "tf2onnx.convert",
+        "--saved-model",
+        str(root),
+        "--output",
+        str(out),
+        "--opset",
+        str(OPSET),
+    ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not out.exists():
         raise SystemExit(f"SavedModel conversion failed:\n{r.stderr[-2000:]}")

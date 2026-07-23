@@ -24,3 +24,4 @@ models/*
 *.egg-info/
 node_modules/
 .eslintcache
+.coverage

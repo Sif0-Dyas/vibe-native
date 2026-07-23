@@ -33,7 +33,9 @@ def _mel_filterbank() -> np.ndarray:
 
     def h2m(f):
         f = np.asarray(f, float)
-        return np.where(f >= min_log_hz, min_log_mel + np.log(np.maximum(f, 1e-9) / min_log_hz) / step, f / f_sp)
+        return np.where(
+            f >= min_log_hz, min_log_mel + np.log(np.maximum(f, 1e-9) / min_log_hz) / step, f / f_sp
+        )
 
     def m2h(m):
         m = np.asarray(m, float)
@@ -43,7 +45,9 @@ def _mel_filterbank() -> np.ndarray:
     fb = np.zeros((N_MELS, len(freqs)))
     for i in range(N_MELS):
         lo, ce, hi = edges[i], edges[i + 1], edges[i + 2]
-        fb[i] = np.maximum(0.0, np.minimum((freqs - lo) / (ce - lo), (hi - freqs) / (hi - ce))) * (2.0 / (hi - lo))
+        fb[i] = np.maximum(0.0, np.minimum((freqs - lo) / (ce - lo), (hi - freqs) / (hi - ce))) * (
+            2.0 / (hi - lo)
+        )
     return fb.T.astype(np.float64)  # (n_freqs, 40)
 
 

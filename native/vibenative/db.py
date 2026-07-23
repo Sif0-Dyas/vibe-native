@@ -95,9 +95,7 @@ def _migration_2(c):
     the ``/mnt/%`` filter, so a re-run touches nothing."""
     from .paths import wsl_to_windows
 
-    rows = c.execute(
-        "SELECT rowid, filepath FROM tracks WHERE filepath LIKE '/mnt/%'"
-    ).fetchall()
+    rows = c.execute("SELECT rowid, filepath FROM tracks WHERE filepath LIKE '/mnt/%'").fetchall()
     for rowid, fp in rows:
         c.execute("UPDATE tracks SET filepath=? WHERE rowid=?", (wsl_to_windows(fp), rowid))
 

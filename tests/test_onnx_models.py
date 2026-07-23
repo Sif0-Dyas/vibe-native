@@ -69,9 +69,7 @@ def test_tempocnn_structural():
     (Numeric BPM validation against the oracle is Phase 3.)"""
     import onnxruntime as ort
 
-    sess = ort.InferenceSession(
-        str(MODELS / "tempocnn.onnx"), providers=["CPUExecutionProvider"]
-    )
+    sess = ort.InferenceSession(str(MODELS / "tempocnn.onnx"), providers=["CPUExecutionProvider"])
     (inp,), (out,) = sess.get_inputs(), sess.get_outputs()
 
     # Static shape: input is [batch, 40 mel, time, 1 channel]; output [batch, 256].
