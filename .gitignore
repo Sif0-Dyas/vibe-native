@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+.pytest_cache/
+# large artifacts kept local (back them up separately)
+oracle/*.npz
+models/*.pb
+models/*.onnx
+*.npz
+
+# --- added during repo setup (protect private data + all model artifacts) ---
+# personal music-library DB backup (genre_v2.db.backup, 84 MB) + any local SQLite DBs
+*.db*
+# insurance: never commit audio if it ever lands inside the project
+oracle_tracks/
+# keep ALL model artifacts local: the existing rules only caught .pb/.onnx, not the
+# 16 MB savedmodel .zip or the model .json metadata. Exclude the dir, keep it tracked.
+models/*
+!models/.gitkeep

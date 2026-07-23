@@ -1,0 +1,4600 @@
+{
+  "703bdec534545c67a64ba34183077f05ba3ac449": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/001.Oliver Heldens - Gecko.mp3",
+    "n_frames": 283,
+    "bpm": 125.0,
+    "bpm_confidence": 1.2346689701080322,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.9154691696166992,
+    "duration": 282.23854875283445,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.31763219833374023
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.2876100242137909
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.2049470990896225
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.14154037833213806
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tropical House",
+        "score": 0.12981869280338287
+      }
+    ]
+  },
+  "b287faf60efcbb23faae6ed4a5d4cd36bf196e31": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/01 You & Me (Baauer Remix).mp3",
+    "n_frames": 242,
+    "bpm": 153.0,
+    "bpm_confidence": 2.144874095916748,
+    "key": "C#",
+    "scale": "minor",
+    "camelot": "12A",
+    "key_strength": 0.9093291163444519,
+    "duration": 242.05614512471655,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.19417515397071838
+      },
+      {
+        "parent": "Electronic",
+        "style": "Schranz",
+        "score": 0.13087233901023865
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Techno",
+        "score": 0.11030511558055878
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.07626927644014359
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.07450952380895615
+      }
+    ]
+  },
+  "2d60b30f5920f4b281476dfe4141c57d8ebd71e6": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/0103 - Amnesia.flac",
+    "n_frames": 155,
+    "bpm": 144.2,
+    "bpm_confidence": 0.9982930421829224,
+    "key": "D",
+    "scale": "minor",
+    "camelot": "7A",
+    "key_strength": 0.9004156589508057,
+    "duration": 155.58621315192744,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.16731704771518707
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.12432866543531418
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jumpstyle",
+        "score": 0.1072179451584816
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.08342013508081436
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.07353027164936066
+      }
+    ]
+  },
+  "b73c6d74467ba7cd8dc29c3d5ca1f05368f21770": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/02 Roots (Brillz Remix).mp3",
+    "n_frames": 249,
+    "bpm": 140.1,
+    "bpm_confidence": 1.4116665124893188,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.8406285643577576,
+    "duration": 248.57142857142858,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.18045151233673096
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.15073716640472412
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jumpstyle",
+        "score": 0.12973473966121674
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.09466157108545303
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.08379779011011124
+      }
+    ]
+  },
+  "afd8bf3fe5e7234756c1c4a072095edf6dc564d7": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/02 Salt In The Wounds.mp3",
+    "n_frames": 401,
+    "bpm": 172.3,
+    "bpm_confidence": 1.855984091758728,
+    "key": "Eb",
+    "scale": "major",
+    "camelot": "5B",
+    "key_strength": 0.821731448173523,
+    "duration": 398.97333333333336,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.46081146597862244
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.3465549051761627
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.12226812541484833
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.08379284292459488
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.08021247386932373
+      }
+    ]
+  },
+  "73d3b71fad2139fdaa8afdefc975435cb8cd0490": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/02. Chimes.mp3",
+    "n_frames": 212,
+    "bpm": 141.0,
+    "bpm_confidence": 1.7122828960418701,
+    "key": "Ab",
+    "scale": "minor",
+    "camelot": "1A",
+    "key_strength": 0.9225912094116211,
+    "duration": 211.40897959183673,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.41317111253738403
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.2698991000652313
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.19083689153194427
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.10647276043891907
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hip Hop",
+        "score": 0.09116119146347046
+      }
+    ]
+  },
+  "4ba228081339d2563a17ecb4f304b15469032a65": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/04-Louisiana_Jones-Nightmare.mp3",
+    "n_frames": 220,
+    "bpm": 139.9,
+    "bpm_confidence": 1.2358512878417969,
+    "key": "Bb",
+    "scale": "minor",
+    "camelot": "3A",
+    "key_strength": 0.9042552709579468,
+    "duration": 219.92489795918368,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2942250669002533
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.227424755692482
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.21751666069030762
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.21389208734035492
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Turntablism",
+        "score": 0.15968766808509827
+      }
+    ]
+  },
+  "a7e7363aac44626cbc6f9d23dd5e0f1c0d111333": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/07 - No Escape - Mindscape (Noisia Remix).mp3",
+    "n_frames": 319,
+    "bpm": 85.9,
+    "bpm_confidence": 1.1328026056289673,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.7756807804107666,
+    "duration": 318.14666666666665,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.5993728637695312
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.31623467803001404
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.16488124430179596
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.16401927173137665
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.1486445814371109
+      }
+    ]
+  },
+  "caa19696fb1847dc2c414a2fb063e94eb2b40884": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. #SELFIE.mp3",
+    "n_frames": 184,
+    "bpm": 128.6,
+    "bpm_confidence": 1.6358569860458374,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.8471156358718872,
+    "duration": 183.75,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.4132613241672516
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.33892205357551575
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.2910914719104767
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.12277566641569138
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.10187114030122757
+      }
+    ]
+  },
+  "5c8b5e91786403eda9c975b95d22b110fb2a4e9c": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. $tacks.mp3",
+    "n_frames": 261,
+    "bpm": 149.4,
+    "bpm_confidence": 0.3443516194820404,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.8386082649230957,
+    "duration": 260.2458276643991,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.09430873394012451
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.08662239462137222
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.07680626958608627
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.0760205015540123
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.07579582929611206
+      }
+    ]
+  },
+  "864b9ad23c3d7ebf03d7d2ca3c5be0f2d073c773": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. A Drug From God (Reb\u016bke Remix).mp3",
+    "n_frames": 188,
+    "bpm": 128.5,
+    "bpm_confidence": 0.801617443561554,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.9054291844367981,
+    "duration": 188.25142857142856,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.3124690055847168
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.2420712560415268
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.1817612200975418
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.17500317096710205
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.09695477038621902
+      }
+    ]
+  },
+  "622f52f00633789815a32234e0708c6b306d3d42": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. A Game Not Worth Winning.mp3",
+    "n_frames": 164,
+    "bpm": 144.6,
+    "bpm_confidence": 1.634788155555725,
+    "key": "G",
+    "scale": "major",
+    "camelot": "9B",
+    "key_strength": 0.8292428851127625,
+    "duration": 164.3835827664399,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.26120665669441223
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2345712035894394
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.1731235682964325
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.12062804400920868
+      },
+      {
+        "parent": "Electronic",
+        "style": "Juke",
+        "score": 0.0962284505367279
+      }
+    ]
+  },
+  "d05d0491d07bc20bd97c29edd73f6ca76dd3945c": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. ASTRAL PAIN.mp3",
+    "n_frames": 97,
+    "bpm": 129.5,
+    "bpm_confidence": 2.554727077484131,
+    "key": "Ab",
+    "scale": "major",
+    "camelot": "4B",
+    "key_strength": 0.8816152215003967,
+    "duration": 97.84614512471656,
+    "styles": [
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.136879563331604
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.11649903655052185
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.11435097455978394
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.1139230728149414
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Hardcore Hip-Hop",
+        "score": 0.11356908082962036
+      }
+    ]
+  },
+  "32ba19bde973315d049466856fb98248b7f02d9e": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Addicted To A Memory.mp3",
+    "n_frames": 304,
+    "bpm": 128.0,
+    "bpm_confidence": 1.5115540027618408,
+    "key": "C#",
+    "scale": "minor",
+    "camelot": "12A",
+    "key_strength": 0.9205369353294373,
+    "duration": 303.16,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.38653308153152466
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.21688275039196014
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.15457552671432495
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.13598977029323578
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.1312992125749588
+      }
+    ]
+  },
+  "e6e17ffc6b96d43f91c3a9fb0575adc810c65ef2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Afterglow.mp3",
+    "n_frames": 282,
+    "bpm": 70.0,
+    "bpm_confidence": 1.3838568925857544,
+    "key": "Bb",
+    "scale": "minor",
+    "camelot": "3A",
+    "key_strength": 0.9028488993644714,
+    "duration": 280.8105215419501,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.21420994400978088
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.2099730223417282
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.17303231358528137
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Cloud Rap",
+        "score": 0.10264009982347488
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.10088454186916351
+      }
+    ]
+  },
+  "a3314526a6e6b95d9173b4f07b0fa2f6dbbec83f": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Alive (feat. Camellia).mp3",
+    "n_frames": 305,
+    "bpm": 123.1,
+    "bpm_confidence": 1.2151405811309814,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.9207186102867126,
+    "duration": 304.3902494331066,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2702867388725281
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.24540743231773376
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.22858303785324097
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tropical House",
+        "score": 0.18448124825954437
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.12290696799755096
+      }
+    ]
+  },
+  "df270715b55bf8c603be8393da53a3c2b5867daa": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Amazon.mp3",
+    "n_frames": 236,
+    "bpm": 154.8,
+    "bpm_confidence": 1.3321049213409424,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.8256728053092957,
+    "duration": 235.5115873015873,
+    "styles": [
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.32304689288139343
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.12626495957374573
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Cloud Rap",
+        "score": 0.08394328504800797
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.08098521828651428
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.059159696102142334
+      }
+    ]
+  },
+  "f702b9a6181bb54ab8bb2215c14248e666087f98": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Anjunabeach.mp3",
+    "n_frames": 499,
+    "bpm": 132.0,
+    "bpm_confidence": 1.751500129699707,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9114205241203308,
+    "duration": 496.7946485260771,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.6874834299087524
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.6508433818817139
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.21552343666553497
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.09264884144067764
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.0643802359700203
+      }
+    ]
+  },
+  "24d52e8cab06dea4600a56e789fa58c4a4d4c1ae": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. BLACK_MASS.mp3",
+    "n_frames": 260,
+    "bpm": 150.1,
+    "bpm_confidence": 0.8057935833930969,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.74454265832901,
+    "duration": 259.2,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.3092372417449951
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.19078262150287628
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.11870509386062622
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.100037582218647
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.06769578158855438
+      }
+    ]
+  },
+  "6cb09d6bf4bb65373bed6d5eb006424e5878b060": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. BLEED.mp3",
+    "n_frames": 182,
+    "bpm": 99.7,
+    "bpm_confidence": 1.2888386249542236,
+    "key": "D",
+    "scale": "minor",
+    "camelot": "7A",
+    "key_strength": 0.8638219833374023,
+    "duration": 182.4,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.14797459542751312
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.14367391169071198
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.11265014111995697
+      },
+      {
+        "parent": "Electronic",
+        "style": "Glitch",
+        "score": 0.1036701500415802
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.07559700310230255
+      }
+    ]
+  },
+  "47e4e140afec6dc402decd26cb25d66bf655246d": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. BLVDE.mp3",
+    "n_frames": 233,
+    "bpm": 140.0,
+    "bpm_confidence": 2.015620708465576,
+    "key": "Ab",
+    "scale": "major",
+    "camelot": "4B",
+    "key_strength": 0.8360686302185059,
+    "duration": 233.14285714285714,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.24156127870082855
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.2065897434949875
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.18113845586776733
+      },
+      {
+        "parent": "Electronic",
+        "style": "Rhythmic Noise",
+        "score": 0.08400185406208038
+      },
+      {
+        "parent": "Electronic",
+        "style": "Industrial",
+        "score": 0.07498399913311005
+      }
+    ]
+  },
+  "8b5271d7437fd4ed4152d9b78fa845b971d4c132": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. BRODYAGA FUNK.mp3",
+    "n_frames": 134,
+    "bpm": 129.8,
+    "bpm_confidence": 2.422043561935425,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.71584153175354,
+    "duration": 134.78526077097504,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Rhythmic Noise",
+        "score": 0.2355700433254242
+      },
+      {
+        "parent": "Electronic",
+        "style": "Industrial",
+        "score": 0.21548418700695038
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.11063437908887863
+      },
+      {
+        "parent": "Electronic",
+        "style": "EBM",
+        "score": 0.10671622306108475
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.08892875909805298
+      }
+    ]
+  },
+  "f5d99b85dbdfbbe6c2d4afa4a035761939cda018": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Badders.mp3",
+    "n_frames": 167,
+    "bpm": 144.8,
+    "bpm_confidence": 2.447312831878662,
+    "key": "Eb",
+    "scale": "major",
+    "camelot": "5B",
+    "key_strength": 0.871195912361145,
+    "duration": 167.17242630385488,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.46686527132987976
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.1582806408405304
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.15736450254917145
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.13769549131393433
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.11654587835073471
+      }
+    ]
+  },
+  "05b45758fccdbd9d0fcccd82730dd8945fa54de7": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Ball So Hard - PIERCE Remix.mp3",
+    "n_frames": 140,
+    "bpm": 140.0,
+    "bpm_confidence": 1.6535427570343018,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.4391951858997345,
+    "duration": 140.57145124716553,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.1517624855041504
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.12936969101428986
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.1270788609981537
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.10664632171392441
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.07927083224058151
+      }
+    ]
+  },
+  "f168ba53123dcd4a67bb40ce5186ca634c3fc9c2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Bangladesh.mp3",
+    "n_frames": 206,
+    "bpm": 150.0,
+    "bpm_confidence": 1.8501453399658203,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8713350296020508,
+    "duration": 205.6298866213152,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2029712200164795
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.16316302120685577
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.12045492976903915
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.09671424329280853
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.08497387170791626
+      }
+    ]
+  },
+  "d68d17c2d3aee66bcb5528c1645a8d23c2345a7d": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Beautiful - Myon x Hoten Mix.mp3",
+    "n_frames": 217,
+    "bpm": 123.6,
+    "bpm_confidence": 1.8915210962295532,
+    "key": "A",
+    "scale": "minor",
+    "camelot": "8A",
+    "key_strength": 0.9274181723594666,
+    "duration": 216.77419501133787,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.46599358320236206
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Breaks",
+        "score": 0.32999560236930847
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.20732183754444122
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.16172103583812714
+      },
+      {
+        "parent": "Electronic",
+        "style": "Psy-Trance",
+        "score": 0.11787626147270203
+      }
+    ]
+  },
+  "d5dce8b90e56dda58f2c78f0a26093d93a4bc7a8": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Beneath with Me (feat. Skylar Grey) - Kaskade's V.4.mp3",
+    "n_frames": 254,
+    "bpm": 125.9,
+    "bpm_confidence": 1.1745240688323975,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.8636974096298218,
+    "duration": 253.8279365079365,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.12990114092826843
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.10584808140993118
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.09592592716217041
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.07590523362159729
+      },
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.06903110444545746
+      }
+    ]
+  },
+  "32b3b5dbd69f8b47b39639b3787b16f910ba3864": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Break.mp3",
+    "n_frames": 256,
+    "bpm": 122.9,
+    "bpm_confidence": 0.9820089340209961,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.8595556020736694,
+    "duration": 255.60979591836735,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Progressive Breaks",
+        "score": 0.37953364849090576
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.30619752407073975
+      },
+      {
+        "parent": "Electronic",
+        "style": "UK Garage",
+        "score": 0.11848924309015274
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.11197524517774582
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.11105579882860184
+      }
+    ]
+  },
+  "6f67d144057c5531a5283c32d0c55ae6af5243be": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. B\u00f6\u00f6 ^Bsiide.mp3",
+    "n_frames": 122,
+    "bpm": 95.1,
+    "bpm_confidence": 1.8033592700958252,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.8557624220848083,
+    "duration": 122.34868480725623,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Glitch",
+        "score": 0.1439993977546692
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.11861076951026917
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.09872885793447495
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.09775321185588837
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.09000810980796814
+      }
+    ]
+  },
+  "8674f922bf3753573b70a4fdf6c382cde27ce7cf": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Castles In The Sky.mp3",
+    "n_frames": 224,
+    "bpm": 135.0,
+    "bpm_confidence": 1.4085204601287842,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.907068133354187,
+    "duration": 223.28,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.7001782059669495
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.5503676533699036
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.1127006858587265
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.06746987253427505
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.05574556812644005
+      }
+    ]
+  },
+  "466cffffcbe9671e4ebd6a8acc665293d9ed0005": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Come Together - Nox Vahn & Marsh Revisit.mp3",
+    "n_frames": 248,
+    "bpm": 162.3,
+    "bpm_confidence": -0.11675510555505753,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.845051109790802,
+    "duration": 247.271768707483,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.17601528763771057
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.06370116770267487
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.06216193735599518
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.0554736889898777
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.04761020094156265
+      }
+    ]
+  },
+  "58ae73b73323488e90acfa95f63998b12d9145ef": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Cryogenic Dreams.mp3",
+    "n_frames": 386,
+    "bpm": 161.5,
+    "bpm_confidence": 1.2794649600982666,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8642386794090271,
+    "duration": 384.82,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.13109584152698517
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.12714490294456482
+      },
+      {
+        "parent": "Electronic",
+        "style": "Glitch",
+        "score": 0.08730199187994003
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.08711372315883636
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.06110474839806557
+      }
+    ]
+  },
+  "bbd450d4a2f207072cfbaf92d122e90e93825b91": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Danger - REAPER Remix.mp3",
+    "n_frames": 188,
+    "bpm": 87.2,
+    "bpm_confidence": 0.9031451344490051,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9066979885101318,
+    "duration": 187.58637188208615,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.3356193006038666
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.21691781282424927
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.20549461245536804
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.13995139300823212
+      },
+      {
+        "parent": "Electronic",
+        "style": "Happy Hardcore",
+        "score": 0.12835970520973206
+      }
+    ]
+  },
+  "f5fcb5d52a0540bbb043b0556a75d6375b33de65": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Daydream.mp3",
+    "n_frames": 187,
+    "bpm": 92.2,
+    "bpm_confidence": 0.6273347735404968,
+    "key": "B",
+    "scale": "major",
+    "camelot": "1B",
+    "key_strength": 0.9214015007019043,
+    "duration": 186.87501133786847,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.15926750004291534
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.11747266352176666
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Cloud Rap",
+        "score": 0.09961719065904617
+      },
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.09770400822162628
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.09125359356403351
+      }
+    ]
+  },
+  "b630037f5b13416e17276f1671923923f5d82b75": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Dead Man Walking.mp3",
+    "n_frames": 288,
+    "bpm": 150.7,
+    "bpm_confidence": 0.7563859224319458,
+    "key": "Eb",
+    "scale": "major",
+    "camelot": "5B",
+    "key_strength": 0.8669344782829285,
+    "duration": 287.0,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.27699556946754456
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.17854394018650055
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.17293503880500793
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.1153227761387825
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.10687009990215302
+      }
+    ]
+  },
+  "62cdd2da00d36ad0527a27897a1d09036b8a3067": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Deep Down Low.mp3",
+    "n_frames": 190,
+    "bpm": 126.0,
+    "bpm_confidence": 3.165280818939209,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.5418258905410767,
+    "duration": 190.47619047619048,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.5701993703842163
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.3859170973300934
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.25435900688171387
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.15004757046699524
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.105823814868927
+      }
+    ]
+  },
+  "e4725e7040bc9f2558d21519f9fcbc6063ff7a68": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Dragon Dance.mp3",
+    "n_frames": 214,
+    "bpm": 95.0,
+    "bpm_confidence": 0.8739603757858276,
+    "key": "A",
+    "scale": "minor",
+    "camelot": "8A",
+    "key_strength": 0.6442229747772217,
+    "duration": 213.47371882086168,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.29367607831954956
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.16924838721752167
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.14719116687774658
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.07315199077129364
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.06023717671632767
+      }
+    ]
+  },
+  "c48e640533e84ff8460c1895bdf6c2701f759c3c": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Dreams.mp3",
+    "n_frames": 269,
+    "bpm": 92.0,
+    "bpm_confidence": 0.41941365599632263,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.926941990852356,
+    "duration": 268.043514739229,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.17830443382263184
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.11900335550308228
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.11433745175600052
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.11125148087739944
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.1089622750878334
+      }
+    ]
+  },
+  "5d63a4216ac19930b84bbcfbc86742c28a63858b": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Energy In Motion.mp3",
+    "n_frames": 261,
+    "bpm": 172.3,
+    "bpm_confidence": 0.9320433735847473,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8492921590805054,
+    "duration": 260.68965986394556,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.46146175265312195
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.2568097710609436
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.25193068385124207
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.15430891513824463
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.07572538405656815
+      }
+    ]
+  },
+  "58e4828e50354a37afbf633cc065bc73ac9675fa": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Fire Dub.mp3",
+    "n_frames": 228,
+    "bpm": 139.9,
+    "bpm_confidence": 0.8171144723892212,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.44029226899147034,
+    "duration": 228.0,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.3500663936138153
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.24095918238162994
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.10798279196023941
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.08649642765522003
+      },
+      {
+        "parent": "Electronic",
+        "style": "Speedcore",
+        "score": 0.0804220587015152
+      }
+    ]
+  },
+  "d5d4c7071bcdaaf7a44ca8ea04680f63953e0d04": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Flip It - VIP.mp3",
+    "n_frames": 162,
+    "bpm": 142.1,
+    "bpm_confidence": 2.319816827774048,
+    "key": "E",
+    "scale": "major",
+    "camelot": "12B",
+    "key_strength": 0.4845118820667267,
+    "duration": 162.4285941043084,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.37610164284706116
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.16768856346607208
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.12388032674789429
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.11640386283397675
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.11063289642333984
+      }
+    ]
+  },
+  "20a70bc5f1cd074f6312b3078857c4ea7a984f11": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Fragmentation.mp3",
+    "n_frames": 146,
+    "bpm": 126.0,
+    "bpm_confidence": 1.506800651550293,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9435061812400818,
+    "duration": 146.66666666666666,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.32654836773872375
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.29281219840049744
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.26158979535102844
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.23232190310955048
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.15781079232692719
+      }
+    ]
+  },
+  "ae115e6d1970e7d5678f43b99e0931a709945a07": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. GUD VIBRATIONS.mp3",
+    "n_frames": 224,
+    "bpm": 152.1,
+    "bpm_confidence": 2.1121840476989746,
+    "key": "Eb",
+    "scale": "major",
+    "camelot": "5B",
+    "key_strength": 0.7562491297721863,
+    "duration": 224.21054421768707,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.23315700888633728
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.12731412053108215
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.11906428635120392
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.11430399119853973
+      },
+      {
+        "parent": "Electronic",
+        "style": "Juke",
+        "score": 0.11362923681735992
+      }
+    ]
+  },
+  "0d02ed46536f875358d2069343bacee0d2e9fdea": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Gemini (feat. George Maple).mp3",
+    "n_frames": 271,
+    "bpm": 145.0,
+    "bpm_confidence": 1.215726613998413,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.8974674940109253,
+    "duration": 270.257074829932,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.1537611037492752
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.12506335973739624
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.11692648380994797
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.11180674284696579
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.10265317559242249
+      }
+    ]
+  },
+  "431fa7240cfcda555aeaea115ccfa8d4e9f79da5": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Gold (Stupid Love).mp3",
+    "n_frames": 297,
+    "bpm": 145.1,
+    "bpm_confidence": 0.4311903119087219,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.9204297065734863,
+    "duration": 295.89043083900225,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2629222273826599
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.1472885012626648
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.0952780693769455
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.07690456509590149
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.07519477605819702
+      }
+    ]
+  },
+  "6f5e9c15e1b5f4a3248a738933dd2b5383dcf7aa": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. HOT DRUM.mp3",
+    "n_frames": 267,
+    "bpm": 124.1,
+    "bpm_confidence": 1.7555382251739502,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.8558964133262634,
+    "duration": 266.87968253968256,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.438529908657074
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.2616996169090271
+      },
+      {
+        "parent": "Electronic",
+        "style": "Speed Garage",
+        "score": 0.18070080876350403
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.16046854853630066
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.0992107093334198
+      }
+    ]
+  },
+  "ac35613127c12cbaa36b1e430cf3c1d8bee67d59": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Hooked.mp3",
+    "n_frames": 166,
+    "bpm": 172.3,
+    "bpm_confidence": 0.9294496774673462,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9310361742973328,
+    "duration": 166.20689342403628,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.4918431341648102
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.24540196359157562
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.14148961007595062
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.09516697376966476
+      },
+      {
+        "parent": "Pop",
+        "style": "K-pop",
+        "score": 0.08001579344272614
+      }
+    ]
+  },
+  "b085ea619c8cfb021aa468f95fc01682bbf32bfb": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Hot Chicken.mp3",
+    "n_frames": 141,
+    "bpm": 86.0,
+    "bpm_confidence": 2.500386953353882,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.8726150989532471,
+    "duration": 140.93027210884352,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.5068820118904114
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.4147394299507141
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.22277097404003143
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.07952465116977692
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.07055988162755966
+      }
+    ]
+  },
+  "6cbb46809a4ab4cafe7ea76a5a958cde9e5723a2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. House Revelation.mp3",
+    "n_frames": 154,
+    "bpm": 127.9,
+    "bpm_confidence": 2.946773052215576,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9175942540168762,
+    "duration": 154.68750566893425,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2795509099960327
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.21465358138084412
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.1733042299747467
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.13489705324172974
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.12389031797647476
+      }
+    ]
+  },
+  "fb784074cf33be7fba53342b7d8c292db549dc8c": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Hush.mp3",
+    "n_frames": 264,
+    "bpm": 133.9,
+    "bpm_confidence": 1.2793340682983398,
+    "key": "A",
+    "scale": "minor",
+    "camelot": "8A",
+    "key_strength": 0.9173781871795654,
+    "duration": 263.40267573696144,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.34070295095443726
+      },
+      {
+        "parent": "Electronic",
+        "style": "UK Garage",
+        "score": 0.291900634765625
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.291413277387619
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.09554795175790787
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.08939647674560547
+      }
+    ]
+  },
+  "a4afa4b1a77cb5d3c709f41a0f5c60a8cab31e7b": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. HyperParadise - Flume Remix (Ganz Flip).mp3",
+    "n_frames": 291,
+    "bpm": 143.0,
+    "bpm_confidence": 1.4521124362945557,
+    "key": "F#",
+    "scale": "major",
+    "camelot": "2B",
+    "key_strength": 0.8927482962608337,
+    "duration": 290.0,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.19077569246292114
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hip Hop",
+        "score": 0.15392079949378967
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.1236090138554573
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.11893264949321747
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.11881843209266663
+      }
+    ]
+  },
+  "c0a40bb682f9e0a3c007d5b42a2f63d0aca9241d": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. I Surrender.mp3",
+    "n_frames": 202,
+    "bpm": 127.9,
+    "bpm_confidence": 1.1741254329681396,
+    "key": "G",
+    "scale": "major",
+    "camelot": "9B",
+    "key_strength": 0.935727059841156,
+    "duration": 201.75,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.2338031530380249
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.22327959537506104
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.21027255058288574
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.1867704540491104
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.13595713675022125
+      }
+    ]
+  },
+  "2c9bc80fc8224cad9ee36a54e210212d9572d2a5": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Kalahari.mp3",
+    "n_frames": 169,
+    "bpm": 75.0,
+    "bpm_confidence": 0.5071511268615723,
+    "key": "F#",
+    "scale": "minor",
+    "camelot": "11A",
+    "key_strength": 0.9218425154685974,
+    "duration": 169.6041723356009,
+    "styles": [
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.24299199879169464
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.1905970573425293
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.13636720180511475
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.13383492827415466
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.07894609868526459
+      }
+    ]
+  },
+  "623f2f923dfe4621f30182df0fef61b5ce0c3447": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Laserbeam - Sullivan King Remix.mp3",
+    "n_frames": 227,
+    "bpm": 150.0,
+    "bpm_confidence": 1.2108776569366455,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.9050310254096985,
+    "duration": 226.4,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2562156021595001
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.13737702369689941
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.0922221913933754
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.08789847046136856
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.07974106818437576
+      }
+    ]
+  },
+  "880c535258e2ff872a22b89eff95fd5c2cb50fbe": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Let's Go Dancing - Matroda Remix.mp3",
+    "n_frames": 196,
+    "bpm": 128.0,
+    "bpm_confidence": 1.663916826248169,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.6647082567214966,
+    "duration": 195.47362811791382,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.42820969223976135
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.15550372004508972
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep Techno",
+        "score": 0.13897612690925598
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.13226881623268127
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.13021554052829742
+      }
+    ]
+  },
+  "21edf01d0737f8b05d6d8cf1f877fa294252cef0": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Lucy.mp3",
+    "n_frames": 253,
+    "bpm": 129.8,
+    "bpm_confidence": 1.4473038911819458,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8063678741455078,
+    "duration": 252.44,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.35194849967956543
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.180576890707016
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.0984882339835167
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.08597013354301453
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.07860556989908218
+      }
+    ]
+  },
+  "5430ebe036c7667fcd18b5721d3d83fadb2eabf2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. MOONLIGHT (SWARM Remix).mp3",
+    "n_frames": 203,
+    "bpm": 89.9,
+    "bpm_confidence": 1.1488239765167236,
+    "key": "A",
+    "scale": "minor",
+    "camelot": "8A",
+    "key_strength": 0.7951392531394958,
+    "duration": 203.34362811791382,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.19239085912704468
+      },
+      {
+        "parent": "Electronic",
+        "style": "Industrial",
+        "score": 0.17582356929779053
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.11432208120822906
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.09104940295219421
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.0740061104297638
+      }
+    ]
+  },
+  "29e4b273f2d6b8dc1b6b4c1cb7718f330ccefb01": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Magic Fly.mp3",
+    "n_frames": 167,
+    "bpm": 140.0,
+    "bpm_confidence": 2.357896327972412,
+    "key": "Bb",
+    "scale": "minor",
+    "camelot": "3A",
+    "key_strength": 0.9499643445014954,
+    "duration": 167.3906349206349,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Psy-Trance",
+        "score": 0.4195314049720764
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.34658411145210266
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.1759481430053711
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.17590437829494476
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.1414579302072525
+      }
+    ]
+  },
+  "3ade07a5de47fb32d7edb60dad4c7cd08816ee4a": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Njohi.mp3",
+    "n_frames": 261,
+    "bpm": 122.2,
+    "bpm_confidence": 1.2594573497772217,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.9393688440322876,
+    "duration": 260.17417233560093,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.43336746096611023
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Breaks",
+        "score": 0.3697810471057892
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.09517701715230942
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.08604273945093155
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.07382987439632416
+      }
+    ]
+  },
+  "3af6b4914488c569f42d0ce0d6aaab8097857c21": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Now Or Never - Craig Connelly Remix.mp3",
+    "n_frames": 229,
+    "bpm": 138.0,
+    "bpm_confidence": 0.6184043884277344,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.8754196166992188,
+    "duration": 228.85877551020408,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.7872682809829712
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.7734459042549133
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.08240969479084015
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.06690395623445511
+      },
+      {
+        "parent": "Electronic",
+        "style": "Psy-Trance",
+        "score": 0.0649375468492508
+      }
+    ]
+  },
+  "1e2562b8158bd074cc8fa36a71476e60ceccabfc": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Oh My (feat. Moby).mp3",
+    "n_frames": 160,
+    "bpm": 86.0,
+    "bpm_confidence": 1.1968662738800049,
+    "key": "Bb",
+    "scale": "major",
+    "camelot": "6B",
+    "key_strength": 0.9135847091674805,
+    "duration": 160.11628117913833,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.5465524792671204
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.15978142619132996
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.1434878408908844
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.13431015610694885
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.09296859800815582
+      }
+    ]
+  },
+  "5d0735112d32d7c02fd38c9cfc5e692693ee6b95": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. On My Own - REAPER Remix.mp3",
+    "n_frames": 219,
+    "bpm": 172.3,
+    "bpm_confidence": 1.266600251197815,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.866495668888092,
+    "duration": 218.62068027210884,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.35159066319465637
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.31226837635040283
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.1509757936000824
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.07754363864660263
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.0699819028377533
+      }
+    ]
+  },
+  "c5300911b80119d52e948863857ca7a158f0c595": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. One Pill.mp3",
+    "n_frames": 218,
+    "bpm": 129.9,
+    "bpm_confidence": 2.33647084236145,
+    "key": "F#",
+    "scale": "minor",
+    "camelot": "11A",
+    "key_strength": 0.5337304472923279,
+    "duration": 217.9461678004535,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.2864321172237396
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.23942206799983978
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.2066762000322342
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.14134137332439423
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.11855560541152954
+      }
+    ]
+  },
+  "87108bfb0fe3b1bbf90454d519071cda9f81c781": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Other Side of the World - Daxson Remix.mp3",
+    "n_frames": 198,
+    "bpm": 133.5,
+    "bpm_confidence": 0.9943034052848816,
+    "key": "Bb",
+    "scale": "minor",
+    "camelot": "3A",
+    "key_strength": 0.8737112283706665,
+    "duration": 197.6865759637188,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.6300997734069824
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.6255419254302979
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.10982542484998703
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.09107866138219833
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.08991960436105728
+      }
+    ]
+  },
+  "7ee8674c0606d06a21a019921e8be177028944a0": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Pressure.mp3",
+    "n_frames": 260,
+    "bpm": 164.1,
+    "bpm_confidence": 1.680544137954712,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.764484703540802,
+    "duration": 259.0243990929705,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.38504645228385925
+      },
+      {
+        "parent": "Electronic",
+        "style": "Happy Hardcore",
+        "score": 0.16812139749526978
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.10737834870815277
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.0766650140285492
+      },
+      {
+        "parent": "Electronic",
+        "style": "Speedcore",
+        "score": 0.06569664925336838
+      }
+    ]
+  },
+  "7e3610d8155ad3f1b3712d1289fc08c28f4dae25": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Reproduction - Instrumental.mp3",
+    "n_frames": 139,
+    "bpm": 163.9,
+    "bpm_confidence": 2.7698442935943604,
+    "key": "C",
+    "scale": "major",
+    "camelot": "8B",
+    "key_strength": 0.8329662084579468,
+    "duration": 139.5,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Synth-pop",
+        "score": 0.12317248433828354
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.11219365894794464
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.11051534861326218
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.09619218856096268
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.08384177833795547
+      }
+    ]
+  },
+  "4c2af8e8cffe3ed89504dcf970010630ffaf3ac6": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Sacred Shamans.mp3",
+    "n_frames": 464,
+    "bpm": 143.1,
+    "bpm_confidence": 1.5055776834487915,
+    "key": "F#",
+    "scale": "minor",
+    "camelot": "11A",
+    "key_strength": 0.9105744361877441,
+    "duration": 461.5384807256236,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Psy-Trance",
+        "score": 0.5722438097000122
+      },
+      {
+        "parent": "Electronic",
+        "style": "Goa Trance",
+        "score": 0.11877530068159103
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.10519685596227646
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.10074903815984726
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.09048166126012802
+      }
+    ]
+  },
+  "6ee0d77c9e823aaa810b3a435adc4fe364a4cc4a": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Scary Lullaby.mp3",
+    "n_frames": 173,
+    "bpm": 139.7,
+    "bpm_confidence": 1.8130013942718506,
+    "key": "D",
+    "scale": "minor",
+    "camelot": "7A",
+    "key_strength": 0.9399908781051636,
+    "duration": 173.57142857142858,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.3727063834667206
+      },
+      {
+        "parent": "Electronic",
+        "style": "Euro House",
+        "score": 0.2502749264240265
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.21217212080955505
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.1769624650478363
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.13871511816978455
+      }
+    ]
+  },
+  "799a8d2df3f352c11ee64276e4482aa1e22f2cb7": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Shoulda Known - GANZ Remix.mp3",
+    "n_frames": 226,
+    "bpm": 70.0,
+    "bpm_confidence": 1.1461926698684692,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.8829633593559265,
+    "duration": 225.32095238095238,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2146081179380417
+      },
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.1521439403295517
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.13734851777553558
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.13532210886478424
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.11504701524972916
+      }
+    ]
+  },
+  "fba56fbf44e185a00d3e5b9673001e47a002084e": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Sleepy Hollow.mp3",
+    "n_frames": 166,
+    "bpm": 144.4,
+    "bpm_confidence": 1.3408101797103882,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.8560916185379028,
+    "duration": 165.98310657596372,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.33013129234313965
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.29957354068756104
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.1994396299123764
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.16987521946430206
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.12484097480773926
+      }
+    ]
+  },
+  "e1d5852981821f39e1f0c0e486126320b1fa3623": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. TGTHR.mp3",
+    "n_frames": 190,
+    "bpm": 144.7,
+    "bpm_confidence": 1.5107786655426025,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.8295500874519348,
+    "duration": 189.80115646258503,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Donk",
+        "score": 0.2439730167388916
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.17541326582431793
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.14374284446239471
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard House",
+        "score": 0.10782302170991898
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.1019512265920639
+      }
+    ]
+  },
+  "ffb37ed1c01bb1683adf5670c74ec3449941b184": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Talk to Me.mp3",
+    "n_frames": 261,
+    "bpm": 139.9,
+    "bpm_confidence": 2.348818778991699,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8931823372840881,
+    "duration": 260.57142857142856,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.6086020469665527
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.41261252760887146
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.18551823496818542
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.12664027512073517
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.11436919122934341
+      }
+    ]
+  },
+  "e199ab6bf5e0eb57ba78a196286e624c76cc35ca": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. The Greatest.mp3",
+    "n_frames": 226,
+    "bpm": 99.9,
+    "bpm_confidence": 1.096745252609253,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.8726015686988831,
+    "duration": 225.6,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.11427979916334152
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.1132931187748909
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.07442133128643036
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.0704730674624443
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.06831186264753342
+      }
+    ]
+  },
+  "31a8490a878e2e8dc1128419f345529eaa999871": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. The Only Way.mp3",
+    "n_frames": 193,
+    "bpm": 142.0,
+    "bpm_confidence": 1.271803855895996,
+    "key": "Bb",
+    "scale": "minor",
+    "camelot": "3A",
+    "key_strength": 0.9268661141395569,
+    "duration": 192.62501133786847,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.866395890712738
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.7703322768211365
+      },
+      {
+        "parent": "Electronic",
+        "style": "Psy-Trance",
+        "score": 0.11890293657779694
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.05309739708900452
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.027847321704030037
+      }
+    ]
+  },
+  "903c76b52413bb2230f290e9505ce8c7b7ebd838": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Ways of the World.mp3",
+    "n_frames": 157,
+    "bpm": 138.1,
+    "bpm_confidence": 2.722189426422119,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8313353061676025,
+    "duration": 157.4108843537415,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.37056413292884827
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.3094046115875244
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.17052751779556274
+      },
+      {
+        "parent": "Electronic",
+        "style": "Disco Polo",
+        "score": 0.1352870613336563
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.12994033098220825
+      }
+    ]
+  },
+  "2e5aad8904eebfe1db3931dcbf638031d7e0f167": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Yoshimitsu.mp3",
+    "n_frames": 176,
+    "bpm": 150.0,
+    "bpm_confidence": 1.6052014827728271,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9525156021118164,
+    "duration": 176.00002267573697,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.17397540807724
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.10828561335802078
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.08823093771934509
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.08613050729036331
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.08539576083421707
+      }
+    ]
+  },
+  "95146d7882d2e2225ea211fc8bde4922358c10e3": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. Your Ghosts.mp3",
+    "n_frames": 288,
+    "bpm": 86.8,
+    "bpm_confidence": 1.281980276107788,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.9291863441467285,
+    "duration": 287.4132879818594,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.6844891309738159
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.5418761968612671
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.11140073835849762
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.08183780312538147
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.05977387726306915
+      }
+    ]
+  },
+  "fd9c6677d3995ded121b93e24f136d3e38412b9f": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. first death (Slushii Remix).mp3",
+    "n_frames": 193,
+    "bpm": 163.2,
+    "bpm_confidence": 1.4363429546356201,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.8370497822761536,
+    "duration": 193.48,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Hardstyle",
+        "score": 0.16671015322208405
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.14300477504730225
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.09993024170398712
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.08885312080383301
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.06460630148649216
+      }
+    ]
+  },
+  "d22794daaff7b826448668a6bd388b2aa7c2378b": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/1. nightmares - Eyfect Remix.mp3",
+    "n_frames": 139,
+    "bpm": 123.4,
+    "bpm_confidence": 1.144335389137268,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.9187411069869995,
+    "duration": 139.3548299319728,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.2186088263988495
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.19850967824459076
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.15374574065208435
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.14234194159507751
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.10114908963441849
+      }
+    ]
+  },
+  "14df73a368059a5975ab25f716dfc8affcac876d": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/10. Water.mp3",
+    "n_frames": 118,
+    "bpm": 82.8,
+    "bpm_confidence": 2.2879014015197754,
+    "key": "Bb",
+    "scale": "minor",
+    "camelot": "3A",
+    "key_strength": 0.9237030148506165,
+    "duration": 118.55419501133787,
+    "styles": [
+      {
+        "parent": "Hip Hop",
+        "style": "Jazzy Hip-Hop",
+        "score": 0.41790682077407837
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Instrumental",
+        "score": 0.3003418445587158
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Boom Bap",
+        "score": 0.15340138971805573
+      },
+      {
+        "parent": "Funk / Soul",
+        "style": "Neo Soul",
+        "score": 0.09828035533428192
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trip Hop",
+        "score": 0.09808792173862457
+      }
+    ]
+  },
+  "393e114cc7648a0d7c1d831a00c00099d6892b61": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/12. Dont Let Me Fall Asleep.mp3",
+    "n_frames": 330,
+    "bpm": 126.6,
+    "bpm_confidence": 0.8754457235336304,
+    "key": "Ab",
+    "scale": "major",
+    "camelot": "4B",
+    "key_strength": 0.8532983660697937,
+    "duration": 328.75102040816324,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.15854953229427338
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.1398685872554779
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Instrumental",
+        "score": 0.11824934929609299
+      },
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.10349808633327484
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.08895545452833176
+      }
+    ]
+  },
+  "663f59156ebb32dd35761b3a6a02138ff3837c0f": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/13. No One Would Miss Me.mp3",
+    "n_frames": 174,
+    "bpm": 109.9,
+    "bpm_confidence": 2.617971897125244,
+    "key": "Eb",
+    "scale": "major",
+    "camelot": "5B",
+    "key_strength": 0.7791447043418884,
+    "duration": 173.66478458049886,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.2519552409648895
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.1968400478363037
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.18393440544605255
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Instrumental",
+        "score": 0.08864319324493408
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.08808498084545135
+      }
+    ]
+  },
+  "381d459b67eaab46945c8ad43aa0f92b1c52095c": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/15 - Chvrches - Gun (KDA RemixBonus Track.) (Chvrches).mp3",
+    "n_frames": 377,
+    "bpm": 124.0,
+    "bpm_confidence": 2.4527766704559326,
+    "key": "F",
+    "scale": "major",
+    "camelot": "7B",
+    "key_strength": 0.9218405485153198,
+    "duration": 375.6059863945578,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.43581461906433105
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.3279624879360199
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tropical House",
+        "score": 0.13107474148273468
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.12868091464042664
+      },
+      {
+        "parent": "Electronic",
+        "style": "Nu-Disco",
+        "score": 0.11057603359222412
+      }
+    ]
+  },
+  "c169ded62c5fc6c2a3064b59490344b891855957": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/15-plaza_-_goor_(original).mp3",
+    "n_frames": 190,
+    "bpm": 125.2,
+    "bpm_confidence": 3.0106654167175293,
+    "key": "B",
+    "scale": "major",
+    "camelot": "1B",
+    "key_strength": 0.8257943987846375,
+    "duration": 190.47333333333333,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.5861806273460388
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.47148171067237854
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tribal House",
+        "score": 0.308843195438385
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.22900089621543884
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.15596623718738556
+      }
+    ]
+  },
+  "5190e03f36bc7f094dc9804c72d91683731b5e20": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/17. Shadow - Just A Gent Remix.mp3",
+    "n_frames": 169,
+    "bpm": 133.0,
+    "bpm_confidence": 1.4189774990081787,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.843546986579895,
+    "duration": 169.10714285714286,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.20960310101509094
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Cloud Rap",
+        "score": 0.2037939727306366
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.18682177364826202
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.09469814598560333
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.08907514810562134
+      }
+    ]
+  },
+  "56ab0ae381617b0681a8b57c3c93ee4a9264ee91": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/2. ENEMIES (feat. bludnymph & Shift K3Y).mp3",
+    "n_frames": 146,
+    "bpm": 142.0,
+    "bpm_confidence": 2.051699161529541,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.809330940246582,
+    "duration": 146.28975056689342,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.15847274661064148
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.12142433226108551
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.10966797173023224
+      },
+      {
+        "parent": "Pop",
+        "style": "Bubblegum",
+        "score": 0.09834787249565125
+      },
+      {
+        "parent": "Pop",
+        "style": "K-pop",
+        "score": 0.0980527326464653
+      }
+    ]
+  },
+  "6025776c809910ce35c430de6935ed8e5e053f69": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/2. Exodus.mp3",
+    "n_frames": 229,
+    "bpm": 132.0,
+    "bpm_confidence": 1.724023461341858,
+    "key": "A",
+    "scale": "minor",
+    "camelot": "8A",
+    "key_strength": 0.9274369478225708,
+    "duration": 229.09092970521542,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.4537554681301117
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.36019831895828247
+      },
+      {
+        "parent": "Electronic",
+        "style": "Psy-Trance",
+        "score": 0.24099493026733398
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.20155951380729675
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.10345642268657684
+      }
+    ]
+  },
+  "072a37378db48e01aadec525fce504c0ca706df3": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/2. Iloveyou.mp3",
+    "n_frames": 165,
+    "bpm": 121.0,
+    "bpm_confidence": 2.495450258255005,
+    "key": "A",
+    "scale": "major",
+    "camelot": "11B",
+    "key_strength": 0.9036304950714111,
+    "duration": 165.66857142857143,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.2657260298728943
+      },
+      {
+        "parent": "Electronic",
+        "style": "Vaporwave",
+        "score": 0.23619292676448822
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.23346789181232452
+      },
+      {
+        "parent": "Electronic",
+        "style": "Ambient",
+        "score": 0.19584709405899048
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Instrumental",
+        "score": 0.124195896089077
+      }
+    ]
+  },
+  "4071780f8b69928441727a1c8589fff55fa959c2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/2. No Beef - Steve Aoki's 11 Years Later Remix.mp3",
+    "n_frames": 204,
+    "bpm": 128.4,
+    "bpm_confidence": 2.3013079166412354,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.9105638861656189,
+    "duration": 203.4381179138322,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.390492707490921
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.3208526074886322
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2533288300037384
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.11093481630086899
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.10634323954582214
+      }
+    ]
+  },
+  "b87208678e077a0d11687463e3f3eb51f3e679fc": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/2. Perfect - Extended Mix.mp3",
+    "n_frames": 329,
+    "bpm": 123.9,
+    "bpm_confidence": 2.5630390644073486,
+    "key": "A",
+    "scale": "minor",
+    "camelot": "8A",
+    "key_strength": 0.7926041483879089,
+    "duration": 328.0,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.5581719279289246
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.4206230938434601
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.1672418713569641
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.11630303412675858
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.10500569641590118
+      }
+    ]
+  },
+  "591af5e3cdc6b55894f521f06678d5d86f44f731": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/3. One Click Headshot - Original Mix.mp3",
+    "n_frames": 288,
+    "bpm": 109.9,
+    "bpm_confidence": 2.9467978477478027,
+    "key": "G",
+    "scale": "minor",
+    "camelot": "6A",
+    "key_strength": 0.8344042897224426,
+    "duration": 287.00444444444446,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Glitch",
+        "score": 0.42163047194480896
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.23893359303474426
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hip Hop",
+        "score": 0.1588108241558075
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.14673961699008942
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.07142379879951477
+      }
+    ]
+  },
+  "6ab6720ef717e1b815a200c5f74f9c4cd8763799": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/3. Out The Blue - Laidback Luke Remix.mp3",
+    "n_frames": 356,
+    "bpm": 128.0,
+    "bpm_confidence": 1.6286373138427734,
+    "key": "Ab",
+    "scale": "minor",
+    "camelot": "1A",
+    "key_strength": 0.884121298789978,
+    "duration": 354.8222902494331,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.5289878845214844
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.34621113538742065
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.1709592491388321
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.14946192502975464
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.14074374735355377
+      }
+    ]
+  },
+  "f14c92e9ad55b3e0b8ea47f78b5fcbf84c7a6301": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/3. There's Only You - No Mana Extended Mix.mp3",
+    "n_frames": 339,
+    "bpm": 128.0,
+    "bpm_confidence": 2.4435083866119385,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9004800319671631,
+    "duration": 337.5,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.39229366183280945
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.30704137682914734
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.3003545105457306
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.15009057521820068
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.10266051441431046
+      }
+    ]
+  },
+  "8a94776386acd679f3288c535613a49636c6361d": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/3. Waited 4 U.mp3",
+    "n_frames": 237,
+    "bpm": 123.4,
+    "bpm_confidence": 1.0194828510284424,
+    "key": "F#",
+    "scale": "minor",
+    "camelot": "11A",
+    "key_strength": 0.8795701861381531,
+    "duration": 236.15666666666667,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.2707185447216034
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2171901911497116
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tropical House",
+        "score": 0.18575987219810486
+      },
+      {
+        "parent": "Electronic",
+        "style": "Downtempo",
+        "score": 0.09966551512479782
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.09308618307113647
+      }
+    ]
+  },
+  "690ecba639b98ac48e1d761ff17334eb63321bd1": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/3. Wild Kids.mp3",
+    "n_frames": 227,
+    "bpm": 119.9,
+    "bpm_confidence": 1.1582856178283691,
+    "key": "D",
+    "scale": "minor",
+    "camelot": "7A",
+    "key_strength": 0.9445481896400452,
+    "duration": 227.0,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2048100382089615
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.19641464948654175
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.16119274497032166
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tropical House",
+        "score": 0.10367501527070999
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.0996786579489708
+      }
+    ]
+  },
+  "a666bf62721de7b307c99322cb520318494d096d": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/4. Here's to Them (Remix) [Remastered 2023].mp3",
+    "n_frames": 337,
+    "bpm": 85.8,
+    "bpm_confidence": 0.27239885926246643,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8295583128929138,
+    "duration": 335.5814058956916,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.43306198716163635
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.3583787977695465
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.3100133538246155
+      },
+      {
+        "parent": "Electronic",
+        "style": "Experimental",
+        "score": 0.10944987833499908
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.09200267493724823
+      }
+    ]
+  },
+  "1916336ce4fe73354b6fce7d47a2c981a1fffbed": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/4. I Do Coke.mp3",
+    "n_frames": 227,
+    "bpm": 107.0,
+    "bpm_confidence": 1.4563777446746826,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.8178721070289612,
+    "duration": 226.97333333333333,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.25337255001068115
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.1453927904367447
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.12385743856430054
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.11818576604127884
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.10654344409704208
+      }
+    ]
+  },
+  "755ff21ab3248808bc1fc46583dffb4f63613888": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/4. Running Wild (feat. The Oddictions and Britt Daley) - Jayceeoh Remix.mp3",
+    "n_frames": 192,
+    "bpm": 139.9,
+    "bpm_confidence": 1.3379583358764648,
+    "key": "F#",
+    "scale": "minor",
+    "camelot": "11A",
+    "key_strength": 0.8690436482429504,
+    "duration": 192.0,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.19637495279312134
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.17951418459415436
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.153240367770195
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.13562394678592682
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.11974971741437912
+      }
+    ]
+  },
+  "ed1e26c6b085e244871f7fa8dd8fc2d819572e41": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/47. Zedd - Follow You Down (Keys N Krates Remix).mp3",
+    "n_frames": 239,
+    "bpm": 144.8,
+    "bpm_confidence": 1.7114531993865967,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.8705966472625732,
+    "duration": 239.0987755102041,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.20100648701190948
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.11624930053949356
+      },
+      {
+        "parent": "Electronic",
+        "style": "Chillwave",
+        "score": 0.1047707051038742
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.07249373942613602
+      },
+      {
+        "parent": "Electronic",
+        "style": "Chiptune",
+        "score": 0.06642702221870422
+      }
+    ]
+  },
+  "731b819212a51750f2d242d79d08f881122a61d4": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/6. Die Tonight.mp3",
+    "n_frames": 263,
+    "bpm": 89.1,
+    "bpm_confidence": 2.8509833812713623,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9033669233322144,
+    "duration": 262.9213605442177,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.6582999229431152
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.2859191596508026
+      },
+      {
+        "parent": "Electronic",
+        "style": "Juke",
+        "score": 0.1775095909833908
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.15408970415592194
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.061909474432468414
+      }
+    ]
+  },
+  "26ec44b538c439f7834875aff13b995146c0f4d2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/6. Freak Me - Andrea Doria Remix.mp3",
+    "n_frames": 466,
+    "bpm": 126.9,
+    "bpm_confidence": 1.551697850227356,
+    "key": "Bb",
+    "scale": "major",
+    "camelot": "6B",
+    "key_strength": 0.8782576322555542,
+    "duration": 463.82666666666665,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.32968777418136597
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.26931068301200867
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.259009450674057
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.14649587869644165
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.09616320580244064
+      }
+    ]
+  },
+  "f31cf526fc92e9b01f4dca07a9b8c805886779c1": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/6. I Remember - Caspa Remix.mp3",
+    "n_frames": 336,
+    "bpm": 139.9,
+    "bpm_confidence": 1.613018274307251,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.914750874042511,
+    "duration": 335.29333333333335,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.34685230255126953
+      },
+      {
+        "parent": "Electronic",
+        "style": "Grime",
+        "score": 0.30807358026504517
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Grime",
+        "score": 0.16616101562976837
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.12812548875808716
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.11901739984750748
+      }
+    ]
+  },
+  "8517bcccf29805fd8f7e0be4c241a311a3f94f17": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/68. [Bonus Track] The Chemical Brothers - Hey Boy, Hey Girl (Soulwax Remix) (Teaser & Intro Theme).mp3",
+    "n_frames": 437,
+    "bpm": 127.9,
+    "bpm_confidence": 1.5166044235229492,
+    "key": "D",
+    "scale": "major",
+    "camelot": "10B",
+    "key_strength": 0.8483093976974487,
+    "duration": 434.9866666666667,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.2093987762928009
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.16625091433525085
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.1535632163286209
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.14572829008102417
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.09342794120311737
+      }
+    ]
+  },
+  "9330a29ce8b70bc2bdd0c3eb6dfd3432b31e59ca": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/7. WHERE ARE YOU TONIGHT (feat. ZOHARA).mp3",
+    "n_frames": 187,
+    "bpm": 138.0,
+    "bpm_confidence": 1.436476469039917,
+    "key": "G",
+    "scale": "major",
+    "camelot": "9B",
+    "key_strength": 0.8615736961364746,
+    "duration": 186.83666666666667,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.40083470940589905
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.20377957820892334
+      },
+      {
+        "parent": "Electronic",
+        "style": "Euro House",
+        "score": 0.2031105011701584
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.18859730660915375
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.12802551686763763
+      }
+    ]
+  },
+  "1d5d47ff5e40bb83eb1fe4d5dfd281202dcf862f": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Adam Beyer - Space Date - Pleasurekraft Remix.wav",
+    "n_frames": 552,
+    "bpm": 127.0,
+    "bpm_confidence": 2.4010071754455566,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.5038204789161682,
+    "duration": 549.52,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.7164620757102966
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep Techno",
+        "score": 0.17916417121887207
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Techno",
+        "score": 0.13150329887866974
+      },
+      {
+        "parent": "Electronic",
+        "style": "Minimal Techno",
+        "score": 0.08451477438211441
+      },
+      {
+        "parent": "Electronic",
+        "style": "Acid",
+        "score": 0.08058061450719833
+      }
+    ]
+  },
+  "7c50114acdc4cb2f31d93727bfdcaea6ead706b6": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Amtrac_-_No_Order_(mp3.pm).mp3",
+    "n_frames": 346,
+    "bpm": 123.6,
+    "bpm_confidence": 1.8460146188735962,
+    "key": "Ab",
+    "scale": "major",
+    "camelot": "4B",
+    "key_strength": 0.7531301379203796,
+    "duration": 344.65378684807257,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.21849022805690765
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.1788073182106018
+      },
+      {
+        "parent": "Electronic",
+        "style": "Bassline",
+        "score": 0.16963104903697968
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.16471019387245178
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep Techno",
+        "score": 0.16345489025115967
+      }
+    ]
+  },
+  "5d6f96fcc753bf6c85d393f8c3dd21902da1ebb8": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Bingo players - cry (just a little) (original mix)-ume - bingo players.mp3",
+    "n_frames": 381,
+    "bpm": 126.0,
+    "bpm_confidence": 2.217942476272583,
+    "key": "G",
+    "scale": "major",
+    "camelot": "9B",
+    "key_strength": 0.8851779103279114,
+    "duration": 379.03430839002266,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.40437284111976624
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.31237292289733887
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.19651159644126892
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.11887332797050476
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.11090710759162903
+      }
+    ]
+  },
+  "6eef1acb08dae28a5a6ebe2b07fd346a1dab8859": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Brazzers Theme (Munchi's Fuck That It's Bangbros Remix).mp3",
+    "n_frames": 249,
+    "bpm": 108.0,
+    "bpm_confidence": 3.784980297088623,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.737869143486023,
+    "duration": 248.9469387755102,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.18048664927482605
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.13502098619937897
+      },
+      {
+        "parent": "Hip Hop",
+        "style": "Trap",
+        "score": 0.13265952467918396
+      },
+      {
+        "parent": "Latin",
+        "style": "Reggaeton",
+        "score": 0.12300489097833633
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.108128622174263
+      }
+    ]
+  },
+  "2862c31be06df4667425b935ba4b315b483891e7": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Cass & Slide - Perception (Ruhe Remix) MASTERED.wav",
+    "n_frames": 556,
+    "bpm": 123.0,
+    "bpm_confidence": 1.6095447540283203,
+    "key": "Ab",
+    "scale": "minor",
+    "camelot": "1A",
+    "key_strength": 0.9711259007453918,
+    "duration": 553.2927210884354,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.3425135314464569
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep Techno",
+        "score": 0.27545973658561707
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.255693644285202
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.17518974840641022
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.15298770368099213
+      }
+    ]
+  },
+  "03fe563a85ee97cf3ecb7106f948a95e40b615e6": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Dave Spoon - At Night.mp3",
+    "n_frames": 482,
+    "bpm": 128.5,
+    "bpm_confidence": 1.3992693424224854,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.86266028881073,
+    "duration": 480.05224489795916,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.32999733090400696
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.20833300054073334
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.18439581990242004
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.1473531723022461
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.14390121400356293
+      }
+    ]
+  },
+  "241459b40574275c71ec809e242114f9f76a8906": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Death Proof - Death Proof (Crystal Clear Remix)[Visit pctrecords].mp3",
+    "n_frames": 276,
+    "bpm": 87.0,
+    "bpm_confidence": 2.495676040649414,
+    "key": "E",
+    "scale": "minor",
+    "camelot": "9A",
+    "key_strength": 0.79355388879776,
+    "duration": 275.4884126984127,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.6356390714645386
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.3242579400539398
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.17087322473526
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.16678698360919952
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.1160883679986
+      }
+    ]
+  },
+  "b4872ff67683ca1ab90c4c73ab01818b0295d021": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Diesel Boy + Kaos - Barrier Break.mp3",
+    "n_frames": 389,
+    "bpm": 87.4,
+    "bpm_confidence": 1.2709579467773438,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8569365739822388,
+    "duration": 387.17294784580497,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.5440791249275208
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.3769790530204773
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.09779153764247894
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakbeat",
+        "score": 0.09763061255216599
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.07664801180362701
+      }
+    ]
+  },
+  "1513c7c47d83184012facbe863ceb15cb60d7bc2": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Feel Good Inc (Hairitage Remix).wav",
+    "n_frames": 195,
+    "bpm": 142.0,
+    "bpm_confidence": 0.934106707572937,
+    "key": "Eb",
+    "scale": "minor",
+    "camelot": "2A",
+    "key_strength": 0.807179868221283,
+    "duration": 195.47036281179138,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2514198422431946
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.15815627574920654
+      },
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.150347501039505
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.09835583716630936
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.07012142986059189
+      }
+    ]
+  },
+  "fb83e39d3f68819499bfc158a3c02431ae39f19a": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Goldroom_-_Tradewinds.mp3",
+    "n_frames": 243,
+    "bpm": 123.0,
+    "bpm_confidence": 2.51558256149292,
+    "key": "D",
+    "scale": "minor",
+    "camelot": "7A",
+    "key_strength": 0.8146834969520569,
+    "duration": 242.33650793650793,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2636075019836426
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.15020440518856049
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep House",
+        "score": 0.1302744299173355
+      },
+      {
+        "parent": "Electronic",
+        "style": "Synth-pop",
+        "score": 0.12330949306488037
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dance-pop",
+        "score": 0.12020809203386307
+      }
+    ]
+  },
+  "695a502c57ccd89accc23bed1f84913a9b9aaa60": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/I_Remember_((John_Summit_Remix)_(Extended_Mix)).wav",
+    "n_frames": 331,
+    "bpm": 126.0,
+    "bpm_confidence": 1.5042569637298584,
+    "key": "B",
+    "scale": "minor",
+    "camelot": "10A",
+    "key_strength": 0.7991068959236145,
+    "duration": 329.5238095238095,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.32805657386779785
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.197035551071167
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.1951451301574707
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.17977018654346466
+      },
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.1515180766582489
+      }
+    ]
+  },
+  "338ab755b967f464b908b1f13ae8433295dff524": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/N Phonix - Dead End.mp3",
+    "n_frames": 413,
+    "bpm": 86.9,
+    "bpm_confidence": 2.0504310131073,
+    "key": "C",
+    "scale": "major",
+    "camelot": "8B",
+    "key_strength": 0.8039360046386719,
+    "duration": 411.26666666666665,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.6988610625267029
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.4238877594470978
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.2934644818305969
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hardcore",
+        "score": 0.12750442326068878
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.12430281192064285
+      }
+    ]
+  },
+  "8e07d6b281b5589f31379e33e9f2b91bdd9e66e3": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Pan_Pot_Fist_Bump_From_Destiny_Original_Mix_(mp3co.biz).mp3",
+    "n_frames": 576,
+    "bpm": 124.0,
+    "bpm_confidence": 2.394382953643799,
+    "key": "C",
+    "scale": "minor",
+    "camelot": "5A",
+    "key_strength": 0.7703421711921692,
+    "duration": 572.5209750566894,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Tech House",
+        "score": 0.3920522928237915
+      },
+      {
+        "parent": "Electronic",
+        "style": "Techno",
+        "score": 0.3379208445549011
+      },
+      {
+        "parent": "Electronic",
+        "style": "Deep Techno",
+        "score": 0.25762230157852173
+      },
+      {
+        "parent": "Electronic",
+        "style": "Minimal Techno",
+        "score": 0.22449050843715668
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.19079749286174774
+      }
+    ]
+  },
+  "be9578a827fe27b85439a38c7cdf631ab3b04095": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/Pharell Williams - Happy (Mildner's DnB Flip).mp3",
+    "n_frames": 216,
+    "bpm": 89.8,
+    "bpm_confidence": 1.9178720712661743,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.9607641696929932,
+    "duration": 216.05877551020407,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Drum n Bass",
+        "score": 0.6831551790237427
+      },
+      {
+        "parent": "Electronic",
+        "style": "Halftime",
+        "score": 0.632599949836731
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.1673956960439682
+      },
+      {
+        "parent": "Electronic",
+        "style": "Jungle",
+        "score": 0.04660974442958832
+      },
+      {
+        "parent": "Electronic",
+        "style": "Breakcore",
+        "score": 0.03560104966163635
+      }
+    ]
+  },
+  "760d7f832ed4791c967f91cb276d98229083a79b": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/William Black - Butterflies (feat. Dia Frampton).flac",
+    "n_frames": 202,
+    "bpm": 144.9,
+    "bpm_confidence": 1.824541449546814,
+    "key": "Eb",
+    "scale": "major",
+    "camelot": "5B",
+    "key_strength": 0.9495455026626587,
+    "duration": 201.93104308390022,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Hands Up",
+        "score": 0.2540970742702484
+      },
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.2169344425201416
+      },
+      {
+        "parent": "Electronic",
+        "style": "Hard Trance",
+        "score": 0.13295431435108185
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dubstep",
+        "score": 0.11719857901334763
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.11297329515218735
+      }
+    ]
+  },
+  "7c6722a055afc6b6fa2ad5908ab35f38c15a487a": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/ilan Bluestone_We Are the Universe_02_We Are the Universe.flac",
+    "n_frames": 241,
+    "bpm": 129.9,
+    "bpm_confidence": 1.2483268976211548,
+    "key": "C#",
+    "scale": "minor",
+    "camelot": "12A",
+    "key_strength": 0.8320261240005493,
+    "duration": 240.43600907029477,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "Trance",
+        "score": 0.31734830141067505
+      },
+      {
+        "parent": "Electronic",
+        "style": "Tech Trance",
+        "score": 0.20211192965507507
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive Trance",
+        "score": 0.18520085513591766
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.1596728265285492
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.15422575175762177
+      }
+    ]
+  },
+  "12a088488859a6a628e2d7de112906e49621f3dd": {
+    "file": "/mnt/c/Users/mrand/oracle_tracks/kaskade - move for me.mp3",
+    "n_frames": 238,
+    "bpm": 128.1,
+    "bpm_confidence": 1.3977121114730835,
+    "key": "F",
+    "scale": "minor",
+    "camelot": "4A",
+    "key_strength": 0.8587777018547058,
+    "duration": 237.34857142857143,
+    "styles": [
+      {
+        "parent": "Electronic",
+        "style": "House",
+        "score": 0.3082580864429474
+      },
+      {
+        "parent": "Electronic",
+        "style": "Progressive House",
+        "score": 0.25474902987480164
+      },
+      {
+        "parent": "Electronic",
+        "style": "Dance-pop",
+        "score": 0.15821677446365356
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro House",
+        "score": 0.13371135294437408
+      },
+      {
+        "parent": "Electronic",
+        "style": "Electro",
+        "score": 0.12383506447076797
+      }
+    ]
+  }
+}
