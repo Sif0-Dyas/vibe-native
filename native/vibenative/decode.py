@@ -44,7 +44,9 @@ def _tool(name: str) -> str:
     cand = Path(os.environ.get("LOCALAPPDATA", "")) / f"Microsoft/WinGet/Links/{name}.exe"
     if cand.exists():
         return str(cand)
-    raise FileNotFoundError(f"{name} not found on PATH, next to the exe, or WinGet — install ffmpeg")
+    raise FileNotFoundError(
+        f"{name} not found on PATH, next to the exe, or WinGet — install ffmpeg"
+    )
 
 
 def find_tool(name: str) -> str | None:

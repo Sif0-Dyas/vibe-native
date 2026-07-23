@@ -64,11 +64,23 @@ def get_engine() -> dict:
     emb = _session(MODELS / "effnet.onnx")
 
     engaged = clf.get_providers()[0]
-    log.info(
-        "ONNX engine ready — execution provider: %s (available: %s)",
-        engaged,
-        ort.get_available_providers(),
-    )
+    available = ort.get_available_providers()
+    log.info("ONNX engine ready — execution provider: %s (available: %s)", engaged, available)
+    # CPU fallback must be LOUD: if the DirectML EP is available but didn't engage, or
+    # isn't available at all in a build that should have it, say so plainly rather than
+    # silently running ~10x slower on CPU (esp. a packaged build with a missing DLL).
+    if "DmlExecutionProvider" not in engaged:
+        if "DmlExecutionProvider" in available:
+            log.warning(
+                "GPU (DirectML) is AVAILABLE but the engine engaged %s instead — running on CPU.",
+                engaged,
+            )
+        else:
+            log.warning(
+                "GPU (DirectML) NOT available — running on CPU (~10x slower). In a packaged "
+                "build this usually means DirectML.dll / onnxruntime DLLs weren't collected; "
+                "check the bundle's onnxruntime/capi/ folder.",
+            )
 
     clf_in = clf.get_inputs()[0].name  # serving_default_model_Placeholder:0
     clf_out = clf.get_outputs()[0].name  # PartitionedCall:0 (sigmoid probabilities)
