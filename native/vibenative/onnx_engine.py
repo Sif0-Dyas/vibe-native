@@ -26,6 +26,8 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
+from . import frontend_mel
+
 log = logging.getLogger(__name__)
 
 MODELS = Path(__file__).resolve().parents[2] / "models"
@@ -80,13 +82,20 @@ def get_engine() -> dict:
             x = x[None, :]
         return np.asarray(clf.run([clf_out], {clf_in: x})[0], dtype=np.float32)
 
-    def embedder(audio16):  # noqa: ARG001
-        raise NotImplementedError(
-            "Phase 2: embedder(audio16) needs the mel frontend — "
-            "frontend_mel.melspectrogram() -> patches(128x96) -> effnet.onnx "
-            "'embeddings'. The effnet.onnx session is already loaded (see "
-            "_engine['_embedder_session']); only the audio->mel-patch step is missing."
-        )
+    emb_in = emb.get_inputs()[0].name  # "melspectrogram" [B,128,96]
+
+    def embedder(audio16, hop_frames: int = frontend_mel.PATCH_HOP_COARSE) -> np.ndarray:
+        """16 kHz mono audio -> (n_patches, 1280) float32 embeddings.
+
+        decode is the caller's job (decode.decode_16k_mono); this runs the Essentia-
+        matched mel frontend -> 128x96 patches -> effnet.onnx 'embeddings'. hop 62 is
+        coarse (the oracle's setting); a smaller hop_frames drives the app's fine mode."""
+        mel = frontend_mel.melspectrogram(audio16)
+        p = frontend_mel.patches(mel, hop_frames)
+        if len(p) == 0:
+            return np.zeros((0, 1280), dtype=np.float32)
+        out = emb.run(["embeddings"], {emb_in: p.astype(np.float32)})[0]
+        return np.asarray(out, dtype=np.float32)
 
     _engine.update(
         {
