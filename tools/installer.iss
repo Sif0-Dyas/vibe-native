@@ -72,3 +72,40 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[INI]
+; Record the DB-location choice where the app reads it at startup: an exe-adjacent
+; settings.ini ([vibenative] db_path). db.py resolves GENRE_DB env > this > default,
+; and expands env vars in the value — so a machine-wide setting stays per-user. Power
+; users still override everything with the GENRE_DB environment variable.
+Filename: "{app}\settings.ini"; Section: "vibenative"; Key: "db_path"; String: "{code:GetDbPath}"
+
+[Code]
+var
+  DbDirPage: TInputDirWizardPage;
+
+procedure InitializeWizard;
+begin
+  DbDirPage := CreateInputDirPage(wpSelectDir,
+    'Music database location',
+    'Where should Vibe Identify keep your library?',
+    'Your analyzed tracks, vibes, and tags are stored in a file named genre_v2.db.' + #13#10 +
+    'Choose the folder to keep it in — an existing library there will be reused, so an' + #13#10 +
+    'upgrade or reinstall keeps all your data. The default is your user-profile folder.',
+    False, '');
+  DbDirPage.Add('');
+  DbDirPage.Values[0] := ExpandConstant('{userprofile}');
+end;
+
+function GetDbPath(Param: String): String;
+var
+  Dir: String;
+begin
+  Dir := RemoveBackslash(DbDirPage.Values[0]);
+  { If left at the default profile folder, store the %USERPROFILE% env var literally
+    so the setting resolves per-user at runtime; otherwise store the chosen path. }
+  if CompareText(Dir, RemoveBackslash(ExpandConstant('{userprofile}'))) = 0 then
+    Result := '%USERPROFILE%\genre_v2.db'
+  else
+    Result := AddBackslash(Dir) + 'genre_v2.db';
+end;

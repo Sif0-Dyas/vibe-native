@@ -1,5 +1,6 @@
 """SQLite persistence: analysis cache, embeddings, and vibe centroids."""
 
+import configparser
 import hashlib
 import json
 import os
@@ -9,7 +10,38 @@ import time
 from contextlib import closing
 from pathlib import Path
 
-DB_PATH = Path(os.environ.get("GENRE_DB", Path.home() / "genre_v2.db"))
+
+def _resolve_db_path() -> Path:
+    """Where the library database lives, in priority order:
+
+    1. ``GENRE_DB`` env var — always wins (power users, dev, the test suite).
+    2. The installer-recorded choice in an exe-adjacent ``settings.ini``
+       (``[vibenative] db_path``). The installer's DB-location wizard page writes it;
+       env vars in the value (e.g. ``%USERPROFILE%``) are expanded at runtime so a
+       machine-wide setting still resolves per-user.
+    3. Default: ``%USERPROFILE%\\genre_v2.db``.
+    """
+    env = os.environ.get("GENRE_DB")
+    if env:
+        return Path(os.path.expandvars(env))
+    try:
+        from .paths import exe_dir
+
+        ini = exe_dir() / "settings.ini"
+        if ini.is_file():
+            # interpolation=None so a literal "%USERPROFILE%" in the value isn't parsed
+            # as configparser interpolation; os.path.expandvars expands it below.
+            cp = configparser.ConfigParser(interpolation=None)
+            cp.read(ini, encoding="utf-8")
+            val = cp.get("vibenative", "db_path", fallback="").strip()
+            if val:
+                return Path(os.path.expandvars(val))
+    except Exception:  # nosec B110  # a malformed settings.ini must never block startup -> fall through
+        pass
+    return Path.home() / "genre_v2.db"
+
+
+DB_PATH = _resolve_db_path()
 _db_lock = threading.Lock()
 
 
