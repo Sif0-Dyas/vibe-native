@@ -1,0 +1,12 @@
+# Runtime dependencies for the native ONNX inference engine.
+#
+# Conversion-only tooling (TensorFlow + tf2onnx, ~500 MB) lives in
+# requirements-convert.txt so it never ships with the app. See CONVERSION_NOTES.md.
+#
+# Install exactly ONE onnxruntime build — onnxruntime-directml and onnxruntime
+# conflict. This one gives the DirectML EP on Windows (RTX 5070) with a CPU fallback.
+onnxruntime-directml
+numpy
+
+# Test tooling — needed to run the suite; not part of a shipped/frozen build.
+pytest

@@ -1,0 +1,12 @@
+# Conversion-time ONLY — NOT runtime dependencies.
+#
+# Used by tools/convert_models.py to convert the TensorFlow models (EffNet
+# SavedModel, genre_discogs400 head .pb, TempoCNN deeptemp-k16 .pb) into ONNX.
+# Never ship these with the app: TensorFlow alone is ~500 MB and is only needed
+# once, to produce models/*.onnx.
+#
+# Requires Python <= 3.12 — TensorFlow publishes no 3.14 wheels (see
+# CONVERSION_NOTES.md and .python-version). The resulting .onnx files are
+# portable and run under onnxruntime-directml on any supported Python.
+tensorflow
+tf2onnx
