@@ -1,57 +1,48 @@
-"""Essentia model plumbing (EffNet / MAEST / custom head) and the per-track
-analysis pipeline: genre styles, BPM, key, and the waveform envelope.
+"""Model plumbing (native ONNX EffNet + Discogs-400 head, MAEST placeholder,
+custom head) and the per-track analysis pipeline: genre styles, BPM, key, and
+the waveform envelope.
+
+Phase 4 engine swap: the genre / tempo / key internals now run on the native
+ONNX engine (``onnx_engine`` + ``frontend_mel`` + ``decode`` + ``tempo`` +
+``key``) instead of Essentia, BEHIND the same function signatures and the same
+payload shape -- everything downstream (routes, DB, frontend) is unable to tell.
+FAKE_ANALYZER mode is untouched. The heavy engine modules (onnxruntime-backed)
+are imported lazily inside the functions that use them, so the app still imports
+in FAKE mode / on CI without onnxruntime installed -- exactly as the old code
+deferred ``essentia``.
 """
 
-import json
 import os
 import threading
-import urllib.request
 from pathlib import Path
 
-from .config import FAKE, MODEL_DIR, MODELS, log
+from .config import FAKE, MODEL_DIR, log
 
-_lock = threading.Lock()  # TF models are shared + not thread-safe; hold during inference only
+# The embedder/classifier are shared inference sessions. ONNX Runtime sessions ARE
+# thread-safe for concurrent Session.run(), so this lock is not required for
+# correctness the way the old shared, non-thread-safe TF instances were; it is kept
+# for this phase to preserve identical serialization behaviour. Relaxing it (to let
+# /batch workers infer concurrently) is a later optimization with its own test.
+_lock = threading.Lock()
 
-_engine = {}  # lazily-built: labels, embedder, classifier
-_engine_lock = threading.Lock()  # guards the one-time model build/download so
-# /batch's first 3 workers don't race on it
-
-
-def ensure_models():
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    for name, url in MODELS.items():
-        dest = MODEL_DIR / name
-        if not (dest.exists() and dest.stat().st_size > 0):
-            log.info("downloading %s ...", name)
-            urllib.request.urlretrieve(url, dest)  # nosec B310  # fixed HTTPS essentia.upf.edu model URL, not user input
+_engine = {}  # MAEST / custom-head bookkeeping; the genre engine itself lives in onnx_engine
+_engine_lock = threading.Lock()  # guards the one-time custom-head / MAEST build
 
 
 def get_engine():
-    """Build (once) and return labels + models. Guarded by _engine_lock so the
-    first /batch run (3 workers hitting an unbuilt engine at once) can't race on
-    the model download or construct duplicate TF instances."""
-    if _engine:
-        return _engine
-    with _engine_lock:
-        if _engine:  # another thread built it while we waited
-            return _engine
-        ensure_models()
-        from essentia.standard import TensorflowPredict2D, TensorflowPredictEffnetDiscogs
+    """Return ``{labels, embedder, classifier}`` for the native ONNX genre engine.
 
-        with open(MODEL_DIR / "genre_discogs400-discogs-effnet-1.json") as fh:
-            labels = json.load(fh)["classes"]
-        embedder = TensorflowPredictEffnetDiscogs(
-            graphFilename=str(MODEL_DIR / "discogs-effnet-bs64-1.pb"), output="PartitionedCall:1"
-        )
-        classifier = TensorflowPredict2D(
-            graphFilename=str(MODEL_DIR / "genre_discogs400-discogs-effnet-1.pb"),
-            input="serving_default_model_Placeholder",
-            output="PartitionedCall:0",
-        )
-        # publish all three keys at once so the lock-free fast path above never
-        # observes a half-built _engine
-        _engine.update({"labels": labels, "embedder": embedder, "classifier": classifier})
-        return _engine
+    Delegates to ``onnx_engine.get_engine()`` (built + cached once there). Mirrors
+    the old Essentia ``get_engine()`` contract exactly, so every caller is a
+    drop-in::
+
+        eng["embedder"](audio16)       -> (n_patches, 1280) float32 embeddings
+        eng["classifier"](embeddings)  -> (n_patches, 400)  float32 probabilities
+        eng["labels"]                  -> the 400 Discogs-400 style labels
+    """
+    from . import onnx_engine
+
+    return onnx_engine.get_engine()
 
 
 # --- optional MAEST engine (2nd genre model, for ensembling) ----------------
@@ -311,9 +302,9 @@ def load_samples_for_waveform(path):
         m = float(np.abs(a).max()) or 1.0
         return a / m
 
-    from essentia.standard import MonoLoader
+    from . import decode
 
-    return MonoLoader(filename=str(path), sampleRate=11025, resampleQuality=4)()
+    return decode.decode_mono(path, 11025)
 
 
 def frame_topk(preds, labels, k=6):
@@ -390,44 +381,52 @@ def salience_read(preds, audio16, labels, topk=8):
 def _decode_and_infer(path: Path):
     """Decode the file and run the (locked) genre inference.
 
-    Returns ``(audio16, audio44, embeddings, preds)``. Only the shared,
-    non-thread-safe embedder+classifier pass is serialized under ``_lock`` (exactly
-    as before); both decodes stay outside it so they parallelize across workers."""
-    from essentia.standard import MonoLoader
+    Returns ``(audio16, audio44, embeddings, preds)``. Only the shared inference
+    pass is serialized under ``_lock`` (exactly as before); both decodes stay
+    outside it so they parallelize across workers."""
+    from . import decode
 
     eng = get_engine()
 
-    # --- genre (model wants 16 kHz) ---
-    audio16 = MonoLoader(filename=str(path), sampleRate=16000, resampleQuality=4)()
-    # embedder + classifier are shared, non-thread-safe TF instances -> serialize
-    # this one inference pass; decode/BPM/key below stay parallel across workers.
+    # --- genre (model wants 16 kHz) --- native ffmpeg decode + mel frontend
+    audio16 = decode.decode_16k_mono(path)
+    # serialize the one shared inference pass; decode/BPM/key below stay parallel.
     with _lock:
         embeddings = eng["embedder"](audio16)
         preds = eng["classifier"](embeddings)
 
     # --- musical details (44.1 kHz for accuracy) ---
-    audio44 = MonoLoader(filename=str(path), sampleRate=44100, resampleQuality=4)()
+    audio44 = decode.decode_mono(path, 44100)
     return audio16, audio44, embeddings, preds
 
 
 def _musical_features(audio44) -> dict:
     """BPM, key/scale/Camelot, duration, and waveform envelopes from the 44.1 kHz
-    signal. BPM and key are best-effort (None on failure)."""
-    from essentia.standard import KeyExtractor, RhythmExtractor2013
+    signal. BPM and key are best-effort (None on failure).
+
+    Engine swap (Phase 4): BPM from the native TempoCNN (``tempo.estimate``,
+    resamples 44.1k->11025 itself) and key from the native Essentia-KeyExtractor
+    port (``key.estimate`` at 44100). Same dict shape as before. Note ``bpm``
+    stays a plain float and ``bpm_confidence`` a plain float; the confidence is now
+    the TempoCNN mean peak softmax (0..1) rather than RhythmExtractor2013's (~0..5)
+    -- a value-scale change, not a shape change."""
+    from . import key as keymod
+    from . import tempo
 
     duration = float(len(audio44)) / 44100.0
 
     bpm = bpm_conf = None
     try:
-        bpm, _, conf, _, _ = RhythmExtractor2013(method="multifeature")(audio44)
-        bpm, bpm_conf = float(bpm), float(conf)
+        bpm_val, conf = tempo.estimate(audio44, 44100)
+        if bpm_val:  # 0.0 == "too short / no estimate" -> leave as None
+            bpm, bpm_conf = float(bpm_val), float(conf)
     except Exception:  # nosec B110  # BPM extraction is best-effort; None on failure is fine
         pass
 
     key = scale = camelot = None
     key_strength = None
     try:
-        k, s, strength = KeyExtractor()(audio44)
+        k, s, strength = keymod.estimate(audio44, 44100)
         key, scale, key_strength = str(k), str(s), float(strength)
         camelot = CAMELOT.get((key, scale))
     except Exception:  # nosec B110  # key extraction is best-effort; None on failure is fine
@@ -582,38 +581,26 @@ def analyze(path: Path) -> dict:
     return _assemble(labels, audio16, embeddings, preds, features)
 
 
-# default embedder hops 128 mel-frames (~2.0s); a 32-frame hop (~0.5s) gives 4x
-# overlap and thus ~4x finer genre-boundary resolution -- at ~4x the inference cost.
+# The coarse genre pass hops the embedder by frontend_mel.PATCH_HOP_COARSE mel
+# frames (~2.0s per patch); a 32-frame hop (~0.5s) gives ~4x overlap and thus ~4x
+# finer genre-boundary resolution -- at ~4x the inference cost. In the native
+# engine the hop is just a parameter of the mel frontend (embedder(hop_frames=...)),
+# so "fine mode" needs no separate model instance.
 FINE_HOP = 32
 FINE_HOP_SECONDS = round(FINE_HOP * 256 / 16000, 2)  # 256-sample mel hop @ 16 kHz
-
-
-def get_fine_embedder():
-    eng = get_engine()
-    if "embedder_fine" in eng:
-        return eng["embedder_fine"]
-    with _engine_lock:
-        if "embedder_fine" not in eng:
-            from essentia.standard import TensorflowPredictEffnetDiscogs
-
-            eng["embedder_fine"] = TensorflowPredictEffnetDiscogs(
-                graphFilename=str(MODEL_DIR / "discogs-effnet-bs64-1.pb"),
-                output="PartitionedCall:1",
-                patchHopSize=FINE_HOP,
-            )
-    return eng["embedder_fine"]
 
 
 def refine_segments(path: Path):
     """Re-run one track with overlapping patches -> (dense segments, dense frames)."""
     import numpy as np
-    from essentia.standard import MonoLoader
+
+    from . import decode
 
     eng = get_engine()
-    audio16 = MonoLoader(filename=str(path), sampleRate=16000, resampleQuality=4)()
-    # shared, non-thread-safe TF instances -> serialize inference only
+    audio16 = decode.decode_16k_mono(path)
+    # serialize the one shared inference pass; the fine hop is a frontend parameter.
     with _lock:
-        emb = get_fine_embedder()(audio16)
+        emb = eng["embedder"](audio16, hop_frames=FINE_HOP)
         preds = eng["classifier"](emb)
     winners = np.argmax(preds, axis=1)
     labels = eng["labels"]

@@ -1,40 +1,25 @@
 """Unit tests for the analyze() decomposition helpers.
 
-_decode_and_infer stays untested here (it needs the real Essentia models, absent
-in CI — the same reason analysis.py's real path is uncovered). _musical_features
-and _assemble are exercised with synthetic inputs: the former with a fake
-`essentia.standard` injected into sys.modules, the latter with hand-built
-predictions/embeddings so it runs on pure NumPy.
+_decode_and_infer stays untested here (it needs the real ONNX models, absent in
+CI — the same reason analysis.py's real path is uncovered). _musical_features and
+_assemble are exercised with synthetic inputs: the former with the native
+`tempo.estimate` / `key.estimate` monkeypatched (Phase-4 engine swap: BPM/key are
+native now, not Essentia — the test's contract is unchanged, only the mocked
+extractor is), the latter with hand-built predictions/embeddings so it runs on
+pure NumPy.
 """
-
-import sys
-import types
 
 import numpy as np
 import pytest
 
 from vibenative import analysis
-
-
-def _fake_essentia_std(rhythm, key):
-    """A stand-in `essentia.standard` exposing RhythmExtractor2013 + KeyExtractor
-    that return the given per-audio callables."""
-    std = types.ModuleType("essentia.standard")
-    std.RhythmExtractor2013 = lambda **kw: rhythm
-    std.KeyExtractor = lambda: key
-    return std
+from vibenative import key as keymod
+from vibenative import tempo
 
 
 def test_musical_features_happy(monkeypatch):
-    monkeypatch.setitem(sys.modules, "essentia", types.ModuleType("essentia"))
-    monkeypatch.setitem(
-        sys.modules,
-        "essentia.standard",
-        _fake_essentia_std(
-            rhythm=lambda audio: (128.0, None, 3.0, None, None),
-            key=lambda audio: ("C", "major", 0.9),
-        ),
-    )
+    monkeypatch.setattr(tempo, "estimate", lambda audio, sr: (128.0, 3.0))
+    monkeypatch.setattr(keymod, "estimate", lambda audio, sr: ("C", "major", 0.9))
     out = analysis._musical_features(np.ones(44100, dtype=np.float32))
 
     assert out["duration"] == 1.0  # 44100 / 44100
@@ -49,11 +34,11 @@ def test_musical_features_happy(monkeypatch):
 
 
 def test_musical_features_degrades_on_extractor_error(monkeypatch):
-    def boom(audio):
+    def boom(audio, sr):
         raise RuntimeError("extractor unavailable")
 
-    monkeypatch.setitem(sys.modules, "essentia", types.ModuleType("essentia"))
-    monkeypatch.setitem(sys.modules, "essentia.standard", _fake_essentia_std(boom, boom))
+    monkeypatch.setattr(tempo, "estimate", boom)
+    monkeypatch.setattr(keymod, "estimate", boom)
     out = analysis._musical_features(np.zeros(22050, dtype=np.float32))
 
     # BPM/key are best-effort: a failing extractor degrades to None, not a crash.

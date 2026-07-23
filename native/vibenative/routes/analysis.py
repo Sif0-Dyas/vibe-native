@@ -183,14 +183,17 @@ def compare_engines(path: Path, weight=0.5):
     weight live (the models are the slow part; averaging is instant). Both models
     share the identical 400-label order, so the merge is a plain weighted average."""
     import numpy as np
-    from essentia.standard import MonoLoader
+
+    from .. import decode
 
     eng = get_engine()
     labels = eng["labels"]
     # decode + one-time model builds stay OUTSIDE the inference lock (matching
-    # analyze); only the shared, non-thread-safe TF inference is serialized, so a
-    # /compare during a batch no longer freezes the workers for the whole decode.
-    audio16 = MonoLoader(filename=str(path), sampleRate=16000, resampleQuality=4)()
+    # analyze); only the shared inference pass is serialized, so a /compare during a
+    # batch no longer freezes the workers for the whole decode. MAEST is not ported
+    # to the native engine yet -> get_maest() returns None and /compare degrades to
+    # an EffNet-only read (maest_available: false).
+    audio16 = decode.decode_16k_mono(path)
     get_maest()  # warm MAEST (if installed) before taking the lock
     with _lock:
         eff = np.mean(eng["classifier"](eng["embedder"](audio16)), axis=0)
