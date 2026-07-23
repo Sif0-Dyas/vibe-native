@@ -25,3 +25,4 @@ models/*
 node_modules/
 .eslintcache
 .coverage
+desktop_backend.log

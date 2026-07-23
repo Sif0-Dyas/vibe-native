@@ -39,7 +39,9 @@ pythonpath = ["native"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-include = ["*.py"]
+# .pyw isn't in ruff's default discovery, so the desktop shell (a .pyw) would be
+# silently skipped by `ruff check .`. Include it so lint + format cover it.
+include = ["*.py", "*.pyw"]
 
 [tool.ruff.lint]
 # E/W pycodestyle, F pyflakes, I import-sorting. E501 is left to the formatter
