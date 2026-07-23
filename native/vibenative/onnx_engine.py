@@ -27,10 +27,11 @@ import numpy as np
 import onnxruntime as ort
 
 from . import frontend_mel
+from .paths import models_dir
 
 log = logging.getLogger(__name__)
 
-MODELS = Path(__file__).resolve().parents[2] / "models"
+MODELS = models_dir()  # exe-adjacent models/ in a packaged build, else <repo>/models
 LABELS_JSON = MODELS / "genre_discogs400-discogs-effnet-1.json"
 
 # Preferred execution providers, highest priority first. DirectML (the RTX 5070)

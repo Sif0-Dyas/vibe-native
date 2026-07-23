@@ -26,3 +26,7 @@ node_modules/
 .eslintcache
 .coverage
 desktop_backend.log
+
+# --- Phase 6 (packaging) ---
+/dist/
+/build/

@@ -13,12 +13,12 @@ maxdiff 0.018. deeptemp-k16-3.json: 256-class softmax, class 0 = 30 BPM, class
 global BPM by majority vote (Essentia TempoCNN's default aggregationMethod).
 """
 
-from pathlib import Path
-
 import numpy as np
 import onnxruntime as ort
 
-MODELS = Path(__file__).resolve().parents[2] / "models"
+from .paths import models_dir
+
+MODELS = models_dir()  # exe-adjacent models/ in a packaged build, else <repo>/models
 SR = 11025
 FRAME, HOP, N_MELS = 1024, 512, 40
 FMIN, FMAX = 20.0, 5000.0

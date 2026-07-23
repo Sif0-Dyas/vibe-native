@@ -9,9 +9,29 @@ filepaths stored in old rows so audio preview + section extraction keep working)
 """
 
 import re
-from pathlib import PureWindowsPath
+import sys
+from pathlib import Path, PureWindowsPath
 
 _MNT = re.compile(r"^/mnt/([a-zA-Z])/(.*)$")
+
+
+def exe_dir() -> Path:
+    """The folder holding the running program's executable: the .exe's directory in a
+    PyInstaller build (where loose, exe-adjacent resources like ffmpeg live), or the
+    interpreter's dir in dev (harmless — no resources there, callers fall through)."""
+    return Path(sys.executable).resolve().parent
+
+
+def models_dir() -> Path:
+    """The ONNX models directory. Checks EXE-ADJACENT ``models/`` first (the packaged
+    build ships them as loose files next to the exe, not baked into the bundle), then
+    the dev-tree ``<repo>/models``. Returns the first that exists, else the dev path
+    so error messages point somewhere sensible."""
+    candidates = [
+        Path(sys.executable).resolve().parent / "models",  # next to the packaged exe
+        Path(__file__).resolve().parents[2] / "models",  # dev tree: <repo>/models
+    ]
+    return next((c for c in candidates if c.is_dir()), candidates[-1])
 
 
 def wsl_to_windows(path: str) -> str:
