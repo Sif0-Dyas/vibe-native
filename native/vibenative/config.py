@@ -50,12 +50,11 @@ def _load_dotenv():
 
 _load_dotenv()  # must run BEFORE the env-derived constants below
 
+# User-artifact dir for the optional custom head + (future) MAEST model. The genre
+# ONNX models the engine actually runs live in the repo's models/ (see
+# onnx_engine.py / tempo.py); this dir is only for user-supplied extras. Path.home()
+# resolves to %USERPROFILE% on Windows, so the default needs no /mnt assumptions.
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", Path.home() / "essentia_models"))
-MODELS = {
-    "discogs-effnet-bs64-1.pb": "https://essentia.upf.edu/models/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb",
-    "genre_discogs400-discogs-effnet-1.pb": "https://essentia.upf.edu/models/classification-heads/genre_discogs400/genre_discogs400-discogs-effnet-1.pb",
-    "genre_discogs400-discogs-effnet-1.json": "https://essentia.upf.edu/models/classification-heads/genre_discogs400/genre_discogs400-discogs-effnet-1.json",
-}
 AUDIO_EXTS = {
     ".mp3",
     ".flac",

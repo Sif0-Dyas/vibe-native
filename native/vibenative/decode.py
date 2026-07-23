@@ -40,6 +40,16 @@ def _tool(name: str) -> str:
     raise FileNotFoundError(f"{name} not found on PATH — run `winget install ffmpeg`")
 
 
+def find_tool(name: str) -> str | None:
+    """Locate ffmpeg/ffprobe (PATH, then the WinGet Links dir); None if absent.
+    The soft-fail companion to :func:`_tool` for callers that degrade gracefully
+    when ffmpeg is missing (e.g. the segment-clip extractor)."""
+    try:
+        return _tool(name)
+    except FileNotFoundError:
+        return None
+
+
 def _probe(path) -> tuple[int, int]:
     import json
 

@@ -94,10 +94,11 @@ def _extract_segment(src, safe_genre, h, start, end):
     ffmpeg. Tries a stream-copy first (fast, lossless, container permitting) and
     falls back to a re-encode. Returns (dest_path | None, error | None); a missing
     ffmpeg is a soft failure (the override is still recorded, just not clipped)."""
-    import shutil
     import subprocess  # nosec B404  # only used to run ffmpeg with a fixed arg list, never a shell
 
-    ffmpeg = shutil.which("ffmpeg")
+    from ..decode import find_tool
+
+    ffmpeg = find_tool("ffmpeg")  # PATH or the WinGet Links dir (Windows winget install)
     if not ffmpeg:
         return None, "ffmpeg not found on PATH -- override recorded, clip not extracted"
     dest_dir = Path.home() / "genre_training" / safe_genre

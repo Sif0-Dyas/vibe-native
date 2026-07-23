@@ -353,13 +353,16 @@ def waveform_route(h):
 @bp.post("/batch")
 def batch_route():
     """Scan a server-side folder path and analyze all audio files in parallel.
-    The client passes a WSL path like /mnt/c/Users/you/Music.
-    Returns a stream of newline-delimited JSON results (NDJSON)."""
+    Accepts a native Windows path (C:\\Users\\you\\Music) directly; a legacy WSL
+    mount path (/mnt/c/Users/you/Music) is translated to its drive-letter form for
+    muscle-memory compatibility. Returns newline-delimited JSON results (NDJSON)."""
     import concurrent.futures
     import json as _json
 
+    from ..paths import wsl_to_windows
+
     data = request.get_json(silent=True) or {}
-    folder = Path(data.get("path", "")).expanduser()
+    folder = Path(wsl_to_windows(str(data.get("path", "")))).expanduser()
     workers = int(data.get("workers", 3))  # 3 parallel analyses, safe on most CPUs
 
     if not folder.is_dir():
