@@ -14,7 +14,8 @@ models/*.onnx
 *.db*
 # insurance: never commit audio if it ever lands inside the project
 oracle_tracks/
-# keep ALL model artifacts local: the existing rules only caught .pb/.onnx, not the
-# 16 MB savedmodel .zip or the model .json metadata. Exclude the dir, keep it tracked.
+# Model artifacts stay local EXCEPT the small .json metadata/label files the code
+# needs. Binaries (.pb / .onnx / .zip) and anything else in models/ stay ignored.
 models/*
 !models/.gitkeep
+!models/*.json
