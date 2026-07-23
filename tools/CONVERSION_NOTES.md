@@ -63,3 +63,17 @@ cleanly — no double activation, wrong output node, or transposed input.
 `get_engine()` logs the provider it selected; on this machine (RTX 5070) it
 engaged **`DmlExecutionProvider`** (DirectML). onnxruntime-directml 1.24.4 reports
 available providers: `DmlExecutionProvider`, `CPUExecutionProvider`.
+
+## Handoff to Phase 2 (mel frontend)
+
+1. **Authoritative embedder input spec.** `models/effnet.onnx` is the zoo's
+   `discogs-effnet-bsdynamic-1`. Read its tracked metadata
+   `models/discogs-effnet-bsdynamic-1.json` **before** the Essentia source — it
+   pins `serving_default_melspectrogram [n, 128, 96]`, `sample_rate 16000`, and
+   `embeddings = PartitionedCall:1 [n, 1280]`. The JSON fixes the 128×96 patch
+   shape + sample rate; the exact mel filterbank / log compression still comes
+   from the Essentia source but must reproduce that patch shape. (See the header
+   of `native/vibenative/frontend_mel.py`.)
+2. **Iteration strategy.** The oracle has 121 tracks. Iterate the frontend against
+   a **~40-track subset** for a fast inner loop, and run the **full 121** only as
+   the final acceptance gate. Never lower the cosine > 0.999 threshold.

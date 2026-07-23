@@ -42,7 +42,11 @@ OPSET = 17  # basic ops (MatMul/Conv/Sigmoid/Softmax); onnxruntime 1.24 supports
 DOWNLOADS = {
     # ready-made EffNet embedder ONNX -> our canonical effnet.onnx
     "effnet.onnx": f"{ZOO}/feature-extractors/discogs-effnet/discogs-effnet-bsdynamic-1.onnx",
-    # EffNet metadata (was missing from the Phase-0 copy)
+    # AUTHORITATIVE input spec for effnet.onnx (the bsdynamic variant we ship):
+    # input serving_default_melspectrogram[n,128,96], sample_rate 16000, embeddings
+    # at PartitionedCall:1[n,1280]. Phase 2's frontend_mel reads THIS before the
+    # Essentia source. (bs64 metadata kept too — same input family.)
+    "discogs-effnet-bsdynamic-1.json": f"{ZOO}/feature-extractors/discogs-effnet/discogs-effnet-bsdynamic-1.json",
     "discogs-effnet-bs64-1.json": f"{ZOO}/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.json",
     # TempoCNN source graph + metadata (no .onnx published)
     "deeptemp-k16-3.pb": f"{ZOO}/tempo/tempocnn/deeptemp-k16-3.pb",
