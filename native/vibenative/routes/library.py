@@ -121,6 +121,47 @@ def playlists_delete(pid):
     return jsonify({"deleted": bool(n)})
 
 
+@bp.get("/status")
+def status_route():
+    """App status for the Options tab: version, DB location + track count, ffmpeg
+    availability, and the GPU/execution-provider situation. Read-only; never builds
+    the ONNX engine just to report."""
+    import vibenative
+
+    from ..db import DB_PATH
+    from ..decode import find_tool
+
+    with _db_lock, closing(db()) as conn, conn as c:
+        n = c.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+    ffmpeg, ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
+
+    provider, available = None, []
+    try:
+        import onnxruntime as ort
+
+        available = list(ort.get_available_providers())
+        from .. import onnx_engine
+
+        if onnx_engine._engine:  # only if already built (don't trigger a build here)
+            provider = onnx_engine._engine.get("_provider")
+    except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (FAKE/CI) is fine
+        pass
+
+    return jsonify(
+        {
+            "version": vibenative.__version__,
+            "db_path": str(DB_PATH),
+            "tracks": n,
+            "ffmpeg": bool(ffmpeg),
+            "ffmpeg_path": ffmpeg,
+            "ffprobe": bool(ffprobe),
+            "provider": provider,
+            "gpu_available": "DmlExecutionProvider" in available,
+            "providers_available": available,
+        }
+    )
+
+
 @bp.post("/override/<h>")
 def override_route(h):
     """Manually set a track's genre. Persists into the cached analysis (so the

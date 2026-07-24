@@ -1347,13 +1347,18 @@
     tabsEl.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view===viewName));
     document.body.classList.toggle('view-guide', viewName === 'guide');
     document.body.classList.toggle('view-library', viewName === 'library');
+    document.body.classList.toggle('view-options', viewName === 'options');
     const libView = document.getElementById('library-view');
     if (libView) libView.hidden = viewName !== 'library';
+    const optView = document.getElementById('options-view');
+    if (optView) optView.hidden = viewName !== 'options';
     if (viewName === 'guide' && window.vibeLoadGuide) window.vibeLoadGuide();
     if (viewName === 'library' && window.vibeLoadLibrary) window.vibeLoadLibrary();
+    if (viewName === 'options' && window.vibeLoadOptions) window.vibeLoadOptions();
     showMap(viewName === 'map');
     const hash = viewName==='map' ? '#map' : (viewName==='guide' ? '#guide'
-                 : (viewName==='library' ? '#library' : '#'));
+                 : (viewName==='library' ? '#library'
+                 : (viewName==='options' ? '#options' : '#')));
     try{ history.replaceState(null,'', hash); }catch(_){}
   }
   function showMap(on){

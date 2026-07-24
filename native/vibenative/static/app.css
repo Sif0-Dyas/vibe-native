@@ -937,6 +937,35 @@ body.view-library .lensbar{ display:none; }
 .lib-row .lg{ color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .lib-row .lb, .lib-row .lk{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--dim); }
 .lib-empty{ padding:40px; text-align:center; color:var(--dim); }
+
+/* ---- Options tab ---- */
+#options-view{ display:none; flex:1; min-height:0; overflow-y:auto; }
+#options-view[hidden]{ display:none; }
+body.view-options #options-view{ display:block; }
+body.view-options main#drop{ display:none; }
+body.view-options > footer.actionbar{ display:none; }
+body.view-options .lensbar{ display:none; }
+.opt-body{ max-width:720px; margin:0 auto; padding:28px clamp(18px,4vw,40px) 80px;
+  font-family:'DM Sans',system-ui,sans-serif; }
+.opt-card{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:18px 20px; margin-bottom:16px; }
+.opt-card h3{ font-family:'Syne',sans-serif; font-size:15px; margin-bottom:12px; color:var(--text); }
+.opt-row{ display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.opt-row:last-child{ border-bottom:none; }
+.opt-row .k{ color:var(--dim); }
+.opt-row .v{ color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px;
+  text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%; }
+.opt-badge{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px;
+  font-family:'JetBrains Mono',monospace; }
+.opt-badge.ok{ background:rgba(0,158,115,.15); color:var(--other); }
+.opt-badge.warn{ background:rgba(229,86,79,.15); color:var(--err); }
+.opt-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+.opt-actions button{ font-family:'JetBrains Mono',monospace; font-size:12px; padding:9px 16px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  color:var(--text); cursor:pointer; }
+.opt-actions button:hover{ border-color:var(--accent-a); }
+.opt-note{ color:var(--dim); font-size:12px; line-height:1.6; margin-top:6px; }
 .guide-body{
   max-width:820px; margin:0 auto; padding:26px clamp(18px,4vw,40px) 80px;
   color:var(--text); font-family:'DM Sans',system-ui,sans-serif; font-size:14.5px; line-height:1.65;

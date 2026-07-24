@@ -70,6 +70,7 @@
     <button class="tab" data-view="library" type="button" title="browse every analyzed track in your library">&#8803; Library</button>
     <button class="tab" data-view="map" type="button">&#10038; Map</button>
     <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
+    <button class="tab" data-view="options" type="button" title="settings & status">&#9881; Options</button>
   </nav>
   <div class="lensbar">
     <span class="lblab">identity</span>
@@ -117,6 +118,11 @@
     <span data-sort="key">Key</span>
   </div>
   <div id="lib-rows" class="lib-rows"></div>
+</section>
+
+<!-- options / settings + status -->
+<section id="options-view" hidden aria-label="Options">
+  <div id="opt-body" class="opt-body">Loading&hellip;</div>
 </section>
 
 <!-- interactive genre constellation of the whole library -->
@@ -244,6 +250,7 @@
 <script src="/static/nowbar.js"></script>
 <script src="/static/playlist.js"></script>
 <script src="/static/library.js"></script>
+<script src="/static/options.js"></script>
 <script src="/static/map.js"></script>
 </body>
 </html>
