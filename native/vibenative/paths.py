@@ -22,6 +22,15 @@ def exe_dir() -> Path:
     return Path(sys.executable).resolve().parent
 
 
+def resource_base() -> Path:
+    """Base dir for BUNDLED read-only data files (e.g. docs/USAGE.md). In a PyInstaller
+    build this is the bundle's extraction dir (sys._MEIPASS — the _internal/ folder for a
+    onedir build); in dev it's the repo root."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parents[2]
+
+
 def models_dir() -> Path:
     """The ONNX models directory. Checks EXE-ADJACENT ``models/`` first (the packaged
     build ships them as loose files next to the exe, not baked into the bundle), then

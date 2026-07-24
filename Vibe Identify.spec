@@ -33,6 +33,8 @@ NATIVE = os.path.join(PROJECT, "native")
 
 # --- vibenative: Flask templates + static assets must ship as bundle data -------
 datas = collect_data_files("vibenative")  # templates/*.html + static/* (non-.py files)
+# the in-app Guide reads docs/USAGE.md -> bundle it (resolved via paths.resource_base())
+datas += [(os.path.join(PROJECT, "docs", "USAGE.md"), "docs")]
 hiddenimports = collect_submodules("vibenative")  # routes.* / db / engine modules (lazy imports)
 
 # --- onnxruntime native libraries, INCLUDING the DirectML EP --------------------

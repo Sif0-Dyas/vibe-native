@@ -132,8 +132,11 @@ def index():
 @bp.get("/guide")
 def guide_route():
     """Serve the user guide (docs/USAGE.md) as raw markdown for the in-app tab."""
-    # routes/map.py -> routes -> vibenative -> native -> project root (docs/ lives at root)
-    path = Path(__file__).resolve().parent.parent.parent.parent / "docs" / "USAGE.md"
+    # docs/ ships as bundle data in a packaged build (sys._MEIPASS) and lives at the
+    # repo root in dev — resource_base() resolves both.
+    from ..paths import resource_base
+
+    path = resource_base() / "docs" / "USAGE.md"
     try:
         return Response(path.read_text(encoding="utf-8"), mimetype="text/markdown")
     except OSError:
