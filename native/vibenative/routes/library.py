@@ -68,7 +68,9 @@ def library_list():
 def playlists_list():
     """List saved playlists (id, name, track count, last-updated), newest first."""
     with _db_lock, closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT id, name, tracks, updated FROM playlists ORDER BY updated DESC").fetchall()
+        rows = c.execute(
+            "SELECT id, name, tracks, updated FROM playlists ORDER BY updated DESC"
+        ).fetchall()
     out = []
     for pid, name, tracks, updated in rows:
         try:
