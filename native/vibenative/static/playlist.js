@@ -140,6 +140,66 @@
     URL.revokeObjectURL(a.href);
   }
 
-  render();   // initial (restores a saved playlist)
+  // ---- named saved playlists (DB-backed, durable) ----
+  const savedList = document.getElementById('pl-saved-list');
+  const saveBtn = document.getElementById('pl-save');
+  const savedBtn = document.getElementById('pl-saved');
+
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    if (!PL.tracks.length) { alert('Nothing to save — the playlist is empty.'); return; }
+    const name = (window.prompt('Save playlist as:') || '').trim();
+    if (!name) return;
+    try {
+      const r = await fetch('/playlists', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, tracks: PL.tracks })
+      });
+      if (!r.ok) { const j = await r.json(); alert(j.error || 'save failed'); return; }
+      if (savedList && !savedList.hidden) renderSaved();
+    } catch (_) { alert('save failed'); }
+  });
+
+  if (savedBtn) savedBtn.addEventListener('click', () => {
+    if (!savedList) return;
+    if (savedList.hidden) { savedList.hidden = false; renderSaved(); } else savedList.hidden = true;
+  });
+
+  async function renderSaved() {
+    savedList.innerHTML = '<div class="pl-saved-empty">loading…</div>';
+    let items;
+    try { items = await fetch('/playlists').then(r => r.json()); }
+    catch (_) { savedList.innerHTML = '<div class="pl-saved-empty">failed to load</div>'; return; }
+    if (!items.length) { savedList.innerHTML = '<div class="pl-saved-empty">no saved playlists yet</div>'; return; }
+    savedList.innerHTML = items.map(p =>
+      `<div class="pl-saved-item" data-id="${p.id}">` +
+      `<button class="pl-saved-load" title="load this playlist">${esc(p.name)}</button>` +
+      `<span class="pl-saved-n">${p.count}</span>` +
+      `<button class="pl-saved-del" title="delete this saved playlist">✕</button></div>`).join('');
+    savedList.querySelectorAll('.pl-saved-item').forEach(el => {
+      const id = el.dataset.id;
+      el.querySelector('.pl-saved-load').onclick = () => loadSaved(id);
+      el.querySelector('.pl-saved-del').onclick = () => delSaved(id, el);
+    });
+  }
+
+  async function loadSaved(id) {
+    try {
+      const p = await fetch('/playlists/' + id).then(r => r.json());
+      if (!p || p.error || !Array.isArray(p.tracks)) return;
+      if (PL.tracks.length && !window.confirm(`Replace the current playlist with “${p.name}”?`)) return;
+      PL.tracks = p.tracks; PL.qi = -1; save(); render();
+      savedList.hidden = true;
+    } catch (_) { /* ignore */ }
+  }
+
+  async function delSaved(id, el) {
+    if (!window.confirm('Delete this saved playlist?')) return;
+    try { await fetch('/playlists/' + id + '/delete', { method: 'POST' }); el.remove(); } catch (_) { /* ignore */ }
+    if (!savedList.querySelector('.pl-saved-item')) {
+      savedList.innerHTML = '<div class="pl-saved-empty">no saved playlists yet</div>';
+    }
+  }
+
+  render();   // initial (restores the working playlist)
   if (location.hash === '#playlist') open();   // deep link to the panel
 })();

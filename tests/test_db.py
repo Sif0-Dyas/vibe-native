@@ -101,8 +101,8 @@ def test_fresh_and_legacy_converge(tmp_path, monkeypatch):
     db.init_db()
 
     # Both land on the same (latest) version...
-    assert _version(fresh) == 2
-    assert _version(legacy) == 2
+    assert _version(fresh) == 3
+    assert _version(legacy) == 3
 
     # ...with a structurally identical schema (incl. schema_version + the weight
     # column the migration added to the legacy vibe_tracks in place).
@@ -127,7 +127,7 @@ def test_init_db_is_idempotent(tmp_path, monkeypatch):
     before = _schema(path)
     db.init_db()  # second run applies nothing
     assert _schema(path) == before
-    assert _version(path) == 2
+    assert _version(path) == 3
     # exactly one version row, not one appended per run
     con = sqlite3.connect(path)
     try:
@@ -203,6 +203,6 @@ def test_migration_2_translates_mnt_paths(tmp_path, monkeypatch):
             con.execute("SELECT COUNT(*) FROM tracks WHERE filepath LIKE '/mnt/%'").fetchone()[0]
             == 0
         )
-        assert _version(dbcopy) == 2
+        assert _version(dbcopy) == 3
     finally:
         con.close()

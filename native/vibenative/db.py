@@ -132,10 +132,20 @@ def _migration_2(c):
         c.execute("UPDATE tracks SET filepath=? WHERE rowid=?", (wsl_to_windows(fp), rowid))
 
 
+def _migration_3(c):
+    """v3 — named saved playlists (the save/load feature). Each row is a named
+    snapshot of a playlist: its track list stored as JSON. The live working playlist
+    still lives client-side; this is for durable, named ones."""
+    c.execute("""CREATE TABLE IF NOT EXISTS playlists(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE,
+        tracks TEXT, created REAL, updated REAL)""")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
     (2, _migration_2),
+    (3, _migration_3),
 ]
 
 
