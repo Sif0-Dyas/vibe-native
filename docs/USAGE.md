@@ -1,6 +1,6 @@
 # Vibedentify — User Guide
 
-Vibedentify listens to your tracks and tells you their **genre, BPM, and key**, then lets you explore your whole collection as an interactive **map of sound**. It's built for DJs, producers, and collectors who want to understand and organize a library fast.
+Vibedentify listens to your tracks and tells you their **genre, BPM, and key**, then lets you explore your whole collection as an interactive **map of sound** — or browse it as a sortable **list**. It's built for DJs, producers, and collectors who want to understand and organize a library fast.
 
 Everything runs on your own machine: **your audio never leaves the computer, and your files are never changed** — analyzing only reads them.
 
@@ -15,21 +15,26 @@ Everything runs on your own machine: **your audio never leaves the computer, and
 3. [Reading a track](#3-reading-a-track)
 4. [Two deeper looks: Refine & Compare](#4-two-deeper-looks-refine--compare)
 5. [How the genre is decided — the lens system](#5-how-the-genre-is-decided--the-lens-system)
-6. [Fixing & organizing your library](#6-fixing--organizing-your-library)
-7. [Exploring the Map](#7-exploring-the-map)
-8. [Harmonic mixing (for DJs)](#8-harmonic-mixing-for-djs)
-9. [Good to know](#9-good-to-know)
+6. [Organizing your library: overrides, vibes & playlists](#6-organizing-your-library-overrides-vibes--playlists)
+7. [The Library tab — your collection as a sortable list](#7-the-library-tab--your-collection-as-a-sortable-list)
+8. [Exploring the Map](#8-exploring-the-map)
+9. [Harmonic mixing (for DJs)](#9-harmonic-mixing-for-djs)
+10. [Options & settings](#10-options--settings)
+11. [Good to know](#11-good-to-know)
 
 ---
 
 ## 1. Getting started
 
-The app has two tabs at the top:
+The app has five tabs across the top:
 
 - **≣ List** — the analyzer. Drop tracks in and read their genre / BPM / key.
+- **≣ Library** — every track you've ever analyzed, as a fast, searchable, sortable text list.
 - **✷ Map** — a 3-D "constellation" of everything you've analyzed, for exploring by sound.
+- **ⓘ Guide** — this document, in-app.
+- **⚙ Options** — status and settings (engine, database, version).
 
-**To try it right now:** stay on **List** and drag an audio file anywhere onto the window. In a second or two you'll see its genre, tempo, key, and a colored waveform. That's the whole loop — analyze on List, explore on Map.
+**To try it right now:** stay on **List** and drag an audio file anywhere onto the window. In a second or two you'll see its genre, tempo, key, and a colored waveform. That's the whole loop — analyze on **List**, then browse it on **Library** or explore it on **Map**.
 
 **A quick mental model.** Vibedentify doesn't slap one label on a track. It listens *moment by moment* across the whole song, guessing the genre continuously, then summarizes those guesses into an overall read. That single idea explains a lot of the app: the **waveform** shows the moment-by-moment guesses, the **genre breakdown** shows the summary, and the **lenses** (section 5) let you change how that summary is formed — all instantly, without re-listening to the audio.
 
@@ -114,20 +119,57 @@ Very minor genres in the stream collapse into a single grey **"Other"** bucket s
 
 ---
 
-## 6. Fixing & organizing your library
+## 6. Organizing your library: overrides, vibes & playlists
 
 Per-track actions live on each row (and many are repeated in the Map popup); library-wide tools sit in the footer.
 
-- **✎ override** — set the genre yourself (say your own *Riddim* or *Tearout*). Your choice **sticks everywhere and survives reloads** — it becomes the track's genre on the List, the Map, and exports, and re-adding the file later keeps your label instead of the model's. (It also copies the track into `~/genre_training/<genre>/` — those folders are the training set for a **custom genre head**: once you've labelled enough tracks, the scripts in `training/` can train a model that adds your own genres as a **custom** row in each read. See *Training custom genres* in the README.) The same override is on the **Map popup** and behaves identically. To undo one, **omit** the track and re-scan it.
-- **✕ omit** — remove a track's analysis (for a bogus read you don't want cluttering things). It disappears from the List and the Map. **Your audio file is untouched** — re-scanning brings it back fresh.
+### Per-track fixes
+
+- **✎ override** — set the genre yourself (say your own *Riddim* or *Tearout*). Your choice **sticks everywhere and survives reloads** — it becomes the track's genre on the List, the Library, the Map, and exports, and re-adding the file later keeps your label instead of the model's. (It also copies the track into `~/genre_training/<genre>/` — those folders are the training set for a **custom genre head**: once you've labelled enough tracks, the scripts in `training/` can train a model that adds your own genres as a **custom** row in each read. See *Training custom genres* in the README.) The same override is on the **Map popup** and behaves identically. To undo one, **omit** the track and re-scan it.
+- **✕ omit** — remove a track's analysis (for a bogus read you don't want cluttering things). It disappears from the List, the Library, and the Map, and the database entry is deleted. **Your audio file is untouched** — re-scanning brings it back fresh.
 - **Tags** — attach your own labels ("high energy", "opener", "peak time") to tracks for your own organization.
-- **◈ vibes** — build a **playlist by feel**. Add a few tracks to a vibe and it gathers everything else in your library that *sounds* similar, ranked by closeness. You can 👍/👎 individual tracks to steer the vibe toward or away from examples.
 - **⚠ review reads** *(footer)* — a one-click sweep for likely mistakes. The app flags reads it's unsure about — specifically, a low-confidence label whose closest-sounding neighbors strongly disagree (the classic "a bass track got called K-pop" case). The panel lists every flagged track with its suggested fix, plus buttons to jump to it on the Map or omit it. It only ever **flags and suggests** — it never changes a genre on its own.
-- **Clear list** empties the on-screen list (without deleting any analysis); **Export .txt** dumps the current list (genre, BPM, key, duration) to a text file.
+- **Clear list** empties the on-screen List (without deleting any analysis); **Export .txt** dumps the current list (genre, BPM, key, duration) to a text file.
+
+### ◈ vibes — playlists by feel
+
+A **vibe** is a playlist built from *sound*, not hand-picking. Add a few tracks to a vibe (with **+ vibe** on a track) and it gathers everything else in your library that *sounds* similar, ranked by closeness. 👍/👎 individual tracks to steer the vibe toward or away from examples.
+
+Open the **◈ vibes** panel to manage them. Each vibe row has:
+
+- **tracks** — show the tracks currently seeding the vibe.
+- **playlist** — build a playlist of everything in your library that matches this vibe (drops straight into the playlist panel, below).
+- **✎ rename** · **↺ reset** (put every track's weight back to the default 1.0, undoing your 👍/👎 nudges) · **⌫ clear** (remove all tracks but keep the empty vibe) · **✕ delete** (remove the vibe entirely).
+- At the top of the panel, **⭳ export** saves *all* your vibes to a `.json` file and **⭱ import** loads vibes from one (merging by name) — handy for backups or moving vibes between machines.
+
+### Playlists — a queue you can save
+
+The **☰ playlist** button (footer, and on the Map) opens the playlist panel — an ordered queue you build up, then play or export:
+
+- Add tracks with **add to playlist** (Map popup) / **+ playlist** (the now-playing bar), or all at once from a vibe's **playlist** button.
+- **▶ play all** plays the queue in order.
+- **★ save** stores the current queue under a name; **☰ saved** lists your saved playlists to reload or delete. Saved playlists live in the database, so they persist across restarts.
+- **⭳ .m3u** exports the queue as a standard **`.m3u`** file — the universal playlist format that opens in VLC, Rekordbox, Serato, foobar2000, and most DJ/player software, pointing at your actual audio files.
+- **clear** empties the queue (your saved playlists are untouched).
 
 ---
 
-## 7. Exploring the Map
+## 7. The Library tab — your collection as a sortable list
+
+The **≣ Library** tab is every track you've ever analyzed, shown as a plain text table — no waveforms, so it stays fast even at many thousands of tracks. It's the counterpart to the Map: where the Map is for *exploring by sound*, the Library is for *finding and sorting by the facts* (title, artist, BPM, key…).
+
+- **Search** — type to filter by title, artist, genre, key, or Camelot code as you go. The count shows how many match.
+- **Sort** — pick a field from the **sort** dropdown and flip **▲ / ▼** for ascending/descending, or just **click any column header** to sort by it (click again to reverse).
+- **▦ columns — choose what you see.** Click **▦ columns** (or **right-click any column header**, Windows-Explorer style) to toggle which columns appear: **Title** (always on), **Artist**, **Genre**, **BPM**, **Key**, **Camelot**, **Length**, and **Added** (the date analyzed). Show only the columns you care about.
+- **Group by — collapsible sections.** Use the **group by** dropdown to split the list into collapsible sections by **Genre**, **Key**, **Camelot**, **BPM range**, or **Artist**. Each section shows its track count; **click a section header to collapse or expand it** — great for folding away genres you're not looking at and focusing on one at a time.
+- **Click any row** to load that track into the **List** tab (with its full waveform and per-track tools).
+- **↻ refresh** reloads the library; **⭳ .txt** downloads the currently visible columns as a tab-separated text file (opens in Excel/Sheets).
+
+Your choices here — which columns show, the sort, the grouping, and which sections are collapsed — are **remembered** between sessions.
+
+---
+
+## 8. Exploring the Map
 
 The **✷ Map** tab plots your entire analyzed library in 3-D. **Tracks that sound alike sit near each other**, faint lines connect each track to its closest sonic neighbors, and color = genre family. It's the fun part — a birds-eye view of your whole collection.
 
@@ -183,13 +225,13 @@ You can **orbit** (rotate), **pan** (slide), and **zoom** independently. A small
 
 ### Selecting a track
 
-**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre family, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **✎ override** / **✕ omit** buttons (same as the List).
+**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre family, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the List).
 
 ### Map controls
 
 - **Search** — jump to any track, artist, or genre.
 - **Click a genre or subgenre name** — on the map, or in the legend — to fly to that cluster and orbit around it (subgenres zoom in a little tighter than their overarching genre).
-- **🎧 harmonic** — highlight what you could mix next (see section 8).
+- **🎧 harmonic** — highlight what you could mix next (see section 9).
 - **≈ edges** — show or hide the connecting lines.
 - **Genre legend** *(bottom-left, collapsible)* — groups each **overarching genre** with its **subgenres** beneath it (in their shade colors), so you can see the hierarchy. Click a genre or subgenre **name** to fly to it; click a genre's **color dot** to recolor it (your colors are remembered).
 - **Genre filter** *(top-bar dropdown)* — show just one genre, or just the **⚠ likely misreads**.
@@ -201,17 +243,30 @@ You can also share a view: the address bar updates as you go (`#map`, `#galaxy`,
 
 ---
 
-## 8. Harmonic mixing (for DJs)
+## 9. Harmonic mixing (for DJs)
 
 On the Map, select a track and turn on **🎧 harmonic**. Vibedentify rings every track that would mix smoothly with it — matching **key** (neighbors on the Camelot wheel, or the relative major/minor) **and tempo** (within about ±6%, or at half/double time) — and dims everything else.
 
-It turns the Map into a "what can I play next?" tool: pick a track, flip harmonic on, and your compatible options light up across the whole library.
+It turns the Map into a "what can I play next?" tool: pick a track, flip harmonic on, and your compatible options light up across the whole library. Pair it with the **playlist** panel (section 6) to build a harmonically-ordered set, then **⭳ .m3u** it into your DJ software.
 
 ---
 
-## 9. Good to know
+## 10. Options & settings
+
+The **⚙ Options** tab is a quick status-and-settings dashboard. Each item shows a green ✓ (all good) or amber ⚠ (worth a look) badge.
+
+- **About** — the app version and how many tracks are in your library.
+- **Engine** — whether **GPU acceleration** (DirectML) is active and whether **ffmpeg** (used to decode audio) was found. If ffmpeg shows ⚠ *missing*, some formats won't decode — see the README's setup notes.
+- **Database** — where your library file lives on disk. Everything you build — analyses, tags, vibes, saved playlists — lives in this one file. Point the **`GENRE_DB`** environment variable at another path to move or share it.
+- **Manage** — shortcuts to Browse library, Vibes, Playlists, and this Guide.
+- **Appearance** — the app is dark-themed for now; a light mode is planned for a future update.
+
+---
+
+## 11. Good to know
 
 - **Your files are safe.** Analyzing only reads your audio; it's never modified or moved, and nothing is uploaded anywhere — it all stays on your machine.
 - **Nothing is analyzed twice.** Results are remembered by the audio itself, so the same track returns instantly even if you rename or move the file, and re-scanning a big folder only works on what's new.
-- **The list is temporary; your library is permanent.** Reloading the page clears the on-screen List, but every analysis is saved — it's all still on the Map, and re-dropping files repopulates the List instantly from memory.
-- **Very large libraries:** the List can get heavy past a few thousand rows (each keeps a waveform), so for big collections lean on **batch folder** to bring them in and the **Map** to explore them.
+- **The List is temporary; your library is permanent.** Reloading the page clears the on-screen List, but every analysis is saved — it's all still on the **Library** and **Map**, and re-dropping files repopulates the List instantly from memory.
+- **Vibes and saved playlists persist too.** They live in the database (see Options → Database), so they survive restarts and reinstalls as long as that file is kept.
+- **Very large libraries:** the List can get heavy past a few thousand rows (each keeps a waveform), so for big collections lean on **batch folder** to bring them in, the **Library** tab to sort and search them, and the **Map** to explore them.
