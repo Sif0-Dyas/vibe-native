@@ -42,7 +42,11 @@ DefaultGroupName={#MyAppName}
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Install to Program Files -> needs admin; 64-bit only (matches the x64 build).
+; Default is all-users (Program Files). Power users can pass /CURRENTUSER on the command
+; line for a no-admin per-user install (into %LOCALAPPDATA%\Programs); the interactive
+; default is unchanged (no extra dialog).
 PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
@@ -72,6 +76,13 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; settings.ini is written by [INI], so it isn't tracked by [Files] for removal; delete
+; it (and the then-empty install folder) on uninstall. The DB it points at lives
+; elsewhere (%USERPROFILE% / the chosen folder) and is never touched here.
+Type: files; Name: "{app}\settings.ini"
+Type: dirifempty; Name: "{app}"
 
 [INI]
 ; Record the DB-location choice where the app reads it at startup: an exe-adjacent
@@ -118,13 +129,11 @@ var
 begin
   Raw := GetIniString('vibenative', 'db_path', '', ExpandConstant('{app}\settings.ini'));
   if Raw <> '' then
-    StringChangeEx(Raw, '%USERPROFILE%', ExpandConstant('{userprofile}'), True);
+    StringChangeEx(Raw, '%USERPROFILE%', ExpandConstant('{%USERPROFILE}'), True);
   Result := Raw;
 end;
 
 procedure InitializeWizard;
-var
-  Prior: String;
 begin
   DbDirPage := CreateInputDirPage(wpSelectDir,
     'Music database location',
@@ -134,13 +143,10 @@ begin
     'upgrade or reinstall keeps all your data. The default is your user-profile folder.',
     False, '');
   DbDirPage.Add('');
-  { On an upgrade, default to the folder the previous install already uses so the
-    user's chosen DB location (and thus their library) is preserved, not reset. }
-  Prior := ExistingDbPath();
-  if Prior <> '' then
-    DbDirPage.Values[0] := ExtractFileDir(Prior)
-  else
-    DbDirPage.Values[0] := ExpandConstant('{userprofile}');
+  // Default to the user-profile folder. An existing genre_v2.db there is reused, so the
+  // library survives an upgrade/reinstall. We can't read the prior install's setting here
+  // because the app-folder constant isn't initialized yet at InitializeWizard time.
+  DbDirPage.Values[0] := ExpandConstant('{%USERPROFILE}');
 end;
 
 function GetDbPath(Param: String): String;
@@ -150,7 +156,7 @@ begin
   Dir := RemoveBackslash(DbDirPage.Values[0]);
   { If left at the default profile folder, store the %USERPROFILE% env var literally
     so the setting resolves per-user at runtime; otherwise store the chosen path. }
-  if CompareText(Dir, RemoveBackslash(ExpandConstant('{userprofile}'))) = 0 then
+  if CompareText(Dir, RemoveBackslash(ExpandConstant('{%USERPROFILE}'))) = 0 then
     Result := '%USERPROFILE%\genre_v2.db'
   else
     Result := AddBackslash(Dir) + 'genre_v2.db';
@@ -221,11 +227,11 @@ begin
 
   DbPath := ExistingDbPath();
   if DbPath = '' then
-    DbPath := ExpandConstant('{userprofile}\genre_v2.db');
+    DbPath := ExpandConstant('{%USERPROFILE}\genre_v2.db');
   DeleteFile(DbPath);
   DeleteFile(DbPath + '-wal');
   DeleteFile(DbPath + '-shm');
   { extracted section clips + the runtime log dir }
-  DelTree(ExpandConstant('{userprofile}\genre_training'), True, True, True);
+  DelTree(ExpandConstant('{%USERPROFILE}\genre_training'), True, True, True);
   DelTree(ExpandConstant('{localappdata}\Vibenative'), True, True, True);
 end;
