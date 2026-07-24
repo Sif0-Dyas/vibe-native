@@ -421,6 +421,62 @@ def vibes_remove():
     return jsonify({"removed": True})
 
 
+@bp.post("/vibes/rename")
+def vibes_rename():
+    """Rename a vibe."""
+    data = request.get_json(silent=True) or {}
+    vid = data.get("vibe_id")
+    name = (data.get("name") or "").strip()
+    if not vid or not name:
+        return jsonify({"error": "vibe_id and name required"}), 400
+    try:
+        with _db_lock, closing(db()) as conn, conn as c:
+            n = c.execute("UPDATE vibes SET name=? WHERE id=?", (name, vid)).rowcount
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "a vibe with that name already exists"}), 409
+    if not n:
+        return jsonify({"error": "vibe not found"}), 404
+    return jsonify({"id": vid, "name": name})
+
+
+@bp.post("/vibes/reset")
+def vibes_reset():
+    """Reset every member track's weight in a vibe back to the default 1.0 (keeps the
+    members; just undoes any Rocchio +/- tuning)."""
+    data = request.get_json(silent=True) or {}
+    vid = data.get("vibe_id")
+    if not vid:
+        return jsonify({"error": "vibe_id required"}), 400
+    with _db_lock, closing(db()) as conn, conn as c:
+        n = c.execute("UPDATE vibe_tracks SET weight=1.0 WHERE vibe_id=?", (vid,)).rowcount
+    return jsonify({"reset": True, "tracks": n})
+
+
+@bp.post("/vibes/clear")
+def vibes_clear():
+    """Remove ALL tracks from a vibe (keeps the empty vibe itself)."""
+    data = request.get_json(silent=True) or {}
+    vid = data.get("vibe_id")
+    if not vid:
+        return jsonify({"error": "vibe_id required"}), 400
+    with _db_lock, closing(db()) as conn, conn as c:
+        n = c.execute("DELETE FROM vibe_tracks WHERE vibe_id=?", (vid,)).rowcount
+    return jsonify({"cleared": True, "removed": n})
+
+
+@bp.post("/vibes/delete")
+def vibes_delete():
+    """Delete a vibe entirely, along with all of its membership links."""
+    data = request.get_json(silent=True) or {}
+    vid = data.get("vibe_id")
+    if not vid:
+        return jsonify({"error": "vibe_id required"}), 400
+    with _db_lock, closing(db()) as conn, conn as c:
+        c.execute("DELETE FROM vibe_tracks WHERE vibe_id=?", (vid,))
+        n = c.execute("DELETE FROM vibes WHERE id=?", (vid,)).rowcount
+    return jsonify({"deleted": bool(n)})
+
+
 @bp.get("/vibes/<int:vid>/members")
 def vibes_members(vid):
     """Member tracks of a vibe with their current weights, for the weight editor.

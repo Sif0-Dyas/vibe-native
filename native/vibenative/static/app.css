@@ -519,10 +519,11 @@ footer, .actionbar{
 }
 #vibe-btn:hover{border-color:var(--accent-b); color:var(--accent-b)}
 .vibe-row{
-  display:flex; align-items:center; gap:10px; padding:9px 0;
+  display:flex; align-items:center; gap:6px; padding:9px 0; flex-wrap:wrap;
   border-bottom:1px solid var(--line);
 }
-.vibe-row .vname{font-family:'Syne',sans-serif; font-weight:700; font-size:13px; flex:1}
+.vibe-row .vname{font-family:'Syne',sans-serif; font-weight:700; font-size:13px; flex:1;
+  min-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .vibe-row .vcount{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim)}
 .vibe-row button{
   font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 9px;
@@ -530,6 +531,11 @@ footer, .actionbar{
   color:var(--dim); cursor:pointer;
 }
 .vibe-row button:hover{color:var(--text); border-color:var(--dimmer)}
+/* compact icon buttons for rename/reset/clear/delete; delete goes red */
+.vibe-row .vibe-rename, .vibe-row .vibe-reset, .vibe-row .vibe-clear, .vibe-row .vibe-del{
+  padding:3px 8px; font-size:13px; line-height:1;
+}
+.vibe-row .vibe-del:hover{color:var(--err); border-color:var(--err)}
 .vibe-create{display:flex; gap:6px; margin:12px 0}
 .vibe-create input{
   flex:1; background:var(--panel-2); border:1px solid var(--line);

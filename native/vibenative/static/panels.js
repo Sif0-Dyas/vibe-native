@@ -288,10 +288,36 @@ async function renderVibePanel(){
     const rowEl = document.createElement('div');
     rowEl.className = 'vibe-row';
     rowEl.innerHTML =
-      `<span class="vname">${escapeHtml(v.name)}</span>` +
+      `<span class="vname" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</span>` +
       `<span class="vcount">${v.count} track${v.count===1?'':'s'}</span>` +
-      `<button class="vw-btn">weights</button>` +
-      `<button class="pl-btn">playlist</button>`;
+      `<button class="vw-btn" title="show the tracks in this vibe">tracks</button>` +
+      `<button class="pl-btn" title="build a playlist of everything in your library that matches this vibe">playlist</button>` +
+      `<button class="vibe-rename" title="rename this vibe">&#9998;</button>` +
+      `<button class="vibe-reset" title="reset all track weights to the default 1.0">&#8635;</button>` +
+      `<button class="vibe-clear" title="remove all tracks from this vibe (keeps the vibe)">&#9003;</button>` +
+      `<button class="vibe-del" title="delete this vibe entirely">&#10005;</button>`;
+
+    const vpost = (url, body) => fetch(url, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    rowEl.querySelector('.vibe-rename').addEventListener('click', async () => {
+      const name = window.prompt('Rename vibe:', v.name);
+      if (name === null) return;
+      const n = name.trim(); if (!n || n === v.name) return;
+      const r = await vpost('/vibes/rename', {vibe_id: v.id, name: n});
+      if (r.ok) renderVibePanel(); else { const j = await r.json(); alert(j.error || 'rename failed'); }
+    });
+    rowEl.querySelector('.vibe-reset').addEventListener('click', async () => {
+      if (!window.confirm(`Reset all track weights in "${v.name}" to 1.0?`)) return;
+      await vpost('/vibes/reset', {vibe_id: v.id}); renderVibePanel();
+    });
+    rowEl.querySelector('.vibe-clear').addEventListener('click', async () => {
+      if (!window.confirm(`Remove ALL ${v.count} track${v.count===1?'':'s'} from "${v.name}"?\n\nThe vibe stays; the tracks are just unlinked from it.`)) return;
+      await vpost('/vibes/clear', {vibe_id: v.id}); renderVibePanel();
+    });
+    rowEl.querySelector('.vibe-del').addEventListener('click', async () => {
+      if (!window.confirm(`Delete the vibe "${v.name}" entirely?\n\nThis removes the vibe and its membership. Your tracks and their analyses are untouched.`)) return;
+      await vpost('/vibes/delete', {vibe_id: v.id}); renderVibePanel();
+    });
 
     // weight editor: a -1..+1 slider per member track (Rocchio feedback)
     const vwWrap = document.createElement('div');
