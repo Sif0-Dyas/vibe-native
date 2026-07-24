@@ -419,6 +419,9 @@ function fmtTime(sec){
 
 function finishRow(row, data, file){
   row.classList.remove('pending');
+  // remember a dropped/browsed file by hash so it stays playable after Clear
+  // (these have no server-side copy — the in-memory File is the only source).
+  if (file && data.hash) HASH_FILES.set(data.hash, file);
   const styles = data.styles || [];
   const primary = styles[0] || {style: '?', score: 0};   // guard: model returned no styles
   const pcol = colorFor(primary.style);
@@ -1199,6 +1202,8 @@ clearB.addEventListener('click', () => {
   PLAYER.audio.load();
   if (PLAYER.ctl){ PLAYER.ctl.stopVisual(); PLAYER.ctl = null; }
   while (OBJ_URLS.length) URL.revokeObjectURL(OBJ_URLS.pop());
+  // NOTE: HASH_FILES is intentionally kept — it lets tracks dropped this session
+  // still play after the list is cleared (playSrc recreates a fresh blob URL).
   results = []; queue = [];
   listKeys.clear();
   rowsEl.querySelectorAll('.row').forEach(r => r.remove());

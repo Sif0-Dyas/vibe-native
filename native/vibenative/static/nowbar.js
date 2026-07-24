@@ -80,7 +80,15 @@
     if (PLAYER.ctl && PLAYER.ctl.stopVisual) PLAYER.ctl.stopVisual();
     PLAYER.ctl = { tick() {}, render() {}, stopVisual() {}, error() {} };  // bar owns playback now
     PLAYER.now = Object.assign({ hash }, meta || {});
-    PLAYER.audio.src = '/audio/' + hash;
+    // A file dropped this session has no server copy — play its cached blob instead.
+    const cached = (typeof HASH_FILES !== 'undefined') && HASH_FILES.get(hash);
+    const url = cached ? URL.createObjectURL(cached) : '/audio/' + hash;
+    if (cached && typeof OBJ_URLS !== 'undefined') OBJ_URLS.push(url);
+    // Always start from the beginning. Re-selecting the SAME track keeps the src,
+    // so the element would otherwise resume mid-track — reset currentTime instead.
+    const abs = new URL(url, location.href).href;
+    if (PLAYER.audio.src === abs) PLAYER.audio.currentTime = 0;
+    else PLAYER.audio.src = url;
     renderMeta();
     PLAYER.audio.play().catch(() => {});
   };

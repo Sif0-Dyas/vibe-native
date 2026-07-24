@@ -13,6 +13,12 @@
 const PLAYER = { audio: new Audio(), ctl: null };
 PLAYER.audio.preload = 'metadata';
 const OBJ_URLS = [];   // blob URLs for dropped files, revoked on Clear
+/* Dropped/browsed files have no server-side copy, so their only audio source is
+   the in-memory File. Keep it keyed by content hash for the whole SESSION (this
+   map deliberately survives Clear) so a track you analyzed by dropping stays
+   playable afterwards — re-added from the Library, the Map, or the playlist.
+   Cleared on page reload, when the File objects are gone anyway. */
+const HASH_FILES = new Map();
 PLAYER.audio.addEventListener('timeupdate', () => { if (PLAYER.ctl) PLAYER.ctl.tick(); });
 PLAYER.audio.addEventListener('play',       () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
 PLAYER.audio.addEventListener('pause',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
@@ -37,11 +43,14 @@ function attachPlayer(row, container, controls, c, file, data, dur){
 
     let objURL = null;
     function playSrc(){
-      if (file){                       // dropped/browsed file -> client-side blob
-        if (!objURL){ objURL = URL.createObjectURL(file); OBJ_URLS.push(objURL); }
+      // prefer a local File: the one passed in for this row, or one cached from a
+      // drop earlier this session (lets a track replay after the list was cleared).
+      const localFile = file || (data.hash && HASH_FILES.get(data.hash));
+      if (localFile){                  // dropped/browsed file -> client-side blob
+        if (!objURL){ objURL = URL.createObjectURL(localFile); OBJ_URLS.push(objURL); }
         return objURL;
       }
-      if (data.hash && data.filepath) return '/audio/' + data.hash;   // server file
+      if (data.hash) return '/audio/' + data.hash;   // server file (404 -> error UI)
       return null;
     }
     const isActive = () => PLAYER.ctl === ctl;
