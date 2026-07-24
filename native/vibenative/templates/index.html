@@ -107,6 +107,16 @@
   <div class="lib-top">
     <input id="lib-search" type="text" autocomplete="off" spellcheck="false"
       placeholder="search title, genre, key…">
+    <label class="lib-sortwrap">sort
+      <select id="lib-sort" title="sort the library">
+        <option value="title">Title</option>
+        <option value="style">Genre</option>
+        <option value="bpm">BPM</option>
+        <option value="key">Key</option>
+        <option value="created">Date added</option>
+      </select>
+    </label>
+    <button id="lib-dir" type="button" title="ascending / descending">&#9650;</button>
     <span id="lib-count" class="lib-count"></span>
     <button id="lib-refresh" type="button" title="reload the library">&#8635; refresh</button>
     <button id="lib-export" type="button" title="download the whole library as a text file">&#11015; .txt</button>

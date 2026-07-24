@@ -609,6 +609,66 @@ def vibes_delete():
     return jsonify({"deleted": bool(n)})
 
 
+@bp.get("/vibes/export")
+def vibes_export():
+    """Export every vibe + its member tracks (content hash + weight) as JSON, for
+    backup, sharing, or moving to another machine."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        vibes = c.execute("SELECT id, name FROM vibes ORDER BY name").fetchall()
+        out = []
+        for vid, name in vibes:
+            members = c.execute(
+                "SELECT hash, weight FROM vibe_tracks WHERE vibe_id=?", (vid,)
+            ).fetchall()
+            out.append(
+                {
+                    "name": name,
+                    "tracks": [{"hash": h, "weight": 1.0 if w is None else w} for h, w in members],
+                }
+            )
+    return jsonify({"kind": "vibenative-vibes", "version": 1, "vibes": out})
+
+
+@bp.post("/vibes/import")
+def vibes_import():
+    """Import vibes from a /vibes/export file. Each vibe is created if new, or merged
+    into an existing same-named vibe; member tracks (by hash + weight) are upserted.
+    Memberships referencing tracks not yet in this DB are still stored — they start
+    contributing once those tracks are analyzed here."""
+    data = request.get_json(silent=True) or {}
+    vibes = data.get("vibes")
+    if not isinstance(vibes, list):
+        return jsonify({"error": "expected a vibenative vibes export (a 'vibes' list)"}), 400
+    created = merged = links = 0
+    with _db_lock, closing(db()) as conn, conn as c:
+        for v in vibes:
+            name = (v.get("name") or "").strip() if isinstance(v, dict) else ""
+            if not name:
+                continue
+            row = c.execute("SELECT id FROM vibes WHERE name=?", (name,)).fetchone()
+            if row:
+                vid = row[0]
+                merged += 1
+            else:
+                vid = c.execute("INSERT INTO vibes(name) VALUES(?)", (name,)).lastrowid
+                created += 1
+            for t in v.get("tracks") or []:
+                h = t.get("hash") if isinstance(t, dict) else None
+                if not h:
+                    continue
+                try:
+                    w = max(-1.0, min(1.0, float(t.get("weight", 1.0))))
+                except (TypeError, ValueError):
+                    w = 1.0
+                c.execute(
+                    "INSERT INTO vibe_tracks(vibe_id, hash, weight) VALUES(?,?,?) "
+                    "ON CONFLICT(vibe_id, hash) DO UPDATE SET weight=excluded.weight",
+                    (vid, h, w),
+                )
+                links += 1
+    return jsonify({"ok": True, "created": created, "merged": merged, "tracks": links})
+
+
 @bp.get("/vibes/<int:vid>/members")
 def vibes_members(vid):
     """Member tracks of a vibe with their current weights, for the weight editor.

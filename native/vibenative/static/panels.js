@@ -275,6 +275,39 @@ async function renderVibePanel(){
   });
   vibeBody.appendChild(create);
 
+  // export / import all vibes (JSON) — backup, share, or move between machines
+  const io = document.createElement('div');
+  io.className = 'vibe-io';
+  io.innerHTML = `<button class="vibe-export" title="download all your vibes as a .json file">&#11015; export</button>` +
+                 `<button class="vibe-import" title="import vibes from a .json file (merges by name)">&#11014; import</button>` +
+                 `<input type="file" accept=".json,application/json" hidden>`;
+  const fileInp = io.querySelector('input');
+  io.querySelector('.vibe-export').addEventListener('click', async () => {
+    try {
+      const data = await fetch('/vibes/export').then(r => r.json());
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'vibenative-vibes.json'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (_) { alert('export failed'); }
+  });
+  io.querySelector('.vibe-import').addEventListener('click', () => fileInp.click());
+  fileInp.addEventListener('change', async () => {
+    const f = fileInp.files[0]; if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); } catch (_) { alert('That is not a valid JSON file.'); return; }
+    try {
+      const r = await fetch('/vibes/import', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || 'import failed'); return; }
+      alert(`Imported ${j.created} new vibe(s), merged ${j.merged}, ${j.tracks} track link(s).`);
+      renderVibePanel();
+    } catch (_) { alert('import failed'); }
+    fileInp.value = '';
+  });
+  vibeBody.appendChild(io);
+
   if (!vibes.length){
     vibeBody.insertAdjacentHTML('beforeend',
       `<p class="sib-note">No vibes yet. Create one, then add tracks to it with the

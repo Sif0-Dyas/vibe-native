@@ -4,7 +4,7 @@
 (function () {
   var LIB = null;                 // cached full library ([] of lean track records)
   var sortKey = 'title', sortDesc = false;
-  var searchEl, rowsEl, countEl, headEl, wired = false;
+  var searchEl, rowsEl, countEl, headEl, sortEl, dirEl, wired = false;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -33,6 +33,7 @@
     list = list.slice().sort(function (a, b) {
       var av, bv;
       if (sortKey === 'bpm') { return ((a.bpm || 0) - (b.bpm || 0)) * dir; }
+      if (sortKey === 'created') { return ((a.created || 0) - (b.created || 0)) * dir; }
       if (sortKey === 'key') { av = keyOf(a); bv = keyOf(b); }
       else if (sortKey === 'style') { av = (a.style || '').toLowerCase(); bv = (b.style || '').toLowerCase(); }
       else { av = (a.title || '').toLowerCase(); bv = (b.title || '').toLowerCase(); }
@@ -41,10 +42,13 @@
 
     countEl.textContent = list.length + (list.length === 1 ? ' track' : ' tracks') +
       (q ? ' (of ' + LIB.length + ')' : '');
+    // keep the header indicators + the explicit sort control in sync
     headEl.querySelectorAll('span').forEach(function (s) {
       s.classList.toggle('sorted', s.dataset.sort === sortKey);
       s.classList.toggle('desc', s.dataset.sort === sortKey && sortDesc);
     });
+    if (sortEl) sortEl.value = sortKey;
+    if (dirEl) dirEl.innerHTML = sortDesc ? '&#9660;' : '&#9650;';
 
     if (!list.length) {
       rowsEl.innerHTML = '<div class="lib-empty">no tracks' +
@@ -95,6 +99,8 @@
     rowsEl = document.getElementById('lib-rows');
     countEl = document.getElementById('lib-count');
     headEl = document.querySelector('.lib-head');
+    sortEl = document.getElementById('lib-sort');
+    dirEl = document.getElementById('lib-dir');
     if (!rowsEl) return;
     wired = true;
     searchEl.addEventListener('input', render);
@@ -104,6 +110,12 @@
       if (k === sortKey) sortDesc = !sortDesc; else { sortKey = k; sortDesc = false; }
       render();
     });
+    if (sortEl) sortEl.addEventListener('change', function () {
+      if (sortEl.value === sortKey) return;
+      sortKey = sortEl.value; sortDesc = (sortKey === 'created');   // newest-first default for dates
+      render();
+    });
+    if (dirEl) dirEl.addEventListener('click', function () { sortDesc = !sortDesc; render(); });
     rowsEl.addEventListener('click', function (e) {
       var r = e.target.closest('.lib-row'); if (!r) return;
       if (window.loadTrackByHash) {
