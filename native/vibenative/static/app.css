@@ -43,14 +43,19 @@ header::before{
 @keyframes eq{from{height:var(--lo,15%)}to{height:var(--hi,80%)}}
 .hd-left{display:flex; align-items:baseline; gap:10px; position:relative; z-index:1}
 header h1{
-  font-family:'Syne',sans-serif; font-weight:800;
+  font-family:'Syne',sans-serif; font-weight:900;
   font-size:clamp(16px,2.2vw,19px); letter-spacing:-.01em;
   line-height:54px;
+  /* "Vibe" pops: a brighter cyan->violet gradient with a soft cyan glow */
+  background:linear-gradient(90deg,#22D3EE 0%,#7C5CFF 100%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 9px rgba(34,211,238,.45));
 }
 header h1 em{
-  font-style:normal;
-  background:var(--grad); -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-  background-clip:text;
+  /* "dentify" stays high-contrast + readable (overrides the clipped-gradient fill) */
+  font-style:normal; font-weight:800;
+  -webkit-text-fill-color:var(--text); color:var(--text);
+  filter:none;
 }
 header .sub{color:var(--dim); font-size:11.5px; font-family:'JetBrains Mono',monospace}
 /* ---- batch badge ---- */
@@ -467,6 +472,20 @@ footer, .actionbar{
   font-family:'JetBrains Mono',monospace;
 }
 #clear:hover{color:var(--text); border-color:var(--dimmer)}
+/* shared chip style for action-bar buttons without a dedicated rule (review reads,
+   label, playlist) so none fall back to raw browser styling. ID-styled buttons
+   (#batch-btn/#vibe-btn/#clear/#export) win by specificity and keep their look. */
+.actionbar > button{
+  font-family:'JetBrains Mono',monospace; font-size:11px;
+  background:none; border:1px solid var(--line); border-radius:var(--r-sm);
+  color:var(--text); padding:7px 12px; cursor:pointer; white-space:nowrap;
+  transition:border-color .12s, color .12s, background .12s;
+}
+.actionbar > button:hover{border-color:var(--accent-a); color:#fff}
+.actionbar > button .pl-badge{
+  display:inline-block; min-width:16px; padding:0 5px; margin-left:5px;
+  background:var(--panel-2); border-radius:9px; font-size:10px; color:var(--dim);
+}
 /* medium: genre column wraps to its own row under track + meta */
 @media (max-width:1000px){
   .row{

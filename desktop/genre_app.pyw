@@ -3,14 +3,12 @@
 This is an ADDITIVE launcher. It does not modify any app code: it opens the exact
 same Flask UI (served locally on a random loopback port) inside a chromeless native
 window (Edge WebView2), boots the native backend for you if it isn't already
-running, and injects a small JS shim at runtime that adds two things a plain
+running, and injects a small JS shim at runtime that adds one thing a plain
 browser can't do:
 
   * a native Windows *folder* picker whose picked ``C:\\...`` path is handed
     straight to the app's existing runBatch() (the native /batch route reads
-    Windows paths directly now — no WSL translation),
-  * an always-visible "add files" button that reuses the app's existing native
-    file picker (#picker) + enqueue() upload path.
+    Windows paths directly now — no WSL translation).
 
 Two backend modes (native ONNX engine, no WSL anywhere):
 
@@ -317,8 +315,7 @@ def _ensure_backend_started() -> tuple[bool, str | None]:
 
 # --------------------------------------------------------------------------- #
 # The JS shim injected into the live page (only inside this shell). It wires the
-# native folder picker to the app's existing runBatch(), and adds an "add files"
-# button that reuses the app's own #picker. Nothing here touches app.js on disk.
+# native folder picker to the app's existing runBatch(). Nothing here touches app.js.
 # --------------------------------------------------------------------------- #
 INJECT_JS = r"""
 (function () {
@@ -349,19 +346,9 @@ INJECT_JS = r"""
     });
   }, true);
 
-  // 2) Add an always-visible "add files" button next to the batch button that
-  //    reuses the app's existing native file picker (#picker) + upload path.
-  var batchBtn = document.getElementById('batch-btn');
-  var picker = document.getElementById('picker');
-  if (batchBtn && picker && !document.getElementById('desk-addfiles')) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.id = 'desk-addfiles';
-    b.textContent = '♪ add files';
-    b.title = 'Pick audio files (native Windows dialog)';
-    batchBtn.insertAdjacentElement('afterend', b);
-    b.addEventListener('click', function () { picker.click(); });
-  }
+  // (The "add files" picker the app already has in its footer — "Browse files" —
+  //  opens the same native Windows file dialog, so the shell no longer injects a
+  //  duplicate button.)
 })();
 """
 
