@@ -25,6 +25,12 @@ import numpy as np
 
 from .paths import exe_dir
 
+# On a frozen --windowed Windows build, each ffmpeg/ffprobe call would briefly
+# flash a console window — hundreds of them during a batch scan, which also churns
+# window handles and steals focus, and on its own can destabilise the app.
+# CREATE_NO_WINDOW runs every child hidden. 0 on non-Windows (the flag is absent).
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 SR = 16000
 # Group-delay of Essentia's resampler in native-input samples, calibrated so the
 # reproduced 16 kHz audio matches Essentia's; validated to cos > 0.999 (worst
@@ -78,6 +84,7 @@ def _probe(path) -> tuple[int, int]:
         capture_output=True,
         text=True,
         check=True,
+        creationflags=NO_WINDOW,
     ).stdout
     s = json.loads(out)["streams"][0]
     return int(s["sample_rate"]), int(s["channels"])
@@ -107,6 +114,7 @@ def decode_mono(path, sr: int = SR) -> np.ndarray:
         [_tool("ffmpeg"), "-v", "error", "-i", str(path), "-f", "f32le", "-ac", str(ch), "-"],
         capture_output=True,
         check=True,
+        creationflags=NO_WINDOW,
     ).stdout
     a = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
     mono = a if ch == 1 else a.reshape(-1, ch).mean(axis=1)  # (L+R)/2

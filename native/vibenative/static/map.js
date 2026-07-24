@@ -922,6 +922,74 @@
   }, { passive:false });
 
   /* ---- select + camera fly ----------------------------------------- */
+  /* ---- select-to-preview: sample-play a selected track's "drop" ----------
+     Selecting a node auto-plays a short clip from its first big energy jump (the
+     drop) — or the middle as a fallback — on a DEDICATED audio element, and
+     pauses the bottom Now Playing bar so the two never overlap. */
+  const PREVIEW_SECONDS = 22;
+  const PREV = { audio: new Audio(), token: 0, stopAt: 0, url: null };
+  PREV.audio.preload = 'auto';
+  PREV.audio.addEventListener('timeupdate', () => {
+    if (PREV.stopAt && PREV.audio.currentTime >= PREV.stopAt) stopPreview();
+  });
+  function stopPreview(){
+    PREV.token++;                       // invalidate any in-flight start
+    PREV.stopAt = 0;
+    try { PREV.audio.pause(); } catch(_){ /* not started */ }
+  }
+  window.mapStopPreview = stopPreview;   // let the popup's ▶ play hand off cleanly
+
+  // Best spot to start a preview: first sustained high-energy point (the drop),
+  // else ~40% in. Uses the DAW rms envelope from /waveform.
+  async function dropStart(hash, duration){
+    const dur = duration || 0;
+    const cap = Math.max(0, dur - PREVIEW_SECONDS);   // leave room to play the clip
+    try {
+      const mm = await fetch('/waveform/' + hash).then(r => r.ok ? r.json() : null);
+      const rms = mm && mm.rms;
+      if (rms && rms.length && dur){
+        let mx = 0; for (const v of rms) if (v > mx) mx = v;
+        if (mx > 0){
+          const thr = 0.72 * mx;
+          for (let i = Math.floor(rms.length * 0.08); i < rms.length - 3; i++){
+            if (rms[i] >= thr && rms[i + 1] >= thr && rms[i + 2] >= thr){
+              return Math.min(i / rms.length * dur, cap);
+            }
+          }
+        }
+      }
+    } catch(_){ /* fall through to the middle */ }
+    return dur ? Math.min(dur * 0.4, cap) : 0;
+  }
+
+  async function previewTrack(n){
+    stopPreview();
+    if (mapMode === 'tree' || !n) return;
+    const my = PREV.token;                          // stopPreview() just bumped it
+    if (typeof PLAYER !== 'undefined'){ try { PLAYER.audio.pause(); } catch(_){ /* none */ } }
+    // resolve a source: the server copy, else a persisted dropped-file handle
+    let src = null;
+    if (PREV.url){ URL.revokeObjectURL(PREV.url); PREV.url = null; }
+    if (n.a) src = '/audio/' + n.hash;
+    else if (typeof FSH !== 'undefined' && FSH.supported){
+      const f = await FSH.file(n.hash);
+      if (my !== PREV.token) return;                // a newer selection won
+      if (f){ src = URL.createObjectURL(f); PREV.url = src; }
+    }
+    if (!src) return;                               // nothing playable — stay silent
+    const start = await dropStart(n.hash, n.duration);
+    if (my !== PREV.token) return;
+    PREV.audio.src = src;
+    const begin = () => {
+      if (my !== PREV.token) return;
+      try { PREV.audio.currentTime = start; } catch(_){ /* seek after load */ }
+      PREV.stopAt = start + PREVIEW_SECONDS;
+      PREV.audio.play().catch(() => {});
+    };
+    if (PREV.audio.readyState >= 1) begin();
+    else PREV.audio.addEventListener('loadedmetadata', begin, { once: true });
+  }
+
   function selectNode(hash){
     const n = byHash.get(hash); if (!n) return;
     selHash = hash; famPivot = null; focusedFam = null;   // orbit this track, not a genre
@@ -933,6 +1001,7 @@
                t0:performance.now(), dur:600 };
     }
     openPopup(n);
+    previewTrack(n);                                  // auto-sample the drop
   }
 
   async function openPopup(n){
@@ -974,10 +1043,13 @@
     popEl.hidden = false;
     popEl.querySelector('.pop-x').onclick = closePopup;
     const playBtn = popEl.querySelector('.pop-play');
-    if (playBtn && n.a) playBtn.onclick = () => window.playHash && window.playHash(n.hash, {
-      title: n.artist ? stripArtist(n.title, n.artist) : n.title,
-      artist: n.artist || '', color: famCss(n.fam),
-    });
+    if (playBtn && n.a) playBtn.onclick = () => {
+      stopPreview();                                 // hand off the sample to full playback
+      if (window.playHash) window.playHash(n.hash, {
+        title: n.artist ? stripArtist(n.title, n.artist) : n.title,
+        artist: n.artist || '', color: famCss(n.fam),
+      });
+    };
     const addBtn = popEl.querySelector('.pop-add');
     if (addBtn) addBtn.onclick = () => {
       if (window.playlistAdd) window.playlistAdd({
@@ -1115,6 +1187,7 @@
       ? title.slice(artist.length+3) : title;
 
   function closePopup(){
+    stopPreview();
     popEl.hidden = true; selHash = null; famPivot = null; focusedFam = null;
   }
 

@@ -74,7 +74,10 @@ const FSH = (function () {
 })();
 
 PLAYER.audio.addEventListener('timeupdate', () => { if (PLAYER.ctl) PLAYER.ctl.tick(); });
-PLAYER.audio.addEventListener('play',       () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
+PLAYER.audio.addEventListener('play',       () => {
+  if (PLAYER.ctl) PLAYER.ctl.render();
+  if (window.mapStopPreview) window.mapStopPreview();   // full playback stops any map sample
+});
 PLAYER.audio.addEventListener('pause',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
 PLAYER.audio.addEventListener('ended',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
 PLAYER.audio.addEventListener('error',      () => { if (PLAYER.ctl) PLAYER.ctl.error(); });

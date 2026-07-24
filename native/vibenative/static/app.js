@@ -1283,12 +1283,13 @@ clearB.addEventListener('click', () => {
 const batchBtn = document.getElementById('batch-btn');
 const batchStatus = document.getElementById('batch-status');
 let batchRunning = false;
+const BATCH_ROW_CAP = 250;   // most recent rows to keep on screen during a batch
 
 batchBtn.addEventListener('click', () => {
   if (batchRunning){ return; }
   const path = prompt(
-    'Enter the WSL path to your music folder:\n(e.g. /mnt/c/Users/you/Music)',
-    '/mnt/c/Users/'
+    'Enter the path to your music folder:\n(e.g. C:\\Users\\you\\Music)',
+    'C:\\Users\\'
   );
   if (!path || !path.trim()) return;
   runBatch(path.trim());
@@ -1314,6 +1315,17 @@ async function runBatch(folderPath){
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
     let buf = '', total = 0, done = 0;
+    // Keep the List light so a huge folder can't blow up the WebView: only newly
+    // analyzed tracks get a (heavy, waveform-bearing) row, capped to the most
+    // recent BATCH_ROW_CAP; already-in-library and failed tracks are just counted.
+    let added = 0, skipped = 0, failed = 0;
+    const shown = [];
+    const trimRow = r => { r.remove(); const i = results.findIndex(x => x.row === r); if (i !== -1) results.splice(i, 1); };
+    const updateStatus = () => {
+      const pct = total ? Math.round(done / total * 100) : 0;
+      const extra = [skipped ? `${skipped} skipped` : '', failed ? `${failed} failed` : ''].filter(Boolean).join(' · ');
+      batchStatus.textContent = `⟳ ${done} / ${total} · ${pct}%` + (extra ? `  (${extra})` : '');
+    };
     while (true){
       const {value, done: eof} = await reader.read();
       if (eof) break;
@@ -1322,25 +1334,29 @@ async function runBatch(folderPath){
       buf = lines.pop();
       for (const line of lines){
         if (!line.trim()) continue;
-        try {
-          const d = JSON.parse(line);
-          if (d.total){ total = d.total; batchStatus.textContent = `0 / ${total}`; continue; }
-          done = d.progress || done + 1;
-          batchStatus.textContent = `${done} / ${total}`;
-          if (d.ok){
-            // inject into the queue as if the user dropped the file
-            // (we have full data, so finishRow directly with no /analyze round-trip)
-            const fakeFile = {name: d.filename};
-            const row = addRow(fakeFile);
-            finishRow(row, d, null);
-          } else {
-            const row = addRow({name: d.filename});
-            failRow(row, d.error || 'failed');
-          }
-        } catch(e){ /* bad JSON line, skip */ }
+        let d; try { d = JSON.parse(line); } catch(e){ continue; }
+        if (d.total){ total = d.total; updateStatus(); continue; }
+        done = d.progress || done + 1;
+        if (d.ok && d.cached){
+          skipped++;                              // already analyzed -> don't render
+        } else if (d.ok){
+          const row = addRow({name: d.filename});
+          finishRow(row, d, null);
+          shown.push(row);
+          if (shown.length > BATCH_ROW_CAP) trimRow(shown.shift());
+          added++;
+        } else {
+          failed++;                               // count failures; keep the List light
+        }
+        updateStatus();
       }
     }
-    batchStatus.textContent = `✓ ${done} tracks`;
+    const bits = [`✓ ${added} added`];
+    if (skipped) bits.push(`${skipped} already in library`);
+    if (failed) bits.push(`${failed} failed`);
+    if (added > BATCH_ROW_CAP) bits.push(`showing last ${BATCH_ROW_CAP} — see the Library tab`);
+    batchStatus.textContent = bits.join(' · ');
+    refreshFooter();
   } catch(err){
     batchStatus.textContent = 'error';
     alert('Batch failed: ' + err.message);

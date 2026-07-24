@@ -230,7 +230,7 @@ def _extract_segment(src, safe_genre, h, start, end):
     ffmpeg is a soft failure (the override is still recorded, just not clipped)."""
     import subprocess  # nosec B404  # only used to run ffmpeg with a fixed arg list, never a shell
 
-    from ..decode import find_tool
+    from ..decode import NO_WINDOW, find_tool
 
     ffmpeg = find_tool("ffmpeg")  # PATH or the WinGet Links dir (Windows winget install)
     if not ffmpeg:
@@ -254,7 +254,7 @@ def _extract_segment(src, safe_genre, h, start, end):
 
     def _run(cmd):
         try:
-            r = subprocess.run(cmd, capture_output=True, timeout=300)  # nosec B603  # ffmpeg from shutil.which, args are a list (no shell), src is a DB-recorded path
+            r = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=NO_WINDOW)  # nosec B603  # ffmpeg from shutil.which, args are a list (no shell), src is a DB-recorded path
             if r.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
                 return True, None
             return False, (r.stderr.decode(errors="replace")[-300:].strip() or "ffmpeg failed")

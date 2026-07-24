@@ -377,7 +377,10 @@ def batch_route():
 
     data = request.get_json(silent=True) or {}
     folder = Path(wsl_to_windows(str(data.get("path", "")))).expanduser()
-    workers = int(data.get("workers", 3))  # 3 parallel analyses, safe on most CPUs
+    # Bounded parallelism throttles CPU/GPU/RAM so a huge folder can't swamp the
+    # machine; clamp whatever the client asks for to a safe range.
+    cpu = os.cpu_count() or 4
+    workers = max(1, min(int(data.get("workers", 3) or 3), cpu, 6))
 
     if not folder.is_dir():
         return jsonify({"error": f"not a directory: {folder}"}), 400
