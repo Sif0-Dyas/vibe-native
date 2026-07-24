@@ -32,6 +32,37 @@ def forget_route(h):
     return jsonify({"ok": True, "deleted": deleted})
 
 
+@bp.get("/library")
+def library_list():
+    """A lean listing of EVERY cached track for the Library tab: hash, title, top
+    style, BPM, key/scale/camelot, and whether a server-side file exists. Parses each
+    stored payload for just those fields (the big segments/waveform arrays are dropped)."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute(
+            "SELECT hash, filename, title, payload, filepath, created FROM tracks "
+            "ORDER BY created DESC"
+        ).fetchall()
+    out = []
+    for h, fn, title, payload, filepath, created in rows:
+        p = json.loads(payload) if payload else {}
+        styles = p.get("styles") or []
+        out.append(
+            {
+                "hash": h,
+                "title": title or fn or h[:10],
+                "filename": fn,
+                "style": styles[0].get("style") if styles else None,
+                "bpm": p.get("bpm"),
+                "key": p.get("key"),
+                "scale": p.get("scale"),
+                "camelot": p.get("camelot"),
+                "has_file": bool(filepath),
+                "created": created,
+            }
+        )
+    return jsonify(out)
+
+
 @bp.post("/override/<h>")
 def override_route(h):
     """Manually set a track's genre. Persists into the cached analysis (so the

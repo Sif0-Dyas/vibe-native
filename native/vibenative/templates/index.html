@@ -64,6 +64,7 @@
   </div>
   <nav class="tabs" id="tabs">
     <button class="tab active" data-view="list" type="button">&#8801; List</button>
+    <button class="tab" data-view="library" type="button" title="browse every analyzed track in your library">&#8803; Library</button>
     <button class="tab" data-view="map" type="button">&#10038; Map</button>
     <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
   </nav>
@@ -96,6 +97,24 @@
     </div>
   </div>
 </main>
+
+<!-- whole-library text list: every analyzed track, searchable + sortable -->
+<section id="library-view" hidden aria-label="Library">
+  <div class="lib-top">
+    <input id="lib-search" type="text" autocomplete="off" spellcheck="false"
+      placeholder="search title, genre, key…">
+    <span id="lib-count" class="lib-count"></span>
+    <button id="lib-refresh" type="button" title="reload the library">&#8635; refresh</button>
+    <button id="lib-export" type="button" title="download the whole library as a text file">&#11015; .txt</button>
+  </div>
+  <div class="lib-head">
+    <span data-sort="title">Title</span>
+    <span data-sort="style">Genre</span>
+    <span data-sort="bpm">BPM</span>
+    <span data-sort="key">Key</span>
+  </div>
+  <div id="lib-rows" class="lib-rows"></div>
+</section>
 
 <!-- interactive genre constellation of the whole library -->
 <section id="map-view" hidden aria-label="Genre map">
@@ -221,6 +240,7 @@
 <script src="/static/panels.js"></script>
 <script src="/static/nowbar.js"></script>
 <script src="/static/playlist.js"></script>
+<script src="/static/library.js"></script>
 <script src="/static/map.js"></script>
 </body>
 </html>

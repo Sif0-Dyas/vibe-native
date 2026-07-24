@@ -284,6 +284,20 @@ def _segment_overrides(h):
     return [{"id": r[0], "start_s": r[1], "end_s": r[2], "genre": r[3]} for r in rows]
 
 
+@bp.get("/track/<h>")
+def track_route(h):
+    """Return a cached track's full analysis payload by content hash — the same shape
+    /analyze returns on a cache hit — so the Library tab can load it into the List
+    without re-analyzing. 404 if it isn't cached."""
+    cached = cache_get(h)
+    if not cached:
+        return jsonify({"error": "not in library"}), 404
+    cached["hash"] = h
+    cached["cached"] = True
+    cached["segment_overrides"] = _segment_overrides(h)
+    return jsonify(cached)
+
+
 # ----------------------------------------------------------------------------
 # Audio preview: stream a previously-analyzed track for in-app playback
 # ----------------------------------------------------------------------------

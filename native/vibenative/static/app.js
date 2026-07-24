@@ -212,6 +212,25 @@ function refreshFooter(){
   exportB.disabled = done === 0;
 }
 
+/* Load a cached track into the List by content hash (used by the Library tab's
+   click-to-load). Reuses the exact path /batch uses: a stand-in file object + a
+   finishRow() call with the cached payload, so no re-analysis and all row actions work. */
+window.loadTrackByHash = async (hash) => {
+  if (results.some(r => r.hash === hash)){          // already in the list -> just reveal it
+    const ex = results.find(r => r.hash === hash);
+    if (ex && ex.row) ex.row.scrollIntoView({behavior:'smooth', block:'center'});
+    return true;
+  }
+  try{
+    const d = await fetch(`/track/${encodeURIComponent(hash)}`).then(r => r.json());
+    if (!d || d.error) return false;
+    const row = addRow({name: d.filename || d.title || 'track'});
+    finishRow(row, d, null);
+    row.scrollIntoView({behavior:'smooth', block:'center'});
+    return true;
+  }catch(_){ return false; }
+};
+
 function addRow(file){
   emptyEl.style.display = 'none';
   const row = document.createElement('div');
