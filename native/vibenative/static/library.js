@@ -126,7 +126,7 @@
       if (g) {
         var gv = groupVal(t, g), lbl = groupLabel(g, gv);
         if (lbl !== curG) {
-          if (open) html += '</div>';         // close previous group's rows
+          if (open) html += '</div></div>';   // close previous group's rows + its .lib-grp wrapper
           curG = lbl;
           var col = !!state.collapsed[lbl];
           // count members of this group
@@ -143,7 +143,7 @@
           return '<span class="lc' + cls + '" title="' + esc(cell(t, k)) + '">' + esc(cell(t, k)) + '</span>';
         }).join('') + '</div>';
     }
-    if (open) html += '</div>';
+    if (open) html += '</div></div>';   // close the final group's rows + .lib-grp wrapper
     els.rows.innerHTML = html;
   }
 
