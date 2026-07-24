@@ -19,6 +19,60 @@ const OBJ_URLS = [];   // blob URLs for dropped files, revoked on Clear
    playable afterwards — re-added from the Library, the Map, or the playlist.
    Cleared on page reload, when the File objects are gone anyway. */
 const HASH_FILES = new Map();
+
+/* ---- persistent audio access via the File System Access API (Chromium/WebView2).
+   Dropped/browsed files have no server copy, and the in-memory File is lost on
+   restart. So we also keep a FileSystemFileHandle per content hash in IndexedDB:
+   handles are structured-cloneable, so they survive restarts, and re-opening one
+   (with a one-time permission check, on a user gesture) reads the real file again.
+   Everything degrades gracefully where the API is missing. ---- */
+const FSH = (function () {
+  const DB = 'vibe-fsh', STORE = 'handles';
+  const supported = typeof window !== 'undefined' &&
+    'showOpenFilePicker' in window && 'indexedDB' in window;
+  function open() {
+    return new Promise((res, rej) => {
+      const rq = indexedDB.open(DB, 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore(STORE);
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function tx(mode, makeRequest) {
+    if (!supported) return null;
+    let d;
+    try { d = await open(); } catch (_) { return null; }
+    try {
+      return await new Promise((res, rej) => {
+        const t = d.transaction(STORE, mode);
+        const rq = makeRequest(t.objectStore(STORE));   // an IDBRequest
+        rq.onerror = () => rej(rq.error);
+        t.oncomplete = () => res(rq.result);            // populated by completion
+        t.onerror = () => rej(t.error);
+      });
+    } catch (_) { return null; } finally { d.close(); }
+  }
+  // store the handle for a track by hash (fire-and-forget)
+  async function put(hash, handle) {
+    if (!hash || !handle) return;
+    await tx('readwrite', s => s.put(handle, hash));
+  }
+  // resolve a stored handle to a readable File, prompting for permission if needed.
+  // MUST be called during a user gesture (a play click) or requestPermission throws.
+  async function file(hash) {
+    if (!hash) return null;
+    const handle = await tx('readonly', s => s.get(hash));
+    if (!handle || handle.kind !== 'file') return null;
+    try {
+      const opts = { mode: 'read' };
+      if ((await handle.queryPermission(opts)) !== 'granted' &&
+          (await handle.requestPermission(opts)) !== 'granted') return null;
+      return await handle.getFile();
+    } catch (_) { return null; }
+  }
+  return { put, file, supported };
+})();
+
 PLAYER.audio.addEventListener('timeupdate', () => { if (PLAYER.ctl) PLAYER.ctl.tick(); });
 PLAYER.audio.addEventListener('play',       () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
 PLAYER.audio.addEventListener('pause',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
@@ -42,15 +96,24 @@ function attachPlayer(row, container, controls, c, file, data, dur){
     controls.insertBefore(playBtn, controls.firstChild);
 
     let objURL = null;
-    function playSrc(){
-      // prefer a local File: the one passed in for this row, or one cached from a
-      // drop earlier this session (lets a track replay after the list was cleared).
+    function blobFor(f){
+      if (!objURL){ objURL = URL.createObjectURL(f); OBJ_URLS.push(objURL); }
+      return objURL;
+    }
+    // Resolve a playable source, best-first. Async because a persisted file handle
+    // may need a permission prompt + read. Order avoids prompts when possible:
+    //   1) a File already in hand (this row, or cached from a drop this session)
+    //   2) the server copy (batch/folder tracks — no prompt)
+    //   3) a persisted FileSystemFileHandle (dropped tracks, across restarts)
+    async function resolveSrc(){
       const localFile = file || (data.hash && HASH_FILES.get(data.hash));
-      if (localFile){                  // dropped/browsed file -> client-side blob
-        if (!objURL){ objURL = URL.createObjectURL(localFile); OBJ_URLS.push(objURL); }
-        return objURL;
+      if (localFile) return blobFor(localFile);
+      if (data.hash && data.filepath) return '/audio/' + data.hash;   // server file
+      if (data.hash){
+        const f = await FSH.file(data.hash);          // may prompt (we're in a click)
+        if (f){ HASH_FILES.set(data.hash, f); return blobFor(f); }
+        return '/audio/' + data.hash;                 // last resort (404 -> error UI)
       }
-      if (data.hash) return '/audio/' + data.hash;   // server file (404 -> error UI)
       return null;
     }
     const isActive = () => PLAYER.ctl === ctl;
@@ -74,16 +137,25 @@ function attachPlayer(row, container, controls, c, file, data, dur){
     }
     function onError(){
       if (!isActive()) return;
+      // src was a blob -> the audio really is an unsupported codec; otherwise the
+      // server had no file for it (dropped track with no saved handle/copy).
+      const blob = /^blob:/.test(PLAYER.audio.currentSrc || PLAYER.audio.src || '');
       playBtn.textContent = '✕ can’t play'; playBtn.disabled = true;
-      playBtn.title = 'this audio format can’t be played by the browser';
+      playBtn.title = blob
+        ? 'this audio format can’t be played by the browser'
+        : 'no saved audio for this track — re-add it (drag-drop or Browse) to enable playback';
     }
     const ctl = { tick, render, stopVisual, error: onError };
     row._playCtl = ctl;
 
     async function startPlay(seekFrac){
-      const src = playSrc();
-      if (!src){ playBtn.textContent = '✕ no source'; playBtn.disabled = true; return; }
       if (!isActive()){                       // take over the shared player
+        const src = await resolveSrc();       // only resolve (and maybe prompt) on takeover
+        if (!src){
+          playBtn.textContent = '✕ no audio'; playBtn.disabled = true;
+          playBtn.title = 'no playable source — re-add this track to enable playback';
+          return;
+        }
         if (PLAYER.ctl) PLAYER.ctl.stopVisual();
         PLAYER.ctl = ctl;
         PLAYER.audio.src = src;

@@ -97,6 +97,28 @@ def _backend_log_path() -> str:
 
 BACKEND_LOG = _backend_log_path()
 
+
+def _webview_storage_path():
+    """Persistent WebView2 profile directory. pywebview defaults to
+    private_mode=True (an ephemeral profile), which wipes IndexedDB on every
+    launch — and with it the File System Access handles the app stores so
+    dropped/browsed tracks stay playable across restarts. A stable profile keeps
+    that data. Mirrors the backend-log location: %LOCALAPPDATA%\\Vibenative\\ when
+    frozen, the project root in dev."""
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("LOCALAPPDATA") or os.path.dirname(os.path.abspath(sys.executable))
+        d = os.path.join(base, "Vibenative", "webview")
+    else:
+        d = os.path.join(WIN_PROJECT, ".webview")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        import tempfile
+
+        d = os.path.join(tempfile.gettempdir(), "vibenative-webview")
+        os.makedirs(d, exist_ok=True)
+    return d
+
 _LAUNCH_WARNING: str | None = None  # set if we fall back off the project venv
 
 
@@ -537,7 +559,9 @@ def main():
             window.evaluate_js(INJECT_JS)
 
     window.events.loaded += on_loaded
-    webview.start(_boot_and_load, window)
+    # private_mode=False + a stable storage_path so IndexedDB (which holds the
+    # File System Access handles for replayable dropped tracks) persists.
+    webview.start(_boot_and_load, window, private_mode=False, storage_path=_webview_storage_path())
     _shutdown_backend()  # window closed -> stop the backend we launched
 
 

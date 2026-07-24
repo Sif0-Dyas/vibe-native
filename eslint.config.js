@@ -33,6 +33,7 @@ module.exports = [
         PLAYER: "writable", //     player.js -> used by app.js, panels.js
         OBJ_URLS: "writable", //   player.js -> used by app.js
         HASH_FILES: "writable", // player.js -> used by app.js, nowbar.js
+        FSH: "writable", //        player.js -> used by app.js, nowbar.js (FS Access handles)
         attachPlayer: "writable", // player.js -> used by app.js
         // Rows (app.js) <-> side panels (panels.js) split:
         styleInfo: "writable", //  app.js  -> used by panels.js (sibling editor dots)

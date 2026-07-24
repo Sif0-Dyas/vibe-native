@@ -73,23 +73,37 @@
     bar.classList.remove('on');
   });
 
-  // Play a server-side track by hash (used by the Map popup + playlist). Takes
-  // over the shared audio, resetting any List row that was playing.
-  window.playHash = function (hash, meta) {
+  const keepUrl = u => { if (typeof OBJ_URLS !== 'undefined') OBJ_URLS.push(u); return u; };
+
+  // Play a track by hash (used by the Map popup + playlist). Takes over the shared
+  // audio, resetting any List row that was playing. Async because a dropped track
+  // with no server copy may resolve through a persisted file handle (may prompt).
+  window.playHash = async function (hash, meta) {
     if (!hash) return;
     if (PLAYER.ctl && PLAYER.ctl.stopVisual) PLAYER.ctl.stopVisual();
     PLAYER.ctl = { tick() {}, render() {}, stopVisual() {}, error() {} };  // bar owns playback now
     PLAYER.now = Object.assign({ hash }, meta || {});
-    // A file dropped this session has no server copy — play its cached blob instead.
+    renderMeta();
+    // Choose a source without a needless permission prompt:
+    //   cached File (this session) -> server copy -> persisted handle.
+    let url = null;
     const cached = (typeof HASH_FILES !== 'undefined') && HASH_FILES.get(hash);
-    const url = cached ? URL.createObjectURL(cached) : '/audio/' + hash;
-    if (cached && typeof OBJ_URLS !== 'undefined') OBJ_URLS.push(url);
+    if (cached) url = keepUrl(URL.createObjectURL(cached));
+    else {
+      let serverOk = false;
+      try { serverOk = (await fetch('/audio/' + hash, { method: 'HEAD' })).ok; } catch (_) { /* offline */ }
+      if (serverOk) url = '/audio/' + hash;
+      else if (typeof FSH !== 'undefined' && FSH.supported) {
+        const f = await FSH.file(hash);   // reopens the dropped file (may prompt once)
+        if (f) { if (typeof HASH_FILES !== 'undefined') HASH_FILES.set(hash, f); url = keepUrl(URL.createObjectURL(f)); }
+      }
+      if (!url) url = '/audio/' + hash;   // let it error -> the bar shows the message
+    }
     // Always start from the beginning. Re-selecting the SAME track keeps the src,
     // so the element would otherwise resume mid-track — reset currentTime instead.
     const abs = new URL(url, location.href).href;
     if (PLAYER.audio.src === abs) PLAYER.audio.currentTime = 0;
     else PLAYER.audio.src = url;
-    renderMeta();
     PLAYER.audio.play().catch(() => {});
   };
 

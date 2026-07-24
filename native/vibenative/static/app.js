@@ -1089,12 +1089,15 @@ async function pump(){
   busy = true;
   let known = 0;
   while (queue.length){
-    const {file, row} = queue.shift();
+    const {file, handle, row} = queue.shift();
     const fd = new FormData();
     fd.append('file', file);
     try{
       const resp = await fetch('/analyze', {method:'POST', body:fd});
       const data = await resp.json();
+      // Persist a file handle (drag-drop / native picker) so this track stays
+      // playable across restarts — even on a cache hit, which has no other source.
+      if (handle && data.hash) FSH.put(data.hash, handle);
       if (resp.ok && data.cached){
         // already analyzed (this session or a previous one) -> keep it out of
         // the list entirely. (TODO: make this behaviour configurable later.)
@@ -1126,13 +1129,17 @@ async function pump(){
 const listKeys = new Set();
 const fileKey = f => `${f.name}::${f.size}`;
 
-function enqueue(files){
+// Accepts a list of File objects, or {file, handle} pairs where handle is a
+// FileSystemFileHandle (from drag-drop / the native picker) we persist for replay.
+function enqueue(items){
   let skipped = 0;
-  for (const f of files){
+  for (const it of items){
+    const f = it.file || it;                 // File, or {file, handle}
+    const handle = it.handle || null;
     const key = fileKey(f);
     if (listKeys.has(key)){ skipped++; continue; }   // already in the list
     listKeys.add(key);
-    queue.push({file:f, row:addRow(f)});
+    queue.push({file:f, handle, row:addRow(f)});
   }
   if (skipped){
     const bs = document.getElementById('batch-status');
@@ -1154,15 +1161,59 @@ drop.addEventListener('dragleave', e => {
 });
 drop.addEventListener('drop', e => {
   e.preventDefault(); drop.classList.remove('over');
-  const files = [...e.dataTransfer.files];
-  if (files.length) enqueue(files);
+  const items = [...(e.dataTransfer.items || [])].filter(it => it.kind === 'file');
+  if (items.length && typeof items[0].getAsFileSystemHandle === 'function'){
+    // Grab both the File and the persistable handle. Both getters must be called
+    // synchronously while the DataTransfer is still alive, so kick them off now.
+    const files = items.map(it => it.getAsFile());
+    const handleP = items.map(it => {
+      try { return Promise.resolve(it.getAsFileSystemHandle()).catch(() => null); }
+      catch(_){ return Promise.resolve(null); }
+    });
+    Promise.all(handleP).then(handles => {
+      const pairs = files.map((f, i) => {
+        let h = handles[i]; if (h && h.kind !== 'file') h = null;   // ignore dropped folders
+        return f ? {file:f, handle:h} : null;
+      }).filter(Boolean);
+      if (pairs.length) enqueue(pairs);
+    });
+  } else {
+    const files = [...e.dataTransfer.files];
+    if (files.length) enqueue(files);
+  }
 });
 picker.addEventListener('change', () => {
   if (picker.files.length) enqueue([...picker.files]);
   picker.value = '';
 });
+// The Browse button is a <label for="picker">. Where the File System Access API
+// exists (WebView2/Chromium), intercept it and use the native picker instead, so
+// we get a persistable handle; otherwise the plain <input> default runs.
+const AUDIO_EXTS = ['.mp3','.flac','.m4a','.mp4','.aac','.ogg','.oga','.opus','.wav',
+  '.aif','.aiff','.aifc','.wma','.alac','.wv','.ape','.mpc','.dsf'];
+async function browseWithPicker(){
+  try{
+    const handles = await window.showOpenFilePicker({
+      multiple: true,
+      types: [{ description: 'Audio files', accept: { 'audio/*': AUDIO_EXTS } }],
+    });
+    const pairs = (await Promise.all(handles.map(async h => {
+      try { return {file: await h.getFile(), handle: h}; } catch(_){ return null; }
+    }))).filter(Boolean);
+    if (pairs.length) enqueue(pairs);
+  }catch(err){
+    if (err && err.name === 'AbortError') return;   // user cancelled the dialog
+    picker.click();                                  // any other failure -> plain input
+  }
+}
+const browseLabel = document.querySelector('label.browse[for="picker"]');
+if (browseLabel && window.showOpenFilePicker){
+  browseLabel.addEventListener('click', e => { e.preventDefault(); browseWithPicker(); });
+}
 // click the empty hero to browse (the Browse button in the footer also opens it)
-if (emptyEl) emptyEl.addEventListener('click', () => picker.click());
+if (emptyEl) emptyEl.addEventListener('click', () => {
+  if (window.showOpenFilePicker) browseWithPicker(); else picker.click();
+});
 
 /* export */
 exportB.addEventListener('click', () => {
