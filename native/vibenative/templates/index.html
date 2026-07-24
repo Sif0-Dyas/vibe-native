@@ -106,27 +106,27 @@
 <section id="library-view" hidden aria-label="Library">
   <div class="lib-top">
     <input id="lib-search" type="text" autocomplete="off" spellcheck="false"
-      placeholder="search title, genre, key…">
-    <label class="lib-sortwrap">sort
-      <select id="lib-sort" title="sort the library">
-        <option value="title">Title</option>
+      placeholder="search title, artist, genre, key…">
+    <label class="lib-sortwrap">group
+      <select id="lib-group" title="group rows into collapsible sections">
+        <option value="">none</option>
         <option value="style">Genre</option>
-        <option value="bpm">BPM</option>
         <option value="key">Key</option>
-        <option value="created">Date added</option>
+        <option value="camelot">Camelot</option>
+        <option value="bpmband">BPM range</option>
+        <option value="artist">Artist</option>
       </select>
     </label>
+    <label class="lib-sortwrap">sort
+      <select id="lib-sort" title="sort the library"></select>
+    </label>
     <button id="lib-dir" type="button" title="ascending / descending">&#9650;</button>
+    <button id="lib-cols" type="button" title="choose columns (or right-click a column header)">&#9638; columns</button>
     <span id="lib-count" class="lib-count"></span>
     <button id="lib-refresh" type="button" title="reload the library">&#8635; refresh</button>
-    <button id="lib-export" type="button" title="download the whole library as a text file">&#11015; .txt</button>
+    <button id="lib-export" type="button" title="download the visible columns as a text file">&#11015; .txt</button>
   </div>
-  <div class="lib-head">
-    <span data-sort="title">Title</span>
-    <span data-sort="style">Genre</span>
-    <span data-sort="bpm">BPM</span>
-    <span data-sort="key">Key</span>
-  </div>
+  <div id="lib-head" class="lib-head"></div>
   <div id="lib-rows" class="lib-rows"></div>
 </section>
 

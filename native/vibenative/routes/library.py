@@ -51,11 +51,13 @@ def library_list():
                 "hash": h,
                 "title": title or fn or h[:10],
                 "filename": fn,
+                "artist": _artist_of(p, title, fn),
                 "style": styles[0].get("style") if styles else None,
                 "bpm": p.get("bpm"),
                 "key": p.get("key"),
                 "scale": p.get("scale"),
                 "camelot": p.get("camelot"),
+                "duration": p.get("duration"),
                 "has_file": bool(filepath),
                 "created": created,
             }
