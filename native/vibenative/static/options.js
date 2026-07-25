@@ -33,6 +33,13 @@
         '<div class="opt-note">Your library, vibes, tags, and saved playlists all live in ' +
         'this file. Set the <b>GENRE_DB</b> environment variable to point elsewhere.</div>' +
       '</div>' +
+      (s.log_path ?
+        '<div class="opt-card"><h3>Diagnostics</h3>' +
+          row('Log file', esc(s.log_path)) +
+          '<div class="opt-note">Activity and errors are written here (the previous ' +
+          'session is kept alongside as <b>.prev</b>). If something crashes, this file ' +
+          'shows what it was doing right before.</div>' +
+        '</div>' : '') +
       '<div class="opt-card"><h3>Manage</h3>' +
         '<div class="opt-actions">' +
           '<button data-act="library">&#8803; Browse library</button>' +

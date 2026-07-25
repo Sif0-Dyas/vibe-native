@@ -9,6 +9,28 @@
    builder here (finishRow) calls its renderTags / renderLookup /
    renderVibeMatches — a cross-file reference in the shared <script> scope. */
 
+/* ---- diagnostics: ship frontend breadcrumbs to the backend log ------------
+   The WebView renderer can crash on its own (e.g. OOM during a big batch),
+   taking its console with it — so POST milestones + uncaught errors to the
+   backend, where they persist in the log file. */
+function clientLog(msg, level){
+  try {
+    fetch('/clientlog', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({msg: String(msg), level: level || 'info'}),
+      keepalive: true,          // still sent if the page is tearing down
+    }).catch(()=>{});
+  } catch(_){ /* never let logging throw */ }
+}
+function jsHeapMB(){
+  const m = performance && performance.memory;   // Chromium/WebView2 only
+  return m ? Math.round(m.usedJSHeapSize / 1e6) + '/' + Math.round(m.jsHeapSizeLimit / 1e6) : '?';
+}
+window.addEventListener('error', e =>
+  clientLog(`window.error: ${e.message || ''} @ ${e.filename || ''}:${e.lineno || ''}:${e.colno || ''}`, 'error'));
+window.addEventListener('unhandledrejection', e =>
+  clientLog('unhandledrejection: ' + ((e.reason && (e.reason.stack || e.reason.message || e.reason)) || ''), 'error'));
+
 const rowsEl  = document.getElementById('rows');
 const emptyEl = document.getElementById('empty');
 const drop    = document.getElementById('drop');
@@ -1300,6 +1322,7 @@ async function runBatch(folderPath){
   batchBtn.classList.add('active');
   batchBtn.textContent = '⏸ running…';
   batchStatus.textContent = 'scanning…';
+  clientLog(`batch start: ${folderPath}  (jsHeap=${jsHeapMB()}MB)`);
 
   try {
     const resp = await fetch('/batch', {
@@ -1349,8 +1372,13 @@ async function runBatch(folderPath){
           failed++;                               // count failures; keep the List light
         }
         updateStatus();
+        if (done % 100 === 0){
+          const rows = rowsEl.querySelectorAll('.row').length;
+          clientLog(`batch ${done}/${total} · added=${added} skipped=${skipped} failed=${failed} · domRows=${rows} · jsHeap=${jsHeapMB()}MB`);
+        }
       }
     }
+    clientLog(`batch done: added=${added} skipped=${skipped} failed=${failed} · jsHeap=${jsHeapMB()}MB`);
     const bits = [`✓ ${added} added`];
     if (skipped) bits.push(`${skipped} already in library`);
     if (failed) bits.push(`${failed} failed`);
@@ -1359,6 +1387,7 @@ async function runBatch(folderPath){
     refreshFooter();
   } catch(err){
     batchStatus.textContent = 'error';
+    clientLog('batch error: ' + (err && (err.stack || err.message || err)), 'error');
     alert('Batch failed: ' + err.message);
   } finally {
     batchRunning = false;

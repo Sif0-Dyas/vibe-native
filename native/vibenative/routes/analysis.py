@@ -364,6 +364,56 @@ def waveform_route(h):
     return jsonify(data)
 
 
+def _rss_mb():
+    """Current process resident-set size in MB (Windows, via ctypes); None if it
+    can't be read. Used to trace memory growth during a batch so an OOM crash can
+    be pinned to the file that pushed it over."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _PMC(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        k = ctypes.windll.kernel32
+        k.GetCurrentProcess.restype = ctypes.c_void_p   # HANDLE is pointer-sized
+        psapi = ctypes.WinDLL("psapi")
+        psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.POINTER(_PMC), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        c = _PMC()
+        c.cb = ctypes.sizeof(_PMC)
+        if psapi.GetProcessMemoryInfo(k.GetCurrentProcess(), ctypes.byref(c), c.cb):
+            return round(c.WorkingSetSize / 1e6)
+    except Exception:  # nosec B110  # diagnostics only — never break a scan over this
+        pass
+    return None
+
+
+@bp.post("/clientlog")
+def clientlog_route():
+    """Sink for the frontend's diagnostics (batch milestones, JS heap size, uncaught
+    errors). The WebView renderer can crash independently of this backend, taking
+    its console with it — POSTing here lands those breadcrumbs in the same backend
+    log file, so a renderer crash still leaves a trail."""
+    data = request.get_json(silent=True) or {}
+    msg = str(data.get("msg", ""))[:2000]
+    level = data.get("level", "info")
+    fn = getattr(log, level if level in ("info", "warning", "error") else "info")
+    fn("[client] %s", msg)
+    return ("", 204)
+
+
 @bp.post("/batch")
 def batch_route():
     """Scan a server-side folder path and analyze all audio files in parallel.
@@ -372,6 +422,7 @@ def batch_route():
     muscle-memory compatibility. Returns newline-delimited JSON results (NDJSON)."""
     import concurrent.futures
     import json as _json
+    import time as _time
 
     from ..paths import wsl_to_windows
 
@@ -389,7 +440,19 @@ def batch_route():
     if not files:
         return jsonify({"error": "no audio files found"}), 404
 
+    log.info("batch START: %s  (%d files, %d workers, rss=%sMB)",
+             folder, len(files), workers, _rss_mb())
+
     def analyze_one(path: Path):
+        # Log BEFORE the heavy work (with the file size + current RSS) and FLUSH via
+        # the logging handler, so if this file OOM-kills the process the last START
+        # line on disk names the culprit. Kept concise; one pair of lines per file.
+        try:
+            size_mb = round(path.stat().st_size / 1e6, 1)
+        except OSError:
+            size_mb = "?"
+        log.info("  · START %s (%s MB, rss=%sMB)", path.name, size_mb, _rss_mb())
+        t0 = _time.time()
         try:
             h = file_hash(path)
             cached = cache_get(h)
@@ -401,6 +464,7 @@ def batch_route():
                 # stored none) so audio preview / DAW waveform / section overrides
                 # light up for the whole library on a re-scan -- no re-analysis.
                 _backfill_filepath(h, str(path))
+                log.info("  · CACHED %s (%.1fs)", path.name, _time.time() - t0)
                 return cached
             title = read_title(path) or path.stem
             tags = read_tags(path)
@@ -412,9 +476,10 @@ def batch_route():
             if wave is not None:
                 waveform_cache_put(h, wave)
             payload.update({"ok": True, "hash": h, "cached": False})
+            log.info("  · OK %s (%.1fs, rss=%sMB)", path.name, _time.time() - t0, _rss_mb())
             return payload
         except Exception:
-            log.exception("batch analysis failed for %s", path.name)
+            log.exception("  · FAIL %s (%.1fs)", path.name, _time.time() - t0)
             return {
                 "ok": False,
                 "filename": path.name,
@@ -424,13 +489,14 @@ def batch_route():
 
     def generate():
         yield _json.dumps({"total": len(files)}) + "\n"
+        done = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
             futs = {ex.submit(analyze_one, f): f for f in files}
-            done = 0
             for fut in concurrent.futures.as_completed(futs):
                 done += 1
                 result = fut.result()
                 result["progress"] = done
                 yield _json.dumps(result) + "\n"
+        log.info("batch DONE: %d/%d processed, rss=%sMB", done, len(files), _rss_mb())
 
     return Response(generate(), mimetype="application/x-ndjson")

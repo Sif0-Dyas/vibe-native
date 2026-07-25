@@ -270,6 +270,14 @@ def _setup_inprocess_logging():
     no console, so a file is the only place these land."""
     root = logging.getLogger()
     root.setLevel(logging.INFO)
+    # Preserve the previous session's log before truncating: if that session
+    # crashed (e.g. an OOM during a batch), its trail survives one relaunch as
+    # <log>.prev instead of being overwritten.
+    try:
+        if os.path.exists(BACKEND_LOG):
+            os.replace(BACKEND_LOG, BACKEND_LOG + ".prev")
+    except OSError:
+        pass
     try:
         fh = logging.FileHandler(BACKEND_LOG, mode="w", encoding="utf-8")
     except OSError:
@@ -286,6 +294,7 @@ def _start_inprocess() -> threading.Thread:
     import time. The daemon thread dies automatically when the window closes."""
     os.environ["GENRE_PORT"] = str(PORT)
     os.environ["GENRE_TOKEN"] = TOKEN
+    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG   # so /status can point users to the log
     if FAKE:
         os.environ["FAKE_ANALYZER"] = "1"
     _ensure_std_streams()

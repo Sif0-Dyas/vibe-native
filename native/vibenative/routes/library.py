@@ -151,10 +151,13 @@ def status_route():
     except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (FAKE/CI) is fine
         pass
 
+    import os
+
     return jsonify(
         {
             "version": vibenative.__version__,
             "db_path": str(DB_PATH),
+            "log_path": os.environ.get("GENRE_BACKEND_LOG") or None,
             "tracks": n,
             "ffmpeg": bool(ffmpeg),
             "ffmpeg_path": ffmpeg,
