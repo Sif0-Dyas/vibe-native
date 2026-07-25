@@ -14,7 +14,6 @@ global BPM by majority vote (Essentia TempoCNN's default aggregationMethod).
 """
 
 import numpy as np
-import onnxruntime as ort
 
 from .paths import models_dir
 
@@ -59,7 +58,14 @@ _HANN = (0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(FRAME) / FRAME)).astype(np.f
 _engine: dict = {}
 
 
-def _session() -> ort.InferenceSession:
+def _session():  # -> onnxruntime.InferenceSession (imported lazily below, so not annotated)
+    # Import onnxruntime lazily, NOT at module top: importing this module must not
+    # require the Windows-only onnxruntime-directml wheel. pytest collects
+    # tests/test_analysis.py (which imports `tempo`) in FAKE mode / on CI where that
+    # wheel is absent — a top-level import here ImportErrored and aborted the whole
+    # suite at collection (see tests/test_import_safety.py, the guard for this).
+    import onnxruntime as ort
+
     if "sess" not in _engine:
         path = MODELS / "tempocnn.onnx"
         if not path.exists():
