@@ -1,0 +1,27 @@
+# Coverage config for CI ONLY — referenced via `pytest --cov-config=.coveragerc.ci`
+# in .github/workflows/ci.yml. Do NOT use this locally.
+#
+# CI installs neither onnxruntime nor the ONNX models (see the "Install
+# dependencies" step in ci.yml) and runs in FAKE_ANALYZER mode, so the
+# model-dependent engine modules below can never be exercised there — they would
+# sit at ~0% and drag the total down to a number that says nothing about the code
+# CI actually runs. Omit them so CI's percentage reflects the app/route/plumbing
+# code it can genuinely cover.
+#
+# The FULL number (engine modules INCLUDED) is what matters for the real app; it is
+# measured LOCALLY with models present and gated by the higher `fail_under` in
+# pyproject.toml ([tool.coverage.report]). That is why the two floors differ.
+[run]
+omit =
+    */vibenative/decode.py
+    */vibenative/frontend_mel.py
+    */vibenative/onnx_engine.py
+    */vibenative/tempo.py
+    */vibenative/key.py
+
+[report]
+# Just under CI's actual FAKE-mode coverage with the engine modules omitted (see
+# the CI number reported alongside this change). Kept a couple of points under
+# actual so the next real regression trips it. The CLI --cov-fail-under in ci.yml
+# passes the same value explicitly; this keeps the file self-documenting.
+fail_under = 68

@@ -36,6 +36,14 @@ vibenative = ["templates/*", "static/*"]
 testpaths = ["tests"]
 pythonpath = ["native"]
 
+# Coverage floor for LOCAL / full-suite runs (models + onnxruntime present, so the
+# engine modules key/tempo/decode/frontend_mel/onnx_engine are actually exercised).
+# Actual is ~79%; 75 sits just under it so the next regression trips it. CI cannot
+# load models, so it measures a DIFFERENT (smaller) module set with its own, lower
+# floor — see .coveragerc.ci and the Test step in .github/workflows/ci.yml.
+[tool.coverage.report]
+fail_under = 75
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
