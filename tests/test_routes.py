@@ -738,6 +738,59 @@ def test_batch_backfills_dropped_track_filepath(client, tmp_path):
     assert client.get(f"/waveform/{h}").status_code == 200
 
 
+def test_batch_repoints_moved_track_filepath(client, tmp_path):
+    # a track scanned in one folder, then MOVED to another (same content -> same
+    # content hash -> same track): re-scanning the new location re-points the stale
+    # filepath, so preview/waveform follow the file instead of a vanished path.
+    from contextlib import closing
+
+    from vibenative.db import _db_lock, db
+
+    a = tmp_path / "a"
+    a.mkdir()
+    (a / "moved.wav").write_bytes(_tiny_wav_bytes(sample=11))
+    client.post("/batch", json={"path": str(a)}).get_data()
+    with _db_lock, closing(db()) as conn, conn as c:
+        h, fp = c.execute("SELECT hash, filepath FROM tracks").fetchone()
+    assert str(a) in fp  # points into folder a
+
+    # move the file: same content lands in b, the original in a disappears
+    b = tmp_path / "b"
+    b.mkdir()
+    (b / "moved.wav").write_bytes(_tiny_wav_bytes(sample=11))
+    (a / "moved.wav").unlink()
+
+    # re-scan the new folder -> cache hit re-points the now-stale path
+    client.post("/batch", json={"path": str(b)}).get_data()
+    with _db_lock, closing(db()) as conn, conn as c:
+        fp2 = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()[0]
+    assert str(b) in fp2 and str(a) not in fp2  # followed the move
+
+
+def test_batch_keeps_valid_filepath_on_duplicate_scan(client, tmp_path):
+    # if the stored path STILL resolves, scanning an identical copy elsewhere must
+    # NOT overwrite it -- no thrashing between two live copies of the same content.
+    from contextlib import closing
+
+    from vibenative.db import _db_lock, db
+
+    a = tmp_path / "a"
+    a.mkdir()
+    (a / "orig.wav").write_bytes(_tiny_wav_bytes(sample=12))
+    client.post("/batch", json={"path": str(a)}).get_data()
+    with _db_lock, closing(db()) as conn, conn as c:
+        h, fp = c.execute("SELECT hash, filepath FROM tracks").fetchone()
+
+    # a duplicate copy in b; the original in a stays put (still a real file)
+    b = tmp_path / "b"
+    b.mkdir()
+    (b / "dupe.wav").write_bytes(_tiny_wav_bytes(sample=12))
+    client.post("/batch", json={"path": str(b)}).get_data()
+    with _db_lock, closing(db()) as conn, conn as c:
+        fp2 = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()[0]
+    assert fp2 == fp  # unchanged: the still-valid original path wins
+
+
 def test_waveform_route_missing(client):
     # unknown hash -> 404
     assert client.get("/waveform/deadbeef").status_code == 404

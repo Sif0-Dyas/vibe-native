@@ -262,14 +262,23 @@ def compare_route():
 # extracts just that range into ~/genre_training/<genre>/ with ffmpeg.
 # ----------------------------------------------------------------------------
 def _backfill_filepath(h, path):
-    """Record a server-side path for a cached track that has none yet (drop-analyzed
-    rows stored an empty path). Only fills a blank -- never overwrites an existing
-    path. Enables audio preview, on-demand waveform, and section overrides."""
+    """Record or repair a cached track's server-side path on a re-scan:
+
+    - fills a BLANK path (drop-analyzed rows stored none), and
+    - RE-POINTS a STALE one -- if the stored path no longer exists on disk but the
+      freshly-scanned `path` does, the file was moved/renamed. The content hash
+      matched (this is a cache hit), so it's the same track: follow it.
+
+    A stored path that still resolves to a real file is left untouched (so scanning
+    a duplicate copy elsewhere doesn't thrash the original). Keeps audio preview,
+    on-demand waveform, and section overrides working after a move."""
     with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "UPDATE tracks SET filepath=? WHERE hash=? AND (filepath IS NULL OR filepath='')",
-            (path, h),
-        )
+        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+        if row is None:
+            return
+        current = row[0] or ""
+        if not current or not Path(current).is_file():  # blank, or stale (moved away)
+            c.execute("UPDATE tracks SET filepath=? WHERE hash=?", (path, h))
 
 
 def _segment_overrides(h):
