@@ -1,5 +1,8 @@
 # PLAN ADDENDUM — reconciling with Vibe_Identify as of late July 2026
 
+> **Historical — complete.** A mid-project course-correction to the plan above; its
+> revisions all landed in the shipped app. Kept for provenance. Archived 2026-07-25.
+
 Read PROJECT_PLAN.md first; this file corrects its drift. The plan was written
 ~30 commits ago. Everything below supersedes the corresponding plan sections.
 

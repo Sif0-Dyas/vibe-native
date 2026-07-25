@@ -21,9 +21,11 @@ GPU works in the packaged build). Validated against the WSL build as the oracle:
   packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. GPU falls out for free
   (`DmlExecutionProvider`, loud CPU fallback).
 
-Design + phase-by-phase details: `PROJECT_PLAN.md`, `PLAN_ADDENDUM.md`, and
-`tools/CONVERSION_NOTES.md`. The original WSL app stays untouched as the oracle and
-the rollback.
+Design + phase-by-phase details (historical, now complete):
+[`docs/history/PROJECT_PLAN.md`](docs/history/PROJECT_PLAN.md) and
+[`docs/history/PLAN_ADDENDUM.md`](docs/history/PLAN_ADDENDUM.md). Live conversion
+reference stays at `tools/CONVERSION_NOTES.md`. The original WSL app stays untouched
+as the oracle and the rollback.
 
 ## Running it
 

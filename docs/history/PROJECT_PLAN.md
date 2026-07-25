@@ -1,5 +1,8 @@
 # Vibe Native — Project Plan
 
+> **Historical — complete.** The original phase-by-phase build plan for the native
+> rebuild; every phase described here shipped. Kept for provenance. Archived 2026-07-25.
+
 Native-Windows rebuild of Vibe_Identify's analysis engine. The existing
 WSL app stays untouched: it remains the daily driver AND the validation
 oracle this project is measured against.
