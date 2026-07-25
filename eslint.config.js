@@ -16,9 +16,9 @@ const globals = require("globals");
 
 module.exports = [
   // genre_families.json lives in static/ too; it's data, not code -- never lint it.
-  { ignores: ["native/vibenative/static/genre_families.json"] },
+  { ignores: ["src/vibenative/static/genre_families.json"] },
   {
-    files: ["native/vibenative/static/*.js"],
+    files: ["src/vibenative/static/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script", // plain scripts sharing one global scope, not modules

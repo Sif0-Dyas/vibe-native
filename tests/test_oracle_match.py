@@ -33,7 +33,7 @@ def _audio_ready():
         return False, "need oracle/ + models/effnet.onnx (Phase 0/1)"
     import sys
 
-    sys.path.insert(0, str(ROOT / "native"))
+    sys.path.insert(0, str(ROOT / "src"))
     from vibenative.paths import wsl_to_windows
 
     index = json.loads((ORACLE / "index.json").read_text())

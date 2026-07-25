@@ -1,6 +1,6 @@
-"""Make the `vibenative` package (under native/) importable in tests."""
+"""Make the `vibenative` package (under src/) importable in tests."""
 
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "native"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))

@@ -36,7 +36,7 @@ jobs:
         # best-effort try/except around BPM/key, the ffmpeg/ffprobe subprocess
         # calls) carry inline `# nosec <id>` justifications, so a clean run is zero
         # findings and any NEW finding fails the build.
-        run: bandit -r native/vibenative/ -q
+        run: bandit -r src/vibenative/ -q
 
       - name: Dependency audit (pip-audit)
         # Audit the pinned runtime deps for known CVEs. onnxruntime-directml is
@@ -54,7 +54,7 @@ jobs:
         # Python check would see).
         run: |
           npm ci
-          npx eslint native/vibenative/static/
+          npx eslint src/vibenative/static/
 
       - name: Test (pytest + coverage floor)
         # FAKE_ANALYZER keeps the model/inference path out of CI. The engine modules

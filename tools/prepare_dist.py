@@ -111,7 +111,7 @@ def copy_ffmpeg() -> None:
         return
 
     # fallback: whatever ffmpeg is on the system (likely GPL) — better than none.
-    sys.path.insert(0, str(ROOT / "native"))
+    sys.path.insert(0, str(ROOT / "src"))
     from vibenative.decode import find_tool
 
     got = []

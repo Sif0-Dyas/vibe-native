@@ -47,7 +47,7 @@ def _load_dotenv():
     if "pytest" not in sys.modules:
         _apply_dotenv(
             Path(__file__).resolve().parent.parent.parent / ".env"
-        )  # native/vibenative -> native -> root
+        )  # src/vibenative -> src -> root
 
 
 _load_dotenv()  # must run BEFORE the env-derived constants below

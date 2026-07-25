@@ -27,7 +27,7 @@ def _ready():
         import onnxruntime  # noqa: F401
     except Exception:
         return False, "onnxruntime not installed"
-    sys.path.insert(0, str(ROOT / "native"))
+    sys.path.insert(0, str(ROOT / "src"))
     from vibenative.paths import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())

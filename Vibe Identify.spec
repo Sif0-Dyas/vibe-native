@@ -29,7 +29,7 @@ from PyInstaller.utils.hooks import (
 )
 
 PROJECT = os.path.abspath(os.getcwd())  # PyInstaller runs the spec from the repo root
-NATIVE = os.path.join(PROJECT, "native")
+SRC = os.path.join(PROJECT, "src")  # src-layout: the importable `vibenative` package root
 
 # --- vibenative: Flask templates + static assets must ship as bundle data -------
 datas = collect_data_files("vibenative")  # templates/*.html + static/* (non-.py files)
@@ -78,7 +78,7 @@ icon = _icon if os.path.isfile(_icon) else None
 
 a = Analysis(
     [os.path.join(PROJECT, "desktop", "genre_app.pyw")],
-    pathex=[NATIVE, PROJECT],
+    pathex=[SRC, PROJECT],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

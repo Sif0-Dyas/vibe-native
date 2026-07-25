@@ -49,7 +49,7 @@ def find_iscc() -> str | None:
 
 
 def app_version() -> str:
-    sys.path.insert(0, str(ROOT / "native"))
+    sys.path.insert(0, str(ROOT / "src"))
     import vibenative
 
     return vibenative.__version__

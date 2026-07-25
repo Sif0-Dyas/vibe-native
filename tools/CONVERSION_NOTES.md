@@ -73,7 +73,7 @@ available providers: `DmlExecutionProvider`, `CPUExecutionProvider`.
    `embeddings = PartitionedCall:1 [n, 1280]`. The JSON fixes the 128×96 patch
    shape + sample rate; the exact mel filterbank / log compression still comes
    from the Essentia source but must reproduce that patch shape. (See the header
-   of `native/vibenative/frontend_mel.py`.)
+   of `src/vibenative/frontend_mel.py`.)
 2. **Iteration strategy.** The oracle has 121 tracks. Iterate the frontend against
    a **~40-track subset** for a fast inner loop, and run the **full 121** only as
    the final acceptance gate. Never lower the cosine > 0.999 threshold.
@@ -160,7 +160,7 @@ oracle), 2 are octave picks where mine diverges from Essentia on ambiguous track
 ## Key (native HPCP + KeyExtractor port): **PASSED** — 100%
 
 Reproduces Essentia KeyExtractor's key **exactly (key + scale) on 121/121 tracks**
-(acceptance ≥ 90%). `native/vibenative/key.py` is a stage-for-stage numpy port of
+(acceptance ≥ 90%). `src/vibenative/key.py` is a stage-for-stage numpy port of
 KeyExtractor, validated against per-stage WSL Essentia dumps (the Phase-2 playbook).
 
 **Pipeline** (KeyExtractor's exact config, `keyextractor.cpp`): 44100 Hz mono →

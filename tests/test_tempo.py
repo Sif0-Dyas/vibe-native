@@ -26,7 +26,7 @@ def _ready():
         return False, "need oracle/ + models/tempocnn.onnx"
     import sys
 
-    sys.path.insert(0, str(ROOT / "native"))
+    sys.path.insert(0, str(ROOT / "src"))
     from vibenative.paths import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())

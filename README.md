@@ -27,6 +27,26 @@ Design + phase-by-phase details (historical, now complete):
 reference stays at `tools/CONVERSION_NOTES.md`. The original WSL app stays untouched
 as the oracle and the rollback.
 
+## Project layout
+
+Standard `src/` layout — the importable `vibenative` package lives under `src/`:
+
+```
+src/vibenative/        the package: Flask app factory + config/db, the ONNX engine
+                       (decode · frontend_mel · onnx_engine · tempo · key), and
+  routes/              one Blueprint, split by domain: analysis, library, vibes,
+                       tags, playlists, map, training
+  templates/ static/   the web UI (bundled into the exe as data files)
+desktop/               pywebview desktop shell (genre_app.pyw) + launcher
+tools/                 build (build_exe.py · build_installer.py), model conversion,
+                       oracle + db-cutover helpers
+tests/                 pytest suite (FAKE mode by default; real-mode tests skip
+                       without models)
+models/                ONNX models (git-ignored; `python tools/convert_models.py`)
+docs/                  USAGE.md guide + history/ (completed plan docs)
+Vibe Identify.spec     PyInstaller onedir spec (packages src/vibenative + assets)
+```
+
 ## Running it
 
 Native Windows, no WSL. One-time setup (the venv runs both the engine and the
@@ -161,8 +181,8 @@ cover the following third-party components, which keep their own licenses:
   `models/`, and are **not** covered by this repo's MIT license. Their terms —
   including the **non-commercial** restriction — govern any use or redistribution of
   the models themselves.
-- **Essentia-derived algorithm ports** — `native/vibenative/key.py` and parts of
-  `native/vibenative/frontend_mel.py` were **ported stage-for-stage from Essentia**
+- **Essentia-derived algorithm ports** — `src/vibenative/key.py` and parts of
+  `src/vibenative/frontend_mel.py` were **ported stage-for-stage from Essentia**
   (MTG), which is licensed **AGPL-3.0**. As derivative works of AGPL code, these files
   follow **Essentia's AGPL-3.0** upstream license, **not** MIT. If you reuse or
   redistribute them, treat them as AGPL-3.0.

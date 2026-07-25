@@ -5,7 +5,7 @@ For each track: decode at 44100 Hz and run key.estimate, then require an EXACT
 of tracks. Deterministic ~40-track subset by default; VIBE_FULL_ORACLE=1 runs all
 121 (observed 121/121 = 100%). Skips on a clone lacking oracle audio.
 
-The native pipeline (native/vibenative/key.py) is a stage-for-stage port of
+The native pipeline (src/vibenative/key.py) is a stage-for-stage port of
 Essentia's KeyExtractor (Windowing/Spectrum/SpectralPeaks/SpectralWhitening/HPCP/
 Key), validated against per-stage dumps from the WSL Essentia install.
 """
@@ -30,7 +30,7 @@ def _ready():
         return False, "need oracle/index.json"
     import sys
 
-    sys.path.insert(0, str(ROOT / "native"))
+    sys.path.insert(0, str(ROOT / "src"))
     from vibenative.paths import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())
