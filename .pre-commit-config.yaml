@@ -1,0 +1,11 @@
+# Pre-commit hooks — keep the format/lint gate green locally so CI never goes red
+# on style again. Python-only (ruff); the JS/eslint check stays in CI. Install once:
+#     pip install pre-commit && pre-commit install
+# Then `git commit` runs ruff on staged files automatically.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0 # keep in sync with the ruff pin in requirements-dev.txt
+    hooks:
+      - id: ruff-check # lint — mirrors CI's `ruff check .`
+        args: [--fix]
+      - id: ruff-format # format — mirrors CI's `ruff format --check .`

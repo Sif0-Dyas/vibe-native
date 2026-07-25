@@ -64,6 +64,26 @@ shared build (gyan.dev "shared" / BtbN LGPL) or drop the bundled copy and rely o
 system-PATH ffmpeg. If ffmpeg is absent the app still runs (cached browsing works)
 and warns that new analysis needs it.
 
+## Development
+
+Run the same gate CI does before pushing:
+
+```
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+ruff check . && ruff format --check .    # lint + format (CI fails the build on either)
+pytest -q                                 # tests (FAKE_ANALYZER covers the model-free path)
+```
+
+**Pre-commit hooks** make the format gate structurally impossible to miss — install
+them once and `git commit` auto-runs `ruff check` + `ruff format` on staged files:
+
+```
+pip install pre-commit && pre-commit install
+```
+
+The hook config lives in `.pre-commit-config.yaml` (Python/ruff only; the JS eslint
+check runs in CI).
+
 ## Building the executable
 
 Package the app as a **standalone Windows folder** — no Python, no venv on the
