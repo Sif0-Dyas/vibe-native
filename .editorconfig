@@ -1,0 +1,25 @@
+# EditorConfig — https://editorconfig.org  (keeps line endings/encoding consistent
+# across editors; this is a Windows repo, so CRLF drift is a real hazard.)
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[*.{js,json,css,html,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Markdown: two trailing spaces are a hard line break — don't strip them.
+[*.md]
+trim_trailing_whitespace = false
+
+# Windows-native scripts are CRLF by convention.
+[*.{bat,cmd,ps1}]
+end_of_line = crlf

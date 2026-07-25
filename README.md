@@ -148,3 +148,24 @@ PC.”** Click **More info → Run anyway**. Some antivirus engines occasionally
 false-positive on unsigned PyInstaller executables — if flagged, allow/exclude
 `Vibe Identify.exe`. Signing with a real code-signing certificate removes both prompts
 (out of scope here).
+
+## License & third-party components
+
+This repository's **first-party code is MIT-licensed** (see [`LICENSE`](LICENSE)).
+That covers the app, routes, desktop shell, build tooling, and tests. It does **not**
+cover the following third-party components, which keep their own licenses:
+
+- **ML models** — the genre (Discogs-EffNet / Discogs-400), tempo (TempoCNN), and
+  related models are **MTG's**, released under **CC BY-NC-ND 4.0** (non-commercial,
+  no-derivatives). They are downloaded/converted by `tools/convert_models.py`, live in
+  `models/`, and are **not** covered by this repo's MIT license. Their terms —
+  including the **non-commercial** restriction — govern any use or redistribution of
+  the models themselves.
+- **Essentia-derived algorithm ports** — `native/vibenative/key.py` and parts of
+  `native/vibenative/frontend_mel.py` were **ported stage-for-stage from Essentia**
+  (MTG), which is licensed **AGPL-3.0**. As derivative works of AGPL code, these files
+  follow **Essentia's AGPL-3.0** upstream license, **not** MIT. If you reuse or
+  redistribute them, treat them as AGPL-3.0.
+- **ffmpeg** — invoked as a separate program (never linked), so it stays a mere
+  aggregation; a bundled build ships with its own `ffmpeg-NOTICE.txt`. Prefer an
+  **LGPL** shared build for redistribution (see the ffmpeg note under *Running it*).

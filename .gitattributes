@@ -1,0 +1,29 @@
+# Normalize line endings. This is a Windows repo (core.autocrlf is on locally),
+# so without this, text blobs drift between LF and CRLF between machines/commits.
+# Store text as LF and check out LF everywhere — consistent diffs and a stable
+# `ruff format --check`.
+* text=auto eol=lf
+
+# Windows-native scripts stay CRLF (cmd / PowerShell convention).
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary assets — never normalize or diff as text.
+*.onnx  binary
+*.pb    binary
+*.ico   binary
+*.png   binary
+*.icns  binary
+*.exe   binary
+*.dll   binary
+*.pyd   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.flac  binary
+*.wav   binary
+*.mp3   binary
+*.db    binary
+*.zip   binary
+*.gz    binary
