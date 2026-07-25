@@ -6,7 +6,15 @@ app factory imports ``bp`` from here exactly as it did when routes was one modul
 ``_artist_of`` / ``_second_style`` are re-exported for the tests that import them.
 """
 
-from . import analysis, library, map, training  # noqa: F401  -- register routes on bp
+from . import (  # noqa: F401  -- importing each domain module registers its routes on bp
+    analysis,
+    library,
+    map,
+    playlists,
+    tags,
+    training,
+    vibes,
+)
 from ._shared import _artist_of, _second_style, bp  # noqa: F401  -- re-exported
 
 __all__ = ["bp"]
