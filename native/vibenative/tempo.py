@@ -103,7 +103,10 @@ def estimate(audio: np.ndarray, sr: int) -> tuple[float, float]:
     patches = np.stack([mel[s : s + PATCH].T for s in starts])[:, :, :, None].astype(np.float32)
     inn, outn = _engine["inn"], _engine["outn"]
     soft = np.concatenate(  # per-PATCH_BATCH runs, not one giant run — see PATCH_BATCH
-        [sess.run([outn], {inn: patches[i : i + PATCH_BATCH]})[0] for i in range(0, len(patches), PATCH_BATCH)],
+        [
+            sess.run([outn], {inn: patches[i : i + PATCH_BATCH]})[0]
+            for i in range(0, len(patches), PATCH_BATCH)
+        ],
         axis=0,
     )  # (n_patches, 256)
 

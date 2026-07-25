@@ -119,6 +119,7 @@ def _webview_storage_path():
         os.makedirs(d, exist_ok=True)
     return d
 
+
 _LAUNCH_WARNING: str | None = None  # set if we fall back off the project venv
 
 
@@ -294,7 +295,7 @@ def _start_inprocess() -> threading.Thread:
     import time. The daemon thread dies automatically when the window closes."""
     os.environ["GENRE_PORT"] = str(PORT)
     os.environ["GENRE_TOKEN"] = TOKEN
-    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG   # so /status can point users to the log
+    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG  # so /status can point users to the log
     if FAKE:
         os.environ["FAKE_ANALYZER"] = "1"
     _ensure_std_streams()

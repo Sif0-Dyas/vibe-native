@@ -387,9 +387,13 @@ def _rss_mb():
             ]
 
         k = ctypes.windll.kernel32
-        k.GetCurrentProcess.restype = ctypes.c_void_p   # HANDLE is pointer-sized
+        k.GetCurrentProcess.restype = ctypes.c_void_p  # HANDLE is pointer-sized
         psapi = ctypes.WinDLL("psapi")
-        psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.POINTER(_PMC), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(_PMC),
+            wintypes.DWORD,
+        ]
         psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
         c = _PMC()
         c.cb = ctypes.sizeof(_PMC)
@@ -440,8 +444,9 @@ def batch_route():
     if not files:
         return jsonify({"error": "no audio files found"}), 404
 
-    log.info("batch START: %s  (%d files, %d workers, rss=%sMB)",
-             folder, len(files), workers, _rss_mb())
+    log.info(
+        "batch START: %s  (%d files, %d workers, rss=%sMB)", folder, len(files), workers, _rss_mb()
+    )
 
     def analyze_one(path: Path):
         # Log BEFORE the heavy work (with the file size + current RSS) and FLUSH via
