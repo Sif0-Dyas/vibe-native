@@ -13,6 +13,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+
 from vibenative import db
 
 _ROOT = Path(__file__).resolve().parent.parent
