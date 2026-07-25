@@ -40,6 +40,14 @@ LABELS_JSON = MODELS / "genre_discogs400-discogs-effnet-1.json"
 # installed at once — they conflict).
 PROVIDER_ORDER = ["DmlExecutionProvider", "CPUExecutionProvider"]
 
+# Cap how many mel patches are fed to effnet.onnx in a single Session.run. A long
+# track yields hundreds of patches; running them all at once makes the DirectML EP
+# pre-allocate activation memory for the WHOLE batch, which ballooned to ~20 GB on
+# an 8-minute track and OOM-crashed the process mid batch-scan. 64 matches Essentia's
+# own TensorflowPredictEffnetDiscogs batchSize default and keeps peak memory flat
+# regardless of track length. Per-patch inference is independent, so chunking is exact.
+EMB_BATCH = 64
+
 _engine: dict = {}
 
 
@@ -107,8 +115,14 @@ def get_engine() -> dict:
         p = frontend_mel.patches(mel, hop_frames)
         if len(p) == 0:
             return np.zeros((0, 1280), dtype=np.float32)
-        out = emb.run(["embeddings"], {emb_in: p.astype(np.float32)})[0]
-        return np.asarray(out, dtype=np.float32)
+        p = p.astype(np.float32)
+        # One Session.run per EMB_BATCH patches, not one giant run over the whole
+        # track — see EMB_BATCH: a long track fed all at once OOM'd the DML EP.
+        outs = [
+            emb.run(["embeddings"], {emb_in: p[i : i + EMB_BATCH]})[0]
+            for i in range(0, len(p), EMB_BATCH)
+        ]
+        return np.asarray(np.concatenate(outs, axis=0), dtype=np.float32)
 
     _engine.update(
         {

@@ -23,6 +23,9 @@ SR = 11025
 FRAME, HOP, N_MELS = 1024, 512, 40
 FMIN, FMAX = 20.0, 5000.0
 PATCH, PATCH_HOP = 256, 128
+# Cap patches per Session.run (see onnx_engine.EMB_BATCH): a long track's full patch
+# stack fed to the DirectML EP at once can balloon memory and OOM-crash a batch scan.
+PATCH_BATCH = 64
 PROVIDER_ORDER = ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 
@@ -98,7 +101,11 @@ def estimate(audio: np.ndarray, sr: int) -> tuple[float, float]:
     sess = _session()
     starts = range(0, mel.shape[0] - PATCH + 1, PATCH_HOP)
     patches = np.stack([mel[s : s + PATCH].T for s in starts])[:, :, :, None].astype(np.float32)
-    soft = sess.run([_engine["outn"]], {_engine["inn"]: patches})[0]  # (n_patches, 256)
+    inn, outn = _engine["inn"], _engine["outn"]
+    soft = np.concatenate(  # per-PATCH_BATCH runs, not one giant run — see PATCH_BATCH
+        [sess.run([outn], {inn: patches[i : i + PATCH_BATCH]})[0] for i in range(0, len(patches), PATCH_BATCH)],
+        axis=0,
+    )  # (n_patches, 256)
 
     # Aggregate by AVERAGING the per-patch softmax distributions, then argmax. This
     # beats Essentia's default "majority" vote-of-argmaxes against the oracle
