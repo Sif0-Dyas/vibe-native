@@ -39,7 +39,8 @@ src/vibenative/        the package: Flask app factory + config/db, the ONNX engi
   templates/ static/   the web UI (bundled into the exe as data files)
 desktop/               pywebview desktop shell (genre_app.pyw) + launcher
 tools/                 build (build_exe.py · build_installer.py), model conversion,
-                       oracle + db-cutover helpers
+                       oracle + db-cutover helpers, genre-reference crawler
+                       (crawl_genres.py)
 tests/                 pytest suite (FAKE mode by default; real-mode tests skip
                        without models)
 models/                ONNX models (git-ignored; `python tools/convert_models.py`)
@@ -105,6 +106,26 @@ pip install pre-commit && pre-commit install
 
 The hook config lives in `.pre-commit-config.yaml` (Python/ruff only; the JS eslint
 check runs in CI).
+
+### Genre reference data
+
+`tools/crawl_genres.py` builds a reference for **electronic** genres — description,
+aliases, hierarchy, origin year/country, plus each genre's ID in the Every Noise at
+Once, MusicBrainz, Discogs-style and Rate Your Music vocabularies — into the
+git-ignored `src/vibenative/data/genres_electronic.json`:
+
+```
+python tools/crawl_genres.py                  # full crawl (~10 min cold, then cached)
+python tools/crawl_genres.py --no-wikipedia   # structure only, ~1 min
+```
+
+It only reads sources whose `robots.txt` permits it — Wikidata (via the QLever
+mirror), DBpedia and `api.wikimedia.org`. Two deliberate exclusions: **everynoise.com**
+(`Disallow: /`, so it is never fetched — the local snapshot is built separately from a
+page you save yourself) and **query.wikidata.org** (`Disallow: /sparql`, hence QLever).
+The MusicBrainz genre list is behind `--musicbrainz` for the same reason. Responses are
+cached under `.cache/`, so re-runs cost the upstream sources nothing. The module
+docstring has the full source-by-source rationale.
 
 ## Building the executable
 
@@ -186,6 +207,12 @@ cover the following third-party components, which keep their own licenses:
   (MTG), which is licensed **AGPL-3.0**. As derivative works of AGPL code, these files
   follow **Essentia's AGPL-3.0** upstream license, **not** MIT. If you reuse or
   redistribute them, treat them as AGPL-3.0.
+- **Crawled genre reference** — `src/vibenative/data/genres_electronic.json` (built by
+  `tools/crawl_genres.py`) is a derived aggregate of **Wikidata** and the **MusicBrainz**
+  genre list (both **CC0**) and of **DBpedia** / **English Wikipedia** text
+  (**CC BY-SA**). It is git-ignored rather than committed; the file's own `licences`
+  block and each record's `sources` field carry the attribution CC BY-SA requires if
+  you redistribute it.
 - **ffmpeg** — invoked as a separate program (never linked), so it stays a mere
   aggregation; a bundled build ships with its own `ffmpeg-NOTICE.txt`. Prefer an
   **LGPL** shared build for redistribution (see the ffmpeg note under *Running it*).
