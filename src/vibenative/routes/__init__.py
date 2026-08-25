@@ -8,6 +8,7 @@ app factory imports ``bp`` from here exactly as it did when routes was one modul
 
 from . import (  # noqa: F401  -- importing each domain module registers its routes on bp
     analysis,
+    genrelab,
     library,
     map,
     playlists,
