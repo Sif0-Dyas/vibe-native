@@ -101,9 +101,11 @@ def test_fresh_and_legacy_converge(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", legacy)
     db.init_db()
 
-    # Both land on the same (latest) version...
-    assert _version(fresh) == 3
-    assert _version(legacy) == 3
+    # Both land on the same (latest) version. Derived from MIGRATIONS rather than
+    # hard-coded, so adding a migration doesn't fail a test about *convergence*.
+    latest = max(v for v, _ in db.MIGRATIONS)
+    assert _version(fresh) == latest
+    assert _version(legacy) == latest
 
     # ...with a structurally identical schema (incl. schema_version + the weight
     # column the migration added to the legacy vibe_tracks in place).
@@ -128,7 +130,7 @@ def test_init_db_is_idempotent(tmp_path, monkeypatch):
     before = _schema(path)
     db.init_db()  # second run applies nothing
     assert _schema(path) == before
-    assert _version(path) == 3
+    assert _version(path) == max(v for v, _ in db.MIGRATIONS)
     # exactly one version row, not one appended per run
     con = sqlite3.connect(path)
     try:

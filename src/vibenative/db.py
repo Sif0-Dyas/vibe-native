@@ -25,9 +25,9 @@ def _resolve_db_path() -> Path:
     if env:
         return Path(os.path.expandvars(env))
     try:
-        from .paths import exe_dir
+        from .paths import settings_ini
 
-        ini = exe_dir() / "settings.ini"
+        ini = settings_ini()
         if ini.is_file():
             # interpolation=None so a literal "%USERPROFILE%" in the value isn't parsed
             # as configparser interpolation; os.path.expandvars expands it below.
@@ -141,11 +141,28 @@ def _migration_3(c):
         tracks TEXT, created REAL, updated REAL)""")
 
 
+def _migration_4(c):
+    """v4 — per-track ratings: stars, a letter grade, and a free-text note.
+
+    Kept in their own table rather than inside ``tracks.payload``: the payload is
+    analysis output, rewritten wholesale whenever a track is re-analysed, and a
+    rating is the user's own judgement that must outlive that. One row per track,
+    created on first rating.
+
+    ``stars`` is 0-5 as shown in the UI; the Rekordbox 0/51/.../255 encoding is
+    applied at export, not stored, so the number here stays the one the user set.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS ratings(
+        hash TEXT PRIMARY KEY, stars INTEGER DEFAULT 0,
+        grade TEXT DEFAULT '', note TEXT DEFAULT '', updated REAL)""")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
     (2, _migration_2),
     (3, _migration_3),
+    (4, _migration_4),
 ]
 
 
