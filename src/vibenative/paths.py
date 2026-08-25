@@ -22,6 +22,23 @@ def exe_dir() -> Path:
     return Path(sys.executable).resolve().parent
 
 
+def settings_ini() -> Path:
+    """Where the persisted app settings live, for both reading and writing.
+
+    In a packaged build that's next to the .exe -- the installer's DB-location
+    page writes there and the exe reads it back.
+
+    In dev it's the repo root, NOT ``exe_dir()``. exe_dir() resolves to
+    ``.venv/Scripts`` when running from a venv, so a setting written there would
+    sit inside the virtualenv and vanish the next time it was rebuilt. That was
+    fine while the file was only ever read (a missing one just falls through to
+    the default); it stops being fine now that the Options tab can write it.
+    """
+    if getattr(sys, "frozen", False):
+        return exe_dir() / "settings.ini"
+    return Path(__file__).resolve().parents[2] / "settings.ini"
+
+
 def resource_base() -> Path:
     """Base dir for BUNDLED read-only data files (e.g. docs/USAGE.md). In a PyInstaller
     build this is the bundle's extraction dir (sys._MEIPASS — the _internal/ folder for a

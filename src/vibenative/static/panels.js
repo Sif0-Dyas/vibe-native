@@ -680,3 +680,47 @@ async function renderVibeMatches(row, hash){
 
   btn.addEventListener('click', () => { shell(); panel.classList.add('open'); });
 })();
+
+/* ---------------------------------------------------------------------------
+   Side panels are mutually exclusive.
+
+   Every side panel is position:fixed at top/right with the same z-index, so
+   opening a second one parked it directly on top of the first with both still
+   marked .open -- the stack the user sees. Nothing ever closed the previous one.
+
+   Rather than edit each scattered `classList.add('open')` (they live in
+   panels.js, playlist.js and app.js), watch the class attribute: whichever panel
+   gains .open wins, the rest lose it. That catches every path, including any
+   added later, and needs no cooperation from the openers.
+--------------------------------------------------------------------------- */
+(() => {
+  const PANEL_IDS = ['vibe-panel', 'sib-panel', 'flag-panel', 'label-panel', 'pl-panel'];
+  const panels = PANEL_IDS.map(id => document.getElementById(id)).filter(Boolean);
+  if (panels.length < 2) return;
+
+  let settling = false;                  // our own removals must not re-enter
+  const observer = new MutationObserver(records => {
+    if (settling) return;
+    // Only react to a panel that just became open.
+    const opened = records
+      .map(r => r.target)
+      .find(el => el.classList.contains('open'));
+    if (!opened) return;
+    settling = true;
+    for (const p of panels) if (p !== opened) p.classList.remove('open');
+    settling = false;
+  });
+  for (const p of panels) observer.observe(p, { attributes: true, attributeFilter: ['class'] });
+
+  // Escape closes whatever is open -- these panels cover the view, and hunting
+  // for the right × is the other half of feeling stuck behind them.
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape') return;
+    const tag = (ev.target && ev.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (ev.target && ev.target.isContentEditable)) return;
+    const open = panels.filter(p => p.classList.contains('open'));
+    if (!open.length) return;
+    ev.preventDefault();
+    for (const p of open) p.classList.remove('open');
+  });
+})();

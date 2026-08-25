@@ -1102,6 +1102,24 @@ body.view-options .lensbar{ display:none; }
 .mp-field input[type=range]{ width:100%; accent-color:var(--accent-a); cursor:pointer; }
 .mp-field select{ max-width:none; width:100%; }
 .mp-hint{ color:var(--dim); font-size:9px; line-height:1.4; opacity:.85; margin-top:2px; }
+/* --- facet filter panel --- */
+.mp-text{
+  width:100%; background:rgba(255,255,255,.05); border:1px solid var(--line);
+  border-radius:5px; color:var(--text); font-size:11px; padding:4px 7px;
+}
+.mp-text:focus{ outline:none; border-color:var(--accent-a); }
+/* Two sliders on one track: the pair reads as a range even though they're
+   separate inputs, which keeps native keyboard handling on each thumb. */
+.flt-dual{ display:flex; flex-direction:column; gap:2px; }
+.flt-dual input[type=range]{ width:100%; accent-color:var(--accent-a); cursor:pointer; }
+.flt-tags{ display:flex; flex-wrap:wrap; gap:4px; }
+.flt-tag{
+  cursor:pointer; font-size:10px; padding:2px 7px; border-radius:10px;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--dim);
+}
+.flt-tag:hover{ color:var(--text); border-color:var(--dimmer); }
+.flt-tag.on{ color:var(--accent-a); border-color:var(--accent-a);
+  background:rgba(34,211,238,.10); }
 .mp-btns{ display:flex; gap:6px; margin-top:4px; }
 .mp-reset{
   flex:1; background:var(--panel-2); border:1px solid var(--line); color:var(--dim);
@@ -1160,7 +1178,9 @@ body.view-options .lensbar{ display:none; }
 .leg-fam.active{ background:rgba(255,255,255,.09); }
 .leg:hover{ color:var(--text); background:rgba(255,255,255,.06); }
 .leg .dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
-.leg-subs{ display:flex; flex-wrap:wrap; gap:2px 9px; padding:1px 0 3px 17px; }   /* indented under the family */
+/* Subgenres stack vertically under their family: one per line reads as a list
+   you can scan down, where wrapping them inline made a paragraph of names. */
+.leg-subs{ display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:1px 0 3px 17px; }
 .leg-sub{
   display:flex; align-items:center; gap:4px; white-space:nowrap;
   font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim);
@@ -1282,8 +1302,25 @@ body.view-options .lensbar{ display:none; }
 .pop-override:hover{ color:var(--text); border-color:var(--accent-a); background:rgba(86,180,233,.10); }
 .pop-omit:hover{ color:var(--err); border-color:var(--err); background:rgba(229,86,79,.10); }
 /* inline override editor */
-.pop-ovr{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line); display:flex; gap:6px; }
+/* Override panel: the track's own runner-up reads first (one click each), then
+   a free-text field for anything the model never proposed. */
+.pop-ovr{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line);
+  display:flex; flex-direction:column; gap:7px; }
 .pop-ovr[hidden]{ display:none; }
+.ovr-typed{ display:flex; gap:6px; }
+.ovr-h{ font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
+.ovr-cands{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.ovr-cands .ovr-h{ width:100%; margin-bottom:1px; }
+.ovr-cand{
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  font-size:11px; padding:3px 8px; border-radius:11px;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--text);
+}
+.ovr-cand:hover{ border-color:var(--accent-a); color:var(--accent-a); }
+.ovr-cand i{ font-style:normal; font-family:'JetBrains Mono',monospace;
+  font-size:9px; color:var(--dim); }
+.ovr-cand:hover i{ color:var(--accent-a); }
+.ovr-hint{ font-size:9px; color:var(--dimmer); }
 .pop-ovr-in{
   flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
   color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 9px;
@@ -1568,3 +1605,91 @@ header .sub{ color:var(--dim); text-shadow:none; }
 
 /* build version tag in the action bar (identifies installed builds) */
 .app-version{color:var(--dim);font-size:11px;opacity:.65;margin-left:4px;user-select:text;font-variant-numeric:tabular-nums}
+
+/* Tag chips inside the map's track popup: click filters the map, hover previews
+   which tracks the filter would keep (they twinkle on the canvas). */
+.pop-tags{ display:flex; flex-wrap:wrap; gap:4px; }
+.pop-tag{
+  cursor:pointer; font-size:10px; padding:2px 8px; border-radius:10px;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--dim);
+}
+.pop-tag:hover{ color:var(--text); border-color:var(--dimmer); }
+.pop-tag.on{ color:var(--accent-a); border-color:var(--accent-a);
+  background:rgba(34,211,238,.10); }
+
+/* --- Options: clickable paths + inline DB-path editor --- */
+.opt-path{ cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+.opt-path:hover{ color:var(--accent-a); }
+.opt-edit{ display:flex; gap:6px; margin-top:8px; }
+.opt-edit[hidden]{ display:none; }
+.opt-input{
+  flex:1; min-width:0; background:rgba(255,255,255,.05); border:1px solid var(--line);
+  border-radius:5px; color:var(--text); font-size:12px; padding:5px 8px;
+  font-family:'JetBrains Mono',monospace;
+}
+.opt-input:focus{ outline:none; border-color:var(--accent-a); }
+.opt-good{ color:var(--accent-a); }
+.opt-bad{ color:#ffb03b; }
+
+/* --- track rating (stars / grade / note) in the map popup --- */
+.pop-rate{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.rate-stars{ display:inline-flex; align-items:center; gap:1px; }
+.rate-star{
+  cursor:pointer; background:none; border:none; padding:0 1px;
+  font-size:16px; line-height:1; color:var(--line);
+}
+
+.rate-star.on{ color:#ffc043; }
+.rate-star:hover{ color:#ffd980; }
+.rate-clear{
+  cursor:pointer; background:none; border:none; color:var(--dimmer);
+  font-size:10px; padding:0 2px 0 5px;
+}
+.rate-clear:hover{ color:#ffb03b; }
+.rate-grade{
+  background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:5px;
+  color:var(--text); font-size:11px; padding:3px 5px;
+}
+.rate-note{
+  flex:1; min-width:120px; background:rgba(255,255,255,.05);
+  border:1px solid var(--line); border-radius:5px; color:var(--text);
+  font-size:11px; padding:4px 7px;
+}
+.rate-note:focus, .rate-grade:focus{ outline:none; border-color:var(--accent-a); }
+/* Rekordbox export link on a saved playlist row */
+.pl-saved-rb{
+  font-family:'JetBrains Mono',monospace; font-size:10px; text-decoration:none;
+  color:var(--dim); padding:2px 6px; border:1px solid var(--line); border-radius:4px;
+}
+.pl-saved-rb:hover{ color:var(--accent-a); border-color:var(--accent-a); }
+
+/* --- Genres tab: family cards holding keystone cards --- */
+#genres-view{ display:none; }
+body.view-genres #genres-view{ display:block; }
+.gen-fam h3 .gen-n{ font-family:'JetBrains Mono',monospace; font-size:11px;
+  color:var(--dim); font-weight:400; margin-left:8px; }
+.gen-keys{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; }
+.gen-key{ background:rgba(255,255,255,.03); border:1px solid var(--line);
+  border-radius:7px; padding:9px 11px; }
+.gen-key-head{ display:flex; align-items:center; gap:7px; margin-bottom:4px; }
+.gen-key-head b{ font-family:'Syne',sans-serif; font-size:13px; }
+.gen-dot{ width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
+.gen-key-head .gen-n{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim); }
+.gen-muted{ font-size:9px; color:var(--dimmer); border:1px solid var(--line);
+  border-radius:8px; padding:1px 6px; margin-left:auto; }
+.gen-blurb{ font-size:11px; color:var(--dim); line-height:1.45; margin-bottom:6px; }
+.gen-bpm{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text);
+  display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; margin-bottom:6px; }
+.gen-bpm .gk{ color:var(--dimmer); text-transform:uppercase; letter-spacing:.06em; font-size:9px; }
+.gen-bpm i{ color:var(--dim); font-style:normal; }
+.gen-warn{ color:#ffb03b; border:1px solid rgba(255,176,59,.4); border-radius:8px;
+  padding:0 5px; font-size:9px; }
+.gen-subs{ display:flex; flex-wrap:wrap; gap:3px; margin-bottom:6px; }
+.gen-sub{ font-size:10px; color:var(--dim); background:rgba(255,255,255,.05);
+  border:1px solid var(--line); border-radius:9px; padding:1px 7px; }
+.gen-sub i{ color:var(--dimmer); font-style:normal; margin-left:4px; }
+.gen-toph{ font-size:9px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--dimmer); margin:6px 0 2px; }
+.gen-top{ margin:0; padding-left:18px; font-size:11px; color:var(--dim); line-height:1.6; }
+.gen-top i{ font-style:normal; font-family:'JetBrains Mono',monospace;
+  font-size:9px; color:var(--dimmer); }

@@ -103,6 +103,95 @@ def status_route():
     )
 
 
+@bp.post("/reveal")
+def reveal_route():
+    """Open a known app path in Explorer, selecting the file.
+
+    Deliberately NOT a general "open this path" primitive: the caller names
+    *which* app path it wants ("db" / "log" / "ffmpeg") and the server resolves
+    it. A route that opened whatever path it was handed would be a much broader
+    capability than the Options tab needs, reachable from any page the browser
+    can be talked into loading.
+    """
+    import os
+    import subprocess  # nosec B404  # fixed arg list, no shell
+
+    from ..db import DB_PATH
+    from ..decode import find_tool
+
+    what = ((request.get_json(silent=True) or {}).get("what") or "").strip()
+    targets = {
+        "db": str(DB_PATH),
+        "log": os.environ.get("GENRE_BACKEND_LOG") or "",
+        "ffmpeg": find_tool("ffmpeg") or "",
+    }
+    target = targets.get(what)
+    if not target:
+        return jsonify({"error": f"unknown or unset target: {what}"}), 400
+    p = Path(target)
+    if not p.exists():
+        return jsonify({"error": f"path does not exist: {p}"}), 404
+    try:
+        # /select, highlights the file inside its folder rather than opening it
+        subprocess.run(  # nosec B603 B607  # explorer with a fixed flag + a server-resolved path
+            ["explorer", "/select,", str(p)], timeout=10, check=False
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True, "path": str(p)})
+
+
+@bp.post("/db-path")
+def db_path_route():
+    """Record a new library-database location in settings.ini.
+
+    Only writes the setting -- it does not move the database or re-point the
+    running process. ``DB_PATH`` is resolved once at import and threaded through
+    live connections, so switching underneath a running app would leave open
+    handles pointing at the old file. The response says a restart is needed, and
+    the Options tab says so too.
+    """
+    import configparser
+    import os
+
+    from ..paths import settings_ini
+
+    raw = ((request.get_json(silent=True) or {}).get("path") or "").strip()
+    if not raw:
+        return jsonify({"error": "path required"}), 400
+    target = Path(os.path.expandvars(raw)).expanduser()
+    if target.is_dir():
+        return jsonify({"error": "that's a folder -- give the full path to a .db file"}), 400
+    parent = target.parent
+    if not parent.is_dir():
+        return jsonify({"error": f"folder does not exist: {parent}"}), 400
+    if not os.access(parent, os.W_OK):
+        return jsonify({"error": f"folder is not writable: {parent}"}), 400
+
+    ini = settings_ini()
+    cp = configparser.ConfigParser(interpolation=None)
+    if ini.is_file():
+        cp.read(ini, encoding="utf-8")
+    if not cp.has_section("vibenative"):
+        cp.add_section("vibenative")
+    cp.set("vibenative", "db_path", str(target))
+    try:
+        with open(ini, "w", encoding="utf-8") as fh:
+            cp.write(fh)
+    except OSError as e:
+        return jsonify({"error": f"could not write {ini}: {e}"}), 500
+    return jsonify(
+        {
+            "ok": True,
+            "path": str(target),
+            "settings_ini": str(ini),
+            "exists": target.is_file(),
+            "restart_required": True,
+            "note": "GENRE_DB, if set, still overrides this.",
+        }
+    )
+
+
 @bp.post("/override/<h>")
 def override_route(h):
     """Manually set a track's genre. Persists into the cached analysis (so the
@@ -391,3 +480,55 @@ def similar_route(h):
         )
     out.sort(key=lambda x: -x["sim"])
     return jsonify(out[:k])
+
+
+@bp.get("/filepaths/audit")
+def filepaths_audit_route():
+    """How many analysed tracks have a usable file path, and which don't."""
+    from .. import filepaths
+
+    check = request.args.get("check_exists", "1") != "0"
+    return jsonify(filepaths.audit(check_exists=check))
+
+
+@bp.post("/filepaths/repair")
+def filepaths_repair_route():
+    """Reconnect analysed tracks to their audio by hashing a folder.
+
+    Defaults to a dry run: POST {"folder": "...", "apply": true} to write.
+    Never re-analyses and never changes a genre -- it only fills in a missing or
+    broken ``filepath`` for a track whose analysis already exists.
+    """
+    from .. import filepaths
+    from ..paths import wsl_to_windows
+
+    d = request.get_json(silent=True) or {}
+    folder = str(d.get("folder") or "").strip()
+    if not folder:
+        return jsonify({"error": "folder required"}), 400
+    try:
+        out = filepaths.repair(wsl_to_windows(folder), dry_run=not bool(d.get("apply")))
+    except NotADirectoryError:
+        return jsonify({"error": f"not a directory: {folder}"}), 400
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(out)
+
+
+@bp.post("/filepaths/count")
+def filepaths_count_route():
+    """How many audio files a folder holds, and roughly how long hashing takes.
+
+    A fast directory walk, no hashing -- so the UI can warn before a whole-drive
+    scan rather than appearing to hang for minutes.
+    """
+    from .. import filepaths
+    from ..paths import wsl_to_windows
+
+    folder = str((request.get_json(silent=True) or {}).get("folder") or "").strip()
+    if not folder:
+        return jsonify({"error": "folder required"}), 400
+    try:
+        return jsonify(filepaths.count_files(wsl_to_windows(folder)))
+    except NotADirectoryError:
+        return jsonify({"error": f"not a directory: {folder}"}), 400
