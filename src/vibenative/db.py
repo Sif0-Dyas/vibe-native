@@ -157,12 +157,26 @@ def _migration_4(c):
         grade TEXT DEFAULT '', note TEXT DEFAULT '', updated REAL)""")
 
 
+def _migration_5(c):
+    """v5 -- a description on each vibe.
+
+    A vibe is the user's own category, so what it means lives only in their
+    head unless there is somewhere to write it down. Deliberately unbounded
+    TEXT with no length cap: this is notes about what belongs in a set, and a
+    field that truncates at some arbitrary limit would be worse than none.
+    """
+    cols = {r[1] for r in c.execute("PRAGMA table_info(vibes)")}
+    if "description" not in cols:
+        c.execute("ALTER TABLE vibes ADD COLUMN description TEXT DEFAULT ''")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
     (2, _migration_2),
     (3, _migration_3),
     (4, _migration_4),
+    (5, _migration_5),
 ]
 
 

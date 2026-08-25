@@ -207,3 +207,87 @@ def test_keystone_follows_the_relabel_too():
     }
     assert K.classify(p)["keystones"] == ["Dubstep"]
     assert K.classify({"salience": p["salience"]})["keystones"] == ["House"]
+
+
+# --- the electronic-genre lexicon --------------------------------------------
+def test_lexicon_resolves_genres_the_model_cannot_emit():
+    """The classifier knows 400 Discogs styles; you type more than that. A name
+    it can't emit must still find a keystone, not fall into non-electronic."""
+    from vibenative import genrelex
+    from vibenative import keystone as K
+
+    if not genrelex.stats()["available"]:
+        pytest.skip("genres_electronic.json is a local crawl artefact")
+    for name, expected in [
+        ("riddim", "Dubstep"),
+        ("neurofunk", "Drum n Bass"),
+        ("amapiano", "House"),
+        ("melodic techno", "Techno"),
+    ]:
+        assert K.keystone_of(name) == expected
+
+
+def test_an_alias_inherits_its_canonical_answer():
+    """ "hard wave" is an alias of "hardwave", which is curated. Walking the
+    alias's parents instead finds "wave" and lands somewhere else -- a curated
+    answer for the same genre has to beat an inferred one."""
+    from vibenative import genrelex
+    from vibenative import keystone as K
+
+    if not genrelex.stats()["available"]:
+        pytest.skip("genres_electronic.json is a local crawl artefact")
+    assert K.keystone_of("hard wave") == K.keystone_of("hardwave")
+
+
+def test_curated_tables_outrank_the_lexicon():
+    from vibenative import keystone as K
+
+    assert K.keystone_of("Trap Wave") == "Dubstep"  # explicit, measured
+    assert K.keystone_of("Deep House") == "House"
+    assert K.keystone_of("Non-Music---Dialogue") is None
+
+
+def test_missing_lexicon_degrades_quietly(monkeypatch, tmp_path):
+    from vibenative import genrelex
+    from vibenative import keystone as K
+
+    monkeypatch.setattr(genrelex, "_index", None)
+    monkeypatch.setattr(genrelex, "DATA", tmp_path / "absent.json")
+    assert genrelex.get("riddim") is None
+    assert genrelex.describe("riddim") is None
+    assert genrelex.stats()["available"] is False
+    assert K.keystone_of("Deep House") == "House"  # tables still work
+
+
+def test_describe_filters_out_useless_stub_descriptions(monkeypatch):
+    """Wikidata often says just "music genre" -- worse than nothing, because it
+    looks like information."""
+    from vibenative import genrelex
+
+    monkeypatch.setattr(
+        genrelex,
+        "_index",
+        {
+            "stub": {"name": "stub", "description": "music genre"},
+            "real": {"name": "real", "description": "a properly written description here"},
+            "wiki": {"name": "wiki", "description": "music genre", "excerpt": "Long prose."},
+        },
+    )
+    assert genrelex.describe("stub") is None
+    assert genrelex.describe("real")
+    assert genrelex.describe("wiki") == "Long prose."
+
+
+def test_lexicon_lookup_cannot_recurse_forever(monkeypatch):
+    """A cycle in the source data must be a miss, not a hang."""
+    from vibenative import genrelex
+
+    monkeypatch.setattr(
+        genrelex,
+        "_index",
+        {
+            "a": {"name": "a", "parents": ["b"]},
+            "b": {"name": "b", "parents": ["a"]},
+        },
+    )
+    assert genrelex.resolve_keystone("a", lambda _n: None) is None

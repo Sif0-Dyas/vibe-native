@@ -302,7 +302,65 @@ def keystone_of(label):
         return _USER_ALIASES[style]
     if _looks_rock(style):
         return _rock_keystone(style)
-    # Last resort for a hand-typed name: read it as "a kind of <keystone>".
+    # The lexicon before the word heuristic: it carries 1,137 curated aliases,
+    # while the heuristic is a guess at the head noun. Run the other way round,
+    # "hard wave" matched the word "wave" and landed in Downtempo instead of
+    # following its alias to hardwave -> Hard Dance.
+    hit = _lexicon_keystone(style)
+    if hit:
+        return hit
+    # Loosest inference, so it goes last: read the name as "a kind of <keystone>".
+    return _word_keystone(style)
+
+
+def _lexicon_keystone(style):
+    """Resolve via the electronic-genre lexicon's parent hierarchy.
+
+    Covers names the model cannot emit and the tables above don't list --
+    ``riddim`` (parent: dubstep), ``neurofunk`` (drum and bass), ``amapiano``
+    (house music). Last in the chain because it's the only source we don't
+    curate: a table entry should always win over an inferred one.
+
+    Imported lazily and tolerated if absent -- the crawl is a git-ignored
+    artefact, so a fresh clone simply has one fewer resolution step.
+    """
+    try:
+        from . import genrelex
+    except ImportError:  # pragma: no cover -- defensive
+        return None
+    return genrelex.resolve_keystone(style, _keystone_no_lexicon)
+
+
+def _keystone_no_lexicon(label):
+    """``keystone_of`` minus the lexicon step, for the lexicon to call back into.
+
+    Without this the two would recurse: the lexicon asks the taxonomy about a
+    parent, the taxonomy asks the lexicon about it again, and a cycle in the
+    source data becomes an infinite loop rather than a miss.
+    """
+    if not label:
+        return None
+    parent, _, tail = label.rpartition("---")
+    style = tail.strip().lower()
+    if not style:
+        return None
+    if style in _OVERRIDES:
+        return _OVERRIDES[style]
+    if parent:
+        if parent == "Non-Music":
+            return None
+        if parent == "Rock":
+            return _rock_keystone(style)
+        if parent == "Electronic":
+            return _STYLE_TO_KEYSTONE.get(style)
+        return parent if parent in _PARENT_OK else None
+    if style in _STYLE_TO_KEYSTONE:
+        return _STYLE_TO_KEYSTONE[style]
+    if style in _USER_ALIASES:
+        return _USER_ALIASES[style]
+    if _looks_rock(style):
+        return _rock_keystone(style)
+    # No lexicon step here -- that's the whole point of this variant.
     return _word_keystone(style)
 
 

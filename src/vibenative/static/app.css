@@ -1693,3 +1693,18 @@ body.view-genres #genres-view{ display:block; }
 .gen-top{ margin:0; padding-left:18px; font-size:11px; color:var(--dim); line-height:1.6; }
 .gen-top i{ font-style:normal; font-family:'JetBrains Mono',monospace;
   font-size:9px; color:var(--dimmer); }
+
+/* --- vibe notes: free-form, expandable description per vibe --- */
+.vibe-row{ flex-wrap:wrap; }
+.vibe-note-btn.has{ color:var(--accent-a); border-color:var(--accent-a); }
+.vibe-note{ flex:1 0 100%; margin-top:6px; display:flex; flex-direction:column; gap:5px; }
+.vibe-note[hidden]{ display:none; }
+.vibe-note-in{
+  width:100%; box-sizing:border-box; resize:vertical; min-height:64px;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-size:12px; line-height:1.5; padding:7px 9px;
+  font-family:'DM Sans',sans-serif;
+}
+.vibe-note-in:focus{ outline:none; border-color:var(--accent-a); }
+.vibe-note-row{ display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+.vibe-note-msg{ font-size:10px; color:var(--dim); margin-right:auto; }

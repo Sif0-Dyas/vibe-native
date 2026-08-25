@@ -328,10 +328,42 @@ async function renderVibePanel(){
       `<button class="vibe-rename" title="rename this vibe">&#9998;</button>` +
       `<button class="vibe-reset" title="reset all track weights to the default 1.0">&#8635;</button>` +
       `<button class="vibe-clear" title="remove all tracks from this vibe (keeps the vibe)">&#9003;</button>` +
-      `<button class="vibe-del" title="delete this vibe entirely">&#10005;</button>`;
+      `<button class="vibe-note-btn" title="notes: what belongs in this vibe">&#9998; notes</button>` +
+      `<button class="vibe-del" title="delete this vibe entirely">&#10005;</button>` +
+      // Free-form and unbounded: a vibe is your own category, so the notes about
+      // what belongs in it get as much room as they need. The textarea grows to
+      // fit rather than scrolling inside a fixed box.
+      `<div class="vibe-note" hidden>` +
+        `<textarea class="vibe-note-in" rows="3" spellcheck="true" ` +
+          `placeholder="What is this vibe? What belongs in it, what doesn't, when you'd play it…"` +
+          `>${escapeHtml(v.description || '')}</textarea>` +
+        `<div class="vibe-note-row"><span class="vibe-note-msg"></span>` +
+        `<button class="vibe-note-save">save notes</button></div>` +
+      `</div>`;
 
     const vpost = (url, body) => fetch(url, {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+
+    // notes editor: toggle, auto-grow, save
+    const noteBox = rowEl.querySelector('.vibe-note');
+    const noteIn = rowEl.querySelector('.vibe-note-in');
+    const noteMsg = rowEl.querySelector('.vibe-note-msg');
+    const grow = () => { noteIn.style.height = 'auto'; noteIn.style.height = (noteIn.scrollHeight + 2) + 'px'; };
+    if (v.description) rowEl.querySelector('.vibe-note-btn').classList.add('has');
+    rowEl.querySelector('.vibe-note-btn').addEventListener('click', () => {
+      noteBox.hidden = !noteBox.hidden;
+      if (!noteBox.hidden) { grow(); noteIn.focus(); }
+    });
+    noteIn.addEventListener('input', grow);
+    rowEl.querySelector('.vibe-note-save').addEventListener('click', async () => {
+      const r = await vpost(`/vibes/${v.id}/description`, {description: noteIn.value});
+      if (r.ok) {
+        const j = await r.json();
+        v.description = j.description;
+        noteMsg.textContent = j.length ? `saved (${j.length} chars)` : 'cleared';
+        rowEl.querySelector('.vibe-note-btn').classList.toggle('has', !!j.length);
+      } else { noteMsg.textContent = 'save failed'; }
+    });
     rowEl.querySelector('.vibe-rename').addEventListener('click', async () => {
       const name = window.prompt('Rename vibe:', v.name);
       if (name === null) return;
