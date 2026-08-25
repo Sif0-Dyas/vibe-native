@@ -61,10 +61,25 @@ def _artist_of(payload, title, filename):
 
 
 def _dominant_style(payload):
-    """Salience winner (v2 identity), falling back to the top flat style.
-    A manual override (set via POST /override) wins outright."""
+    """The track's identity, by precedence:
+
+    1. a manual override (POST /override) -- you said so, it wins outright;
+    2. a retroactive re-label (``relabel``) -- a newer head's opinion, applied
+       without re-scanning; see ``vibenative.relabel``;
+    3. the salience read -- the energy/confidence/recurrence-weighted identity
+       from the original analysis;
+    4. the top flat style.
+
+    A re-label outranks salience because it is the *newer* judgement: it exists
+    only when a head has been trained since the track was analysed. It cannot be
+    merged into salience, which needs per-frame predictions the database doesn't
+    keep -- so it sits alongside, and the original read stays intact underneath.
+    """
     if payload.get("override"):
         return payload["override"], 1.0
+    rel = (payload.get("relabel") or {}).get("styles") or []
+    if rel:
+        return rel[0].get("style"), round(float(rel[0].get("score", 0)), 4)
     sal = payload.get("salience") or []
     if sal:
         return sal[0].get("style"), round(float(sal[0].get("score", 0)), 4)
