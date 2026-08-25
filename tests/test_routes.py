@@ -823,3 +823,17 @@ def test_misread_flag_logic():
 
     confident = insight._score("K-Pop", 0.80, close_bass)
     assert confident["flag"] is False
+
+
+def test_applederived_sidecars_are_not_queued_for_analysis(tmp_path):
+    """macOS AppleDouble stubs (._Track.mp3) carry an audio suffix but are 4 KB
+    of metadata. They accounted for 240 of 240 failures in a real 1,645-file
+    scan -- noise that buries genuine failures in the log."""
+    from vibenative.routes.analysis import _is_sidecar
+
+    assert _is_sidecar(tmp_path / "._Track.mp3") is True
+    assert _is_sidecar(tmp_path / "._Another One.wav") is True
+    # a real file whose name merely contains the sequence must survive
+    assert _is_sidecar(tmp_path / "Track.mp3") is False
+    assert _is_sidecar(tmp_path / "My._Song.mp3") is False
+    assert _is_sidecar(tmp_path / ".hidden.mp3") is False
