@@ -40,6 +40,11 @@ src/vibenative/data/enao.json
 # machine-local settings written by the Options tab (holds an absolute DB path)
 /settings.ini
 
+# your taxonomy edits (Genres tab -> placement), and reset's backup of them.
+# Local like settings.ini: it's your library's opinion, not the project's.
+/taxonomy.json
+/taxonomy.json.bak
+
 # --- editor / runtime artefacts kept local ---
 .claude/
 .webview/
