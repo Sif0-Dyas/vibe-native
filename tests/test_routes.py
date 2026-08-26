@@ -823,3 +823,89 @@ def test_misread_flag_logic():
 
     confident = insight._score("K-Pop", 0.80, close_bass)
     assert confident["flag"] is False
+
+
+def test_applederived_sidecars_are_not_queued_for_analysis(tmp_path):
+    """macOS AppleDouble stubs (._Track.mp3) carry an audio suffix but are 4 KB
+    of metadata. They accounted for 240 of 240 failures in a real 1,645-file
+    scan -- noise that buries genuine failures in the log."""
+    from vibenative.routes.analysis import _is_sidecar
+
+    assert _is_sidecar(tmp_path / "._Track.mp3") is True
+    assert _is_sidecar(tmp_path / "._Another One.wav") is True
+    # a real file whose name merely contains the sequence must survive
+    assert _is_sidecar(tmp_path / "Track.mp3") is False
+    assert _is_sidecar(tmp_path / "My._Song.mp3") is False
+    assert _is_sidecar(tmp_path / ".hidden.mp3") is False
+
+
+def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
+    """The Vibes tab's "what still needs examples" view. Reads the real
+    ~/genre_training folders that /override files audio into, so it reports the
+    training set that exists rather than one that was intended."""
+    from pathlib import Path
+
+    root = tmp_path / "genre_training"
+    for name, n in (("Ready", 22), ("Thin", 6), ("Sparse", 2)):
+        d = root / name
+        d.mkdir(parents=True)
+        for i in range(n):
+            (d / f"{i}.mp3").write_bytes(b"x")
+    (root / "Sparse" / "._junk.mp3").write_bytes(b"x")  # AppleDouble must not count
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+
+    from vibenative import create_app
+
+    app = create_app()
+    with app.test_client() as c:
+        d = c.get("/training/status").get_json()
+    by = {g["genre"]: g for g in d["genres"]}
+    assert by["Ready"]["state"] == "ready" and by["Ready"]["needs"] == 0
+    assert by["Thin"]["state"] == "thin"
+    assert by["Sparse"]["state"] == "sparse"
+    assert by["Sparse"]["files"] == 2  # the ._ stub is excluded
+    assert d["total_files"] == 30
+    # sorted most-trained first, so the ready ones are not buried
+    assert [g["genre"] for g in d["genres"]][0] == "Ready"
+
+
+def test_vibe_description_round_trips_unbounded_text(tmp_path, monkeypatch):
+    """A vibe is the user's own category; the notes about it get as much room as
+    they need, and paragraphs must survive verbatim."""
+    import importlib
+
+    dbfile = tmp_path / "v.db"
+    monkeypatch.setenv("GENRE_DB", str(dbfile))
+    from vibenative import db as dbmod
+
+    importlib.reload(dbmod)
+    dbmod.init_db()
+    from vibenative import create_app
+
+    app = create_app()
+    with app.test_client() as c:
+        vid = c.post("/vibes", json={"name": "Notes Test"}).get_json()["id"]
+        text = "First para.\n\nSecond para.\n\n" + ("word " * 2000)
+        out = c.post(f"/vibes/{vid}/description", json={"description": text}).get_json()
+        assert out["length"] == len(text.strip())
+        listed = {v["id"]: v for v in c.get("/vibes").get_json()}
+        assert listed[vid]["description"] == text.strip()
+        assert c.post("/vibes/9999/description", json={"description": "x"}).status_code == 404
+        assert c.post(f"/vibes/{vid}/description", json={}).status_code == 400
+
+
+def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
+    """Signature is near-constant across electronic music (almost everything is
+    4/4), so `feel` is the field that actually separates these genres. Both are
+    genre conventions, NOT per-track measurements -- the engine computes a single
+    BPM and never locates beats or downbeats, so meter can't be detected."""
+    from vibenative.genres import PROFILES, summarise
+
+    missing = [k for k, v in PROFILES.items() if not v.get("signature") or not v.get("feel")]
+    assert missing == []
+    assert PROFILES["Dubstep"]["feel"] != PROFILES["House"]["feel"]
+    assert PROFILES["Ambient"]["signature"] == "free"  # beatless genres say so
+    # and they survive the summarise() shape the UI consumes
+    import inspect
+
+    assert "signature" in inspect.getsource(summarise)

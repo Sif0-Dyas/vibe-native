@@ -21,6 +21,7 @@ the embedder path is one function body away once the frontend lands.
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -38,7 +39,28 @@ LABELS_JSON = MODELS / "genre_discogs400-discogs-effnet-1.json"
 # when present; CPU otherwise. Installing onnxruntime-directml makes the DML EP
 # available; a plain onnxruntime install would only offer CPU (both must not be
 # installed at once — they conflict).
-PROVIDER_ORDER = ["DmlExecutionProvider", "CPUExecutionProvider"]
+# CPU is the default, deliberately -- DirectML is opt-in via VIBE_PROVIDER=gpu.
+#
+# The DML path faults inside the NVIDIA D3D driver part-way through a large batch
+# scan: 0xc0000005 in nvwgf2umx.dll, three times, at a byte-identical fault
+# offset (0x6f8efa) each time. It is one deterministic driver bug, and an access
+# violation inside a driver DLL cannot be caught from Python -- the process dies
+# outright, mid-scan, with no traceback.
+#
+# What makes CPU the right default rather than a grudging fallback is the
+# measured cost. On a Ryzen 7 9800X3D, same models and same weights:
+#
+#     2.8-minute track   GPU 1.96s   CPU 2.04s   (+4%)
+#     8.4-minute track   GPU 5.54s   CPU 5.91s   (+7%)
+#
+# Trading a ~5% speedup for a scan that survives is not a close call. Set
+# VIBE_PROVIDER=gpu to opt back in -- worth retrying after an NVIDIA driver
+# update, since the fault is theirs, not ours.
+PROVIDER_ORDER = ["CPUExecutionProvider"]
+
+_PROVIDER_ENV = os.environ.get("VIBE_PROVIDER", "").strip().lower()
+if _PROVIDER_ENV in ("gpu", "dml", "directml", "dmlexecutionprovider"):
+    PROVIDER_ORDER = ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 # Cap how many mel patches are fed to effnet.onnx in a single Session.run. A long
 # track yields hundreds of patches; running them all at once makes the DirectML EP
@@ -78,7 +100,16 @@ def get_engine() -> dict:
     # isn't available at all in a build that should have it, say so plainly rather than
     # silently running ~10x slower on CPU (esp. a packaged build with a missing DLL).
     if "DmlExecutionProvider" not in engaged:
-        if "DmlExecutionProvider" in available:
+        if PROVIDER_ORDER == ["CPUExecutionProvider"]:
+            # CPU is the configured default, not a failure -- see PROVIDER_ORDER.
+            # Warning here every launch would train you to ignore the warnings
+            # that do matter, like a packaged build with missing DLLs below.
+            log.info(
+                "Running on CPU by design (measured ~5%% slower than DirectML here, and the "
+                "DML path faults in the NVIDIA driver mid-scan). Set VIBE_PROVIDER=gpu to use "
+                "the GPU."
+            )
+        elif "DmlExecutionProvider" in available:
             log.warning(
                 "GPU (DirectML) is AVAILABLE but the engine engaged %s instead — running on CPU.",
                 engaged,

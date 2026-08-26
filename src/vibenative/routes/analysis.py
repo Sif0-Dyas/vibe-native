@@ -427,6 +427,20 @@ def clientlog_route():
     return ("", 204)
 
 
+def _is_sidecar(path) -> bool:
+    """True for metadata sidecars that merely *look* like audio.
+
+    macOS writes an AppleDouble resource fork beside every file on a non-HFS
+    volume -- ``._Track.mp3`` next to ``Track.mp3`` -- so a USB drive that has
+    been on a Mac is full of 4 KB stubs carrying a real audio suffix. The
+    scanner picked them up, spawned ffprobe on each, and logged the failure:
+    240 of 240 failures in one 1,645-file scan were these, and not one real
+    track failed. They are not errors worth reporting, just files that should
+    never have been queued.
+    """
+    return path.name.startswith("._")
+
+
 @bp.post("/batch")
 def batch_route():
     """Scan a server-side folder path and analyze all audio files in parallel.
@@ -449,7 +463,11 @@ def batch_route():
     if not folder.is_dir():
         return jsonify({"error": f"not a directory: {folder}"}), 400
 
-    files = sorted(p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO_EXTS)
+    files = sorted(
+        p
+        for p in folder.rglob("*")
+        if p.is_file() and p.suffix.lower() in AUDIO_EXTS and not _is_sidecar(p)
+    )
     if not files:
         return jsonify({"error": "no audio files found"}), 404
 

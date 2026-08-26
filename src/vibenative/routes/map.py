@@ -4,7 +4,7 @@ import json
 from contextlib import closing
 from pathlib import Path
 
-from flask import Response, jsonify, render_template
+from flask import Response, jsonify, render_template, request
 
 from .. import insight
 from ..db import (
@@ -13,11 +13,90 @@ from ..db import (
 )
 from ._shared import _artist_of, _dominant_style, _second_style, bp
 
+# A runner-up needs at least this share before it's worth offering as a fix.
+# Measured against the library: at 3% about 91% of tracks still keep at least one
+# candidate (2.5 on average), while the 0-2% tail -- which is model noise, not a
+# plausible alternative -- stops being suggested. Offering a 0% read as an answer
+# is worse than offering nothing.
+CANDIDATE_MIN_SCORE = 0.03
 
-def _map_node(h, title, filename, payload, filepath=""):
+
+def _override_candidates(p, top_style, limit=5):
+    """The track's other weighted reads, strongest first.
+
+    When a track is mislabelled the right answer is usually already in the list,
+    one rung down -- a happy-hardcore misread whose runner-up is drum and bass.
+    Sending the weights with the node means correcting it is a click instead of
+    remembering how to spell it.
+
+    Prefers the salience read (the energy/confidence/recurrence-weighted identity)
+    over the flat scores, matching what ``_dominant_style`` decides from.
+    """
+    ranked = p.get("salience") or p.get("styles") or []
+    out = []
+    for entry in ranked:
+        style = (entry or {}).get("style")
+        if not style or style == top_style:
+            continue
+        try:
+            score = round(float(entry.get("score") or 0), 4)
+        except (TypeError, ValueError):
+            continue
+        if score < CANDIDATE_MIN_SCORE:
+            continue
+        out.append({"style": style, "score": score})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _tags_by_hash(c):
+    """{hash: [tag, ...]} for the whole library in one query.
+
+    Fetched in bulk rather than per node: the map already reads every track, and
+    a per-track tag lookup would turn one query into thousands.
+    """
+    out = {}
+    for h, name in c.execute(
+        "SELECT tt.hash, t.name FROM track_tags tt JOIN tags t ON t.id = tt.tag_id"
+    ):
+        out.setdefault(h, []).append(name)
+    return out
+
+
+def _keystone_fields(p, mode="dark"):
+    """The taxonomy read for one track: family, keystone(s), label and paint.
+
+    Computed per request rather than stored, so editing the taxonomy or the
+    palette re-labels the whole map on the next load with no migration. It's
+    pure table lookup over the style read that's already in the payload.
+    """
+    from .. import keystone as K
+    from .. import palette as P
+
+    cls = K.classify(p)
+    if not cls:
+        return {}
+    paint = P.track_paint(cls, mode) or {}
+    return {
+        "family": cls["family"],
+        "keystones": cls["keystones"],
+        "klabel": cls["label"],
+        "kkey": cls["key"],
+        "kfusion": cls["fusion"],
+        "kshares": cls["shares"],
+        "rings": paint.get("rings") or [],
+        "kcolor": paint.get("color"),
+    }
+
+
+def _map_node(h, title, filename, payload, filepath="", tags=(), mode="dark"):
     p = payload if isinstance(payload, dict) else json.loads(payload)
     style, score = _dominant_style(p)
     return {
+        **_keystone_fields(p, mode),
+        "cands": _override_candidates(p, style),
+        "tags": list(tags),
         "hash": h,
         "title": title or (Path(filename).stem if filename else h[:8]),
         "artist": _artist_of(p, title, filename),
@@ -46,13 +125,18 @@ def audit_route():
 def map_route():
     import numpy as np
 
+    # Palette steps differ per theme; the client says which it's rendering in.
+    mode = "light" if request.args.get("mode") == "light" else "dark"
     with _db_lock, closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
         ).fetchall()
+        tags_by_hash = _tags_by_hash(c)
     nodes, embs, emb_idx = [], [], []
     for h, title, filename, filepath, payload, blob in rows:
-        nodes.append(_map_node(h, title, filename, payload, filepath))
+        nodes.append(
+            _map_node(h, title, filename, payload, filepath, tags_by_hash.get(h, ()), mode)
+        )
         if blob is not None:
             embs.append(np.frombuffer(blob, dtype=np.float32))
             emb_idx.append(len(nodes) - 1)

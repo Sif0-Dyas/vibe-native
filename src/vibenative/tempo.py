@@ -13,6 +13,8 @@ maxdiff 0.018. deeptemp-k16-3.json: 256-class softmax, class 0 = 30 BPM, class
 global BPM by majority vote (Essentia TempoCNN's default aggregationMethod).
 """
 
+import threading
+
 import numpy as np
 
 from .paths import models_dir
@@ -56,6 +58,24 @@ def _mel_filterbank() -> np.ndarray:
 _MELFB = _mel_filterbank()
 _HANN = (0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(FRAME) / FRAME)).astype(np.float64)  # periodic
 _engine: dict = {}
+
+# Guards BOTH building the shared session and running it.
+#
+# analysis.py already serialises the genre pass ("the one shared inference pass")
+# but its comment says decode/BPM/key "stay parallel" -- so TempoCNN, which is
+# also ONNX, was left unguarded while /batch runs three workers. Two races follow:
+#
+#   1. Construction. Three threads can each see "sess" not in _engine, each build
+#      an InferenceSession, and the last _engine.update() wins. The losers are
+#      dropped while a thread may still be inside Run() on one -- a use-after-free
+#      in native code, which surfaces as an access violation, not a Python error.
+#   2. Execution. Concurrent Run() on one session is documented as supported, but
+#      it is the only unserialised inference left here, and batch scans have been
+#      dying with 0xc0000005 inside onnxruntime_pybind11_state.pyd.
+#
+# The cost is small: TempoCNN is the cheap model and decode (the actual bottleneck)
+# stays parallel.
+_lock = threading.Lock()
 
 
 def _session():  # -> onnxruntime.InferenceSession (imported lazily below, so not annotated)
@@ -104,17 +124,20 @@ def estimate(audio: np.ndarray, sr: int) -> tuple[float, float]:
     mel = _melspectrogram(_resample_11025(audio, sr))
     if mel.shape[0] < PATCH:
         return 0.0, 0.0
-    sess = _session()
     starts = range(0, mel.shape[0] - PATCH + 1, PATCH_HOP)
     patches = np.stack([mel[s : s + PATCH].T for s in starts])[:, :, :, None].astype(np.float32)
-    inn, outn = _engine["inn"], _engine["outn"]
-    soft = np.concatenate(  # per-PATCH_BATCH runs, not one giant run — see PATCH_BATCH
-        [
-            sess.run([outn], {inn: patches[i : i + PATCH_BATCH]})[0]
-            for i in range(0, len(patches), PATCH_BATCH)
-        ],
-        axis=0,
-    )  # (n_patches, 256)
+    # Mel/patch prep above is pure NumPy and stays parallel; only the session
+    # build + inference are serialised -- see _lock.
+    with _lock:
+        sess = _session()
+        inn, outn = _engine["inn"], _engine["outn"]
+        soft = np.concatenate(  # per-PATCH_BATCH runs, not one giant run — see PATCH_BATCH
+            [
+                sess.run([outn], {inn: patches[i : i + PATCH_BATCH]})[0]
+                for i in range(0, len(patches), PATCH_BATCH)
+            ],
+            axis=0,
+        )  # (n_patches, 256)
 
     # Aggregate by AVERAGING the per-patch softmax distributions, then argmax. This
     # beats Essentia's default "majority" vote-of-argmaxes against the oracle

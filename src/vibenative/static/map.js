@@ -46,6 +46,52 @@
   let focusedFam = null;               // a clicked genre -> force ITS subgenre labels on
   let spinSpeed = 0.0006, running = false, rafId = null, filterFam = null;   // 10% of the 0.006 max
   let edgesOn = true, harmonic = false, flaggedOnly = false;
+
+  /* ---------------------------------------------------------------------------
+     Facet filters. Genre and "flagged only" used to be two ad-hoc checks inline
+     in the draw loop; every new facet would have added another. One object plus
+     one predicate keeps them in a single place, so the map, the counter and the
+     twinkle highlight all agree on what "showing" means.
+
+     A range facet is [min, max] with null meaning "no bound". The sliders write
+     null when parked at their ends, so a track whose BPM was misread as 738
+     still appears until you actually narrow the range -- an outlier shouldn't be
+     silently hidden by a control you never touched.
+  --------------------------------------------------------------------------- */
+  const FILT_EMPTY = { artist:'', key:'', tags:[], playlist:null,
+                       bpm:[null,null], len:[null,null] };
+  let FILT = JSON.parse(JSON.stringify(FILT_EMPTY));
+  let playlistHashes = null;        // Set of hashes for the chosen playlist, or null
+  let highlightTag = null;          // hovered tag -> its tracks twinkle as a preview
+  // Set by the filter panel so anything that changes FILT can refresh the
+  // controls and the counter. A no-op until the panel has been wired.
+  let syncFilterUI = () => {};
+
+  const filtActive = () =>
+    !!(FILT.artist || FILT.key || FILT.tags.length || FILT.playlist
+       || FILT.bpm[0] != null || FILT.bpm[1] != null
+       || FILT.len[0] != null || FILT.len[1] != null);
+
+  function inRange(v, [lo, hi]){
+    if (v == null) return lo == null && hi == null;   // unknown passes only an unset facet
+    if (lo != null && v < lo) return false;
+    if (hi != null && v > hi) return false;
+    return true;
+  }
+
+  // Does this node survive every active filter? The single source of truth.
+  function passes(n){
+    if (filterFam && n.fam !== filterFam) return false;
+    if (flaggedOnly && !n.flag) return false;
+    if (FILT.artist && !(n.artist || '').toLowerCase().includes(FILT.artist)) return false;
+    if (FILT.key && n.camelot !== FILT.key) return false;
+    // tags are AND: picking two means "has both", which is how you narrow down
+    if (FILT.tags.length && !FILT.tags.every(t => (n.tags || []).includes(t))) return false;
+    if (playlistHashes && !playlistHashes.has(n.hash)) return false;
+    if (!inRange(n.bpm, FILT.bpm)) return false;
+    if (!inRange(n.duration, FILT.len)) return false;
+    return true;
+  }
   const tipEl = document.getElementById('map-tip');
   let anim = null;                         // camera tween
   const proj = new Map();                  // hash -> {sx,sy,z,r} for this frame
@@ -91,7 +137,13 @@
        maxFam     0 = all, else cap the number of genre labels (biggest kept)
        maxSub     0 = all, else cap the number of subgenre labels             */
   const LBL_DEFAULTS = { showFam:true, showSub:true, subAlways:false, onlyFam:'',
-    colorFam:false, counts:false, opacity:1, dist:1, size:1, maxFam:0, maxSub:0 };
+    colorFam:false, counts:false, opacity:1, dist:1, size:1, maxFam:0, maxSub:0,
+    // flat: draw nodes and links as plain 2-D marks -- no depth shading on the
+    // dots, no depth fade on the links. The layout still comes from the 3-D
+    // positions (that's what the clustering means); only the *rendering* of
+    // depth is dropped, which is what makes a flat map readable for picking.
+    flat:false,
+    linkWidth:1 };
   let LBL = Object.assign({}, LBL_DEFAULTS);
   try { LBL = Object.assign(LBL, JSON.parse(localStorage.getItem('vibeMapLabels') || '{}') || {}); } catch(_){}
   const saveLbl = () => { try{ localStorage.setItem('vibeMapLabels', JSON.stringify(LBL)); }catch(_){ /* private */ } };
@@ -118,22 +170,49 @@
   // deterministic 0..1 hash of a string
   function hash01(s){ let h = 0; for (let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) | 0;
     return (((h % 4096) + 4096) % 4096) / 4096; }
-  // A subgenre's colour = its family's hue nudged a little (so it still reads as
-  // the same family) plus a small saturation/lightness wobble -- subgenres come
-  // out distinct but kin, so a family cluster shows its internal groupings even
-  // from afar. Returns {h, s, dl} (hue, saturation, lightness delta).
+  function hexHsl(hex){
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    if (!m) return null;
+    const r = parseInt(m[1],16)/255, g = parseInt(m[2],16)/255, b = parseInt(m[3],16)/255;
+    const mx = Math.max(r,g,b), mn = Math.min(r,g,b), d = mx-mn, l = (mx+mn)/2;
+    let h = 0;
+    if (d !== 0){
+      if (mx===r) h = ((g-b)/d) % 6; else if (mx===g) h = (b-r)/d + 2; else h = (r-g)/d + 4;
+      h = ((h*60) % 360 + 360) % 360;
+    }
+    const sat = d === 0 ? 0 : d / (1 - Math.abs(2*l - 1));
+    return { h, s: sat*100, l: l*100 };
+  }
+
+  // Keystone colour by style name, harvested from the server's own paint. The
+  // server owns the palette -- the solved default, the chosen preset, and any
+  // colour set per genre all resolve there -- so the map reads its colours out
+  // rather than deriving a second, disagreeing set from a static family table.
+  let KCOL = {};
+
+  // A subgenre's colour = its keystone's hue nudged a little (so it still reads
+  // as the same genre) plus a small saturation/lightness wobble -- subgenres come
+  // out distinct but kin, so a cluster shows its internal groupings even from
+  // afar. Returns {h, s, dl} (hue, saturation, lightness delta from the base 58).
   function styleShade(fam, style){
-    const base = famHue(fam);
     const ov = style ? SUB_HUE[`${fam}||${style}`] : null;   // per-subgenre override
+    const paint = style ? hexHsl(KCOL[style]) : null;
+    const base = paint ? paint.h : famHue(fam);
     if (!style || style === fam)
-      return { h: (ov == null ? base : ov), s: 64, dl: 0 };
+      return { h: (ov == null ? base : ov), s: paint ? paint.s : 64, dl: paint ? paint.l - 58 : 0 };
     const r = hash01(style + '|' + fam);
+    // A narrower nudge when the hue came from the palette: +/-36 was safe around
+    // a family hue with nothing next to it, but the palette packs keystones close
+    // enough that that much wander would push a subgenre into its neighbour's
+    // colour -- the one thing the palette is solved to prevent.
+    const spread = paint ? 12 : 36;
     return {
-      // an overridden subgenre uses its chosen hue exactly; otherwise the family
-      // hue nudged +/- 36 degrees so untouched subgenres still read as kin.
-      h: ov != null ? ov : ((base + (r*2 - 1)*36) % 360 + 360) % 360,
-      s: 48 + Math.floor(hash01('s' + style) * 38),   // 48..86 (wide, for shade contrast)
-      dl: (hash01('l' + style)*2 - 1) * 15,           // +/- 15 lightness
+      h: ov != null ? ov : ((base + (r*2 - 1)*spread) % 360 + 360) % 360,
+      // Wobble *around* the palette's saturation rather than across a fixed
+      // range, or Pastel and Neon would come out the same on the map.
+      s: paint ? Math.max(0, Math.min(100, paint.s + (hash01('s' + style)*2 - 1) * 12))
+               : 48 + Math.floor(hash01('s' + style) * 38),
+      dl: (paint ? paint.l - 58 : 0) + (hash01('l' + style)*2 - 1) * (paint ? 7 : 15),
     };
   }
   // blend shade b into a by t (0..1); hue interpolated along the short arc so a
@@ -172,6 +251,13 @@
   /* ---- build 3-D positions for the current mode -------------------- */
   function layout(){
     byHash.clear();
+    // Harvest the server's paint first: every shade below depends on it, so it
+    // has to be complete before the first lookup rather than filled in as we go.
+    KCOL = {};
+    for (const n of NODES){
+      if (n.style && n.kcolor) KCOL[n.style] = n.kcolor;
+      for (const r of n.rings || []) if (r.keystone && r.color) KCOL[r.keystone] = r.color;
+    }
     for (const n of NODES){
       n.fam = familyOf(n.style || n.styles[0] || 'Other') || 'Other';
       let sh = styleShade(n.fam, n.style || n.styles[0]);   // per-subgenre shade of the family
@@ -561,8 +647,7 @@
     proj.clear();
     const order = [];
     for (const n of NODES){
-      if (filterFam && n.fam !== filterFam) continue;   // genre filter
-      if (flaggedOnly && !n.flag) continue;             // "likely misreads" filter
+      if (!passes(n)) continue;                         // genre / flag / facet filters
       const ax = n.x3-pivot.x, ay = n.y3-pivot.y, az = n.z3-pivot.z;
       const x =  ax*cy + az*sy;
       const z = -ax*sy + az*cy;
@@ -573,8 +658,13 @@
       const persp = CAM / dist;
       const sxp = cxp + x*persp*DISP;
       const syp = cyp + y2*persp*DISP;
-      const depth = clamp((z2+1.15)/2.3, 0, 1);
-      const r = clamp(4.2*persp*Math.sqrt(view.zoom), 1.2, 46);
+      // Depth drives dot brightness, alpha, size and the label fade. Pinning it
+      // to 1 in flat mode neutralises all of those from one place, instead of
+      // special-casing every draw site. Layout still comes from the 3-D
+      // positions -- only the depth *cues* go away.
+      const depth = LBL.flat ? 1 : clamp((z2+1.15)/2.3, 0, 1);
+      const rp = LBL.flat ? 1 : persp;          // flat: every dot the same size
+      const r = clamp(4.2*rp*Math.sqrt(view.zoom), 1.2, 46);
       proj.set(n.hash, { sx:sxp, sy:syp, z:z2, r, depth, node:n });
       order.push(n.hash);
     }
@@ -596,7 +686,7 @@
         if (selHash){ op = hot ? 0.9 : 0.05; lw = hot ? 1.8 : 1; }
         else { op = (0.14 + 0.34*s) * (0.55 + 0.45*Math.min(a.depth,b.depth)); lw = 0.8 + 1.4*s; }
         if (op < 0.02) continue;
-        ctx.lineWidth = lw;
+        ctx.lineWidth = lw * LBL.linkWidth;
         ctx.strokeStyle = hot ? `rgba(86,180,233,${op})` : `rgba(150,172,208,${op})`;
         ctx.beginPath(); ctx.moveTo(a.sx,a.sy); ctx.lineTo(b.sx,b.sy); ctx.stroke();
       }
@@ -607,7 +697,14 @@
     const harmonicOn = harmonic && selNode;
     for (const h of order){
       const p = proj.get(h), n = p.node;
-      const tw = 0.9 + 0.1*Math.sin(t*1.6 + n.ph);
+      // Baseline shimmer, plus a much stronger pulse for tracks matching the
+      // tag currently under the cursor -- the "what would this filter show me"
+      // preview. Phase-offset per node so they sparkle rather than strobe in
+      // unison, which reads as a glitch instead of a highlight.
+      const lit = highlightTag && (n.tags || []).includes(highlightTag);
+      const tw = lit
+        ? 1.25 + 0.55*Math.sin(t*7 + n.ph*3)
+        : 0.9 + 0.1*Math.sin(t*1.6 + n.ph);
       const light = (26 + 44*p.depth) * tw;
       let compatible = false, dim = 1;
       if (harmonicOn && h !== selHash){         // harmonic mixing: mute non-matches
@@ -655,13 +752,25 @@
     // colour-matching on, the halo flips to white so the coloured text pops.
     ctx.lineJoin = 'round';
     const halo = LBL.colorFam ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.9)';
-    const drawLabel = (text, p, fs, fill) => {
+    // Depth cues on text, so distant labels recede the way distant objects do.
+    // Both are floored: a far label gets faint and small, never invisible and
+    // never unreadable -- you still need to know what's back there.
+    const DEPTH_MIN_ALPHA = 0.34;
+    const DEPTH_MIN_SCALE = 0.62;
+    const depthAlpha = d => DEPTH_MIN_ALPHA + (1 - DEPTH_MIN_ALPHA) * clamp(d, 0, 1);
+    const depthScale = d => DEPTH_MIN_SCALE + (1 - DEPTH_MIN_SCALE) * clamp(d, 0, 1);
+    const drawLabel = (text, p, fs, fill, depth = 1) => {
+      // globalAlpha multiplies whatever alpha the fill already carries, so the
+      // existing focus/LOD fades keep working and this composes on top.
+      const prev = ctx.globalAlpha;
+      ctx.globalAlpha = prev * depthAlpha(depth);
       ctx.font = fs;
       ctx.lineWidth = 3.5;
       ctx.strokeStyle = halo;
       ctx.strokeText(text, p.sx, p.sy);
       ctx.fillStyle = fill;
       ctx.fillText(text, p.sx, p.sy);
+      ctx.globalAlpha = prev;
     };
     // Per-family "focus": high when that cluster is near the screen centre AND
     // you're zoomed in on it. A focused family fades its own big label and shows
@@ -694,7 +803,7 @@
       const text = (LBL.counts ? `${f} ${CENTROIDS[f].n}` : f).toUpperCase();
       ctx.font = `800 ${fs}px Syne, sans-serif`;
       fl.push({ f, text, ax:p.sx, ay:p.sy, lx:p.sx, ly:p.sy,
-                hw:ctx.measureText(text).width/2 + 5, hh:fs*0.62, fs, alpha });
+                hw:ctx.measureText(text).width/2 + 5, hh:fs*0.62, fs, alpha, depth });
     }
     // declutter: keep only the N biggest genre labels (by track count)
     if (LBL.maxFam > 0 && fl.length > LBL.maxFam){
@@ -781,7 +890,8 @@
       const fill = LBL.colorFam                         // colour-match the genre?
         ? `hsla(${famHue(l.f)} 72% 70% / ${l.alpha})`
         : `rgba(233,238,247,${l.alpha})`;
-      drawLabel(l.text, {sx:l.lx, sy:l.ly}, `800 ${l.fs}px Syne, sans-serif`, fill);
+      const lfs = l.fs * depthScale(l.depth);
+      drawLabel(l.text, {sx:l.lx, sy:l.ly}, `800 ${lfs}px Syne, sans-serif`, fill, l.depth);
       famLabelHits.push({ f:l.f, cx:l.lx, cy:l.ly, hw:l.hw, hh:l.hh });   // click -> fly here
     }
     // subgenre labels -- shown only inside the focused cluster(s), coloured as a
@@ -820,7 +930,8 @@
       }
       subs.sort((x,y) => x.depth - y.depth);
       for (const s of subs){
-        drawLabel(s.text, s.p, `700 ${s.fs}px 'JetBrains Mono', monospace`, s.col);
+        const sfs = s.fs * depthScale(s.depth);
+        drawLabel(s.text, s.p, `700 ${sfs}px 'JetBrains Mono', monospace`, s.col, s.depth);
         styleLabelHits.push({ fam:s.fam, style:s.style, cx:s.p.sx, cy:s.p.sy, hw:s.hw, hh:s.hh });
       }
     }
@@ -1027,18 +1138,53 @@
       <div id="pop-pick"><div class="pop-bar" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">finding a match…</div></div>
       ${other.length ? `<div class="pop-h">also reads as</div>
         <div class="pop-artists">${other.map(s=>`<span class="chip">${escapeHtml(s)}</span>`).join('')}</div>` : ''}
+      ${(n.tags||[]).length ? `<div class="pop-h">tags</div>
+        <div class="pop-tags">${(n.tags||[]).map(t=>
+          `<button class="pop-tag${FILT.tags.includes(t)?' on':''}" data-t="${escapeHtml(t)}"
+            title="click to filter the map · hover to preview">${escapeHtml(t)}</button>`).join('')}</div>` : ''}
       <div class="pop-h">similar artists</div>
       <div class="pop-artists" id="pop-artists"><span class="pop-bar">…</span></div>
       <div class="pop-h">similar tracks</div>
       <div class="pop-sim" id="pop-sim"><span class="pop-bar">…</span></div>
+      <div class="pop-h">rating</div>
+      <div class="pop-rate">
+        <div class="rate-stars" role="group" aria-label="star rating">
+          ${[1,2,3,4,5].map(i=>`<button class="rate-star" data-s="${i}"
+            title="${i} star${i>1?'s':''}" aria-label="${i} star${i>1?'s':''}">&#9733;</button>`).join('')}
+          <button class="rate-clear" data-s="0" title="clear rating">&#10005;</button>
+        </div>
+        <select class="rate-grade" title="letter grade (exports into the Rekordbox comment)">
+          <option value="">grade</option>
+          ${['A','B','C','D','F'].map(g=>`<option value="${g}">${g}</option>`).join('')}
+        </select>
+        <input class="rate-note" type="text" placeholder="note (exports as “A - note”)"
+               autocomplete="off" spellcheck="false" maxlength="1000">
+      </div>
       <div class="pop-omit-row">
+        <button class="pop-adjust" title="nudge how much of each genre this track is — keeps the rest of the read">⚖ adjust</button>
         <button class="pop-override" title="set the genre yourself (persists + saved for training)">✎ override</button>
         <button class="pop-omit" title="delete this track's analysis (audio file untouched)">✕ omit</button>
       </div>
+      <div class="pop-adj" hidden>
+        <div class="ovr-h">how much of each genre is this?</div>
+        <div class="adj-rows"><span class="pop-bar">…</span></div>
+        <div class="ovr-typed">
+          <input class="adj-add-in" type="text" placeholder="add a genre it missed…" list="ovr-genre-list"
+                 autocomplete="off" spellcheck="false">
+          <button class="adj-add">add</button>
+          <button class="adj-close" title="done">✕</button>
+        </div>
+        <div class="ovr-hint">Nudges the read instead of replacing it — use <b>override</b> if it's flat wrong.</div>
+      </div>
       <div class="pop-ovr" hidden>
-        <input class="pop-ovr-in" type="text" placeholder="genre…" autocomplete="off" spellcheck="false">
-        <button class="pop-ovr-save">save</button>
-        <button class="pop-ovr-cancel" title="cancel">✕</button>
+        <div class="ovr-cands"></div>
+        <div class="ovr-typed">
+          <input class="pop-ovr-in" type="text" placeholder="or type a genre…" list="ovr-genre-list"
+                 autocomplete="off" spellcheck="false">
+          <button class="pop-ovr-save">save</button>
+          <button class="pop-ovr-cancel" title="cancel">✕</button>
+        </div>
+        <div class="ovr-hint">Tab completes · ↓ for the full list</div>
       </div>`;
     popEl.hidden = false;
     popEl.querySelector('.pop-x').onclick = closePopup;
@@ -1058,26 +1204,288 @@
       });
       addBtn.textContent = '✓ in playlist'; addBtn.classList.add('added');
     };
+    // Tag chips: click filters the map to that tag, hover previews which tracks
+    // *would* survive by making them twinkle -- so you can see the effect of a
+    // filter before committing to it.
+    for (const b of popEl.querySelectorAll('.pop-tag')) {
+      const tag = b.dataset.t;
+      b.onmouseenter = () => { highlightTag = tag; };
+      b.onmouseleave = () => { highlightTag = null; };
+      b.onclick = () => {
+        const i = FILT.tags.indexOf(tag);
+        if (i >= 0) FILT.tags.splice(i, 1); else FILT.tags.push(tag);
+        b.classList.toggle('on', FILT.tags.includes(tag));
+        highlightTag = null;
+        syncFilterUI();
+      };
+    }
+    wireRating(popEl, n.hash);
+    wireAdjust(popEl, n);
     popEl.querySelector('.pop-omit').onclick = () => omitTrack(n);
     const ovrRow = popEl.querySelector('.pop-ovr'), omitRow = popEl.querySelector('.pop-omit-row');
     const ovrIn = popEl.querySelector('.pop-ovr-in');
     const closeOvr = () => { ovrRow.hidden = true; omitRow.hidden = false; };
     popEl.querySelector('.pop-override').onclick = () => {
       omitRow.hidden = true; ovrRow.hidden = false;
-      ovrIn.value = n.suggest || n.style || '';   // prefill with the flag's suggestion
-      ovrIn.focus(); ovrIn.select();
+      // The track's own runner-up reads, as one-click buttons. This is the usual
+      // fix -- the correct genre is normally already in the list, just not first.
+      const cands = (n.cands || []).filter(c => c.style && c.style !== n.style);
+      const cbox = popEl.querySelector('.ovr-cands');
+      cbox.innerHTML = cands.length
+        ? `<div class="ovr-h">already reads as</div>` + cands.map(c =>
+            `<button class="ovr-cand" data-g="${escapeHtml(c.style)}">${escapeHtml(c.style)}`
+            + `<i>${(c.score * 100).toFixed(0)}%</i></button>`).join('')
+        : `<div class="ovr-h">no runner-up read</div>`;
+      for (const b of cbox.querySelectorAll('.ovr-cand')) {
+        b.onclick = () => overrideTrack(n, b.dataset.g);
+      }
+      ovrIn.value = '';                       // the buttons carry the suggestion now
+      ovrIn.placeholder = n.suggest ? `or type… (neighbours say ${n.suggest})` : 'or type a genre…';
+      refreshGenreList();
+      ovrIn.focus();
     };
     popEl.querySelector('.pop-ovr-cancel').onclick = closeOvr;
     popEl.querySelector('.pop-ovr-save').onclick = () => overrideTrack(n, ovrIn.value);
     ovrIn.addEventListener('keydown', e => {
-      if (e.key === 'Enter') overrideTrack(n, ovrIn.value);
-      else if (e.key === 'Escape') closeOvr();
+      if (e.key === 'Enter') { overrideTrack(n, ovrIn.value); return; }
+      if (e.key === 'Escape') { closeOvr(); return; }
+      if (e.key === 'Tab' && ovrIn.value.trim()) {
+        // Tab completes to the first genre that starts with what's typed. Only
+        // when there IS a match, so Tab still moves focus normally otherwise.
+        const hit = completeGenre(ovrIn.value);
+        if (hit && hit.toLowerCase() !== ovrIn.value.trim().toLowerCase()) {
+          e.preventDefault();
+          ovrIn.value = hit;
+          ovrIn.setSelectionRange(hit.length, hit.length);
+        }
+      }
     });
     try{
       simCache = await fetch(`/similar/${n.hash}?k=12`).then(r=>r.ok?r.json():[]);
     }catch(_){ simCache = []; }
     renderPick();
     renderSimilar(simCache);
+  }
+
+  /* Star / grade / note widget. Ratings live only in this app's database and
+     surface in Rekordbox on export -- nothing here writes to your audio files.
+     Each control saves on its own so a half-filled rating is never lost, and
+     sends only the field it owns, so setting stars can't wipe a note. */
+  function wireRating(root, hash){
+    const stars = [...root.querySelectorAll('.rate-star')];
+    const grade = root.querySelector('.rate-grade');
+    const note  = root.querySelector('.rate-note');
+    if (!stars.length || !grade || !note) return;
+
+    // `saved` is the value on the server; `paint` is free to show a hover
+    // preview on top of it. Only the server's answer updates `saved`, so
+    // leaving the widget always restores the truth rather than the last hover.
+    let saved = 0;
+    const paint = v => stars.forEach(b => b.classList.toggle('on', +b.dataset.s <= v));
+    const commit = v => { saved = v; paint(v); };
+
+    const save = async body => {
+      try {
+        const r = await fetch(`/ratings/${hash}`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+        if (r.ok){ const j = await r.json(); commit(j.stars); }
+      } catch(_){ /* offline / backend down -- the UI keeps what you typed */ }
+    };
+
+    fetch(`/ratings/${hash}`).then(r => r.ok ? r.json() : null).then(j => {
+      if (!j) return;
+      commit(j.stars); grade.value = j.grade || ''; note.value = j.note || '';
+    }).catch(() => {});
+
+    // hovering previews the value you'd set; leaving restores the saved one
+    for (const b of stars){
+      b.onmouseenter = () => paint(+b.dataset.s);
+      b.onclick = () => save({stars: +b.dataset.s});
+    }
+    const clear = root.querySelector('.rate-clear');
+    if (clear) clear.onclick = () => save({stars: 0});
+    const box = root.querySelector('.rate-stars');
+    if (box) box.onmouseleave = () => paint(saved);
+
+    grade.onchange = () => save({grade: grade.value});
+    // save the note on blur rather than per keystroke -- one request per edit
+    note.onblur = () => save({note: note.value});
+    note.onkeydown = e => { if (e.key === 'Enter') note.blur(); };
+  }
+
+  /* Every genre the library currently knows about -- families, subgenres, and
+     each track's runner-up reads. Built from the loaded nodes rather than a new
+     endpoint, so it can never drift from what's actually on the map, and it
+     grows the moment you override something to a name that didn't exist. */
+  function knownGenres(){
+    const set = new Set();
+    for (const n of NODES){
+      if (n.fam) set.add(n.fam);
+      if (n.style) set.add(n.style);
+      for (const s of (n.styles || [])) if (s) set.add(s);
+      for (const c of (n.cands || [])) if (c && c.style) set.add(c.style);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }
+
+  // Fill the shared <datalist> that backs the override input's dropdown.
+  function refreshGenreList(){
+    const dl = document.getElementById('ovr-genre-list');
+    if (!dl) return;
+    dl.innerHTML = knownGenres()
+      .map(g => `<option value="${escapeHtml(g)}"></option>`).join('');
+  }
+
+  // First known genre starting with `prefix`; prefers an exact case-insensitive
+  // hit so typing a full name doesn't get "completed" into a longer one.
+  function completeGenre(prefix){
+    const q = (prefix || '').trim().toLowerCase();
+    if (!q) return null;
+    const all = knownGenres();
+    return all.find(g => g.toLowerCase() === q)
+        || all.find(g => g.toLowerCase().startsWith(q))
+        || null;
+  }
+
+  // --- adjust: nudge the blend instead of replacing it ----------------------
+  // An override answers "what is this" with one word and throws away everything
+  // the model got right. This bends the read instead: each genre carries a step
+  // you raise or lower, so "this is a VERY house track" and "that Tech Trance is
+  // a misread" are both sayable without flattening the rest to zero.
+  //
+  // The step is what's stored, never the multiplier it computes -- the server
+  // can retune the curve without silently rewriting what you meant by it.
+  function wireAdjust(popEl, n){
+    const btn  = popEl.querySelector('.pop-adjust');
+    const box  = popEl.querySelector('.pop-adj');
+    const rows = popEl.querySelector('.adj-rows');
+    const omitRow = popEl.querySelector('.pop-omit-row');
+    const addIn = popEl.querySelector('.adj-add-in');
+    if (!btn || !box) return;
+
+    let state = null;          // {steps, base, adjusted, max_step, words}
+    let saving = null;         // in-flight POST, so rapid clicks coalesce
+    let moved = false;         // did anything actually change? -> re-cluster on close
+
+    // Re-cluster once, when the user is done. Doing it per-press would slide the
+    // dot away from the cursor between clicks.
+    const done = () => {
+      box.hidden = true; omitRow.hidden = false;
+      if (moved){ moved = false; if (NODES.length) layout(); }
+    };
+
+    const wordFor = s => (state && state.words && state.words[String(s)]) || 'as read';
+
+    function render(){
+      if (!state){ rows.innerHTML = `<span class="pop-bar">…</span>`; return; }
+      const shown = new Map();
+      for (const e of state.adjusted || []) shown.set(e.style, e.score);
+      // A genre pushed all the way down can fall out of the top-N; keep its row
+      // visible so the press is undoable rather than stranded.
+      for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
+      if (!shown.size){ rows.innerHTML = `<div class="ovr-h">nothing read for this track</div>`; return; }
+      const max = state.max_step || 3;
+      rows.innerHTML = [...shown.entries()].map(([style, score]) => {
+        const step = (state.steps || {})[style] || 0;
+        const pct  = Math.round((score || 0) * 100);
+        return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
+          <button class="adj-step" data-d="-1" ${step <= -max ? 'disabled' : ''} title="less">−</button>
+          <button class="adj-step" data-d="1" ${step >= max ? 'disabled' : ''} title="more">＋</button>
+          <span class="adj-meter" title="${escapeHtml(style)} — ${escapeHtml(wordFor(step))}">
+            <i style="width:${pct}%"></i>
+            <b>${escapeHtml(style)}</b>${step ? `<em>${escapeHtml(wordFor(step))}</em>` : ''}
+          </span>
+          <span class="adj-pct">${pct}%</span>
+        </div>`;
+      }).join('');
+      for (const b of rows.querySelectorAll('.adj-step')){
+        b.onclick = () => bump(b.closest('.adj-row').dataset.g, Number(b.dataset.d));
+      }
+    }
+
+    // Optimistic: the row moves on click and the server's answer replaces it a
+    // moment later. Waiting for the round-trip made the +/- feel broken.
+    function bump(style, delta){
+      if (!state) return;
+      const max = state.max_step || 3;
+      const next = Math.max(-max, Math.min(max, ((state.steps || {})[style] || 0) + delta));
+      state.steps = { ...(state.steps || {}) };
+      if (next) state.steps[style] = next; else delete state.steps[style];
+      render();
+      save();
+    }
+
+    function save(){
+      const steps = state.steps || {};
+      saving = (saving || Promise.resolve()).then(async () => {
+        try{
+          const r = await fetch(`/weights/${n.hash}`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ steps }) });
+          const body = await r.json();
+          if (steps !== state.steps) return;   // superseded by a later click
+          state.steps = body.steps || {};
+          state.adjusted = body.adjusted && body.adjusted.length ? body.adjusted : state.base;
+          render();
+          applyToNode(n, state.adjusted);
+          moved = true;
+        }catch(_){ /* the row already moved; the next click retries */ }
+      });
+    }
+
+    btn.onclick = async () => {
+      if (!box.hidden){ done(); return; }
+      omitRow.hidden = true; box.hidden = false;
+      refreshGenreList();
+      rows.innerHTML = `<span class="pop-bar">…</span>`;
+      try{
+        state = await (await fetch(`/weights/${n.hash}`)).json();
+      }catch(_){ rows.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
+      render();
+    };
+    popEl.querySelector('.adj-close').onclick = done;
+
+    const addGenre = () => {
+      const g = completeGenre(addIn.value) || (addIn.value || '').trim();
+      if (!g || !state) return;
+      addIn.value = '';
+      // Enters at "moderately" -- a genre you had to type is one you mean, and
+      // starting at +1 read as barely-there next to what the model already found.
+      if (!(state.steps || {})[g]) { state.steps = { ...(state.steps || {}), [g]: 2 }; render(); save(); }
+    };
+    popEl.querySelector('.adj-add').onclick = addGenre;
+    addIn.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ addGenre(); return; }
+      if (e.key === 'Escape'){ done(); return; }
+      if (e.key === 'Tab' && addIn.value.trim()){
+        const hit = completeGenre(addIn.value);
+        if (hit && hit.toLowerCase() !== addIn.value.trim().toLowerCase()){
+          e.preventDefault(); addIn.value = hit;
+          addIn.setSelectionRange(hit.length, hit.length);
+        }
+      }
+    });
+  }
+
+  // Recolour one dot from an adjusted blend. Deliberately does NOT re-cluster:
+  // layout() would move the dot out from under the cursor mid-adjustment, so the
+  // colour follows every press and the position catches up on close.
+  function applyToNode(n, adjusted){
+    if (!adjusted || !adjusted.length) return;
+    const top = adjusted[0], second = adjusted[1];
+    n.style = top.style; n.score = top.score;
+    n.fam = familyOf(top.style) || 'Other';
+    n.cands = adjusted.map(e => ({ style: e.style, score: e.score }));
+    n.mix = second ? [second.style, Math.min(0.5, second.score / ((top.score || 0) + second.score))] : null;
+    let sh = styleShade(n.fam, top.style);
+    if (n.mix && n.mix[1] > 0.02){          // same blend layout() applies
+      const f2 = familyOf(n.mix[0]) || n.fam;
+      sh = mixShade(sh, styleShade(f2, n.mix[0]), n.mix[1]);
+    }
+    n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
+    n.flag = false; n.suggest = null;
   }
 
   // override: persist a manual genre; the track moves to its new cluster
@@ -1120,7 +1528,7 @@
     const nm = pick.artist ? `${pick.artist} – ${stripArtist(pick.title,pick.artist)}` : pick.title;
     box.innerHTML = `
       <div class="pop-pick" title="jump to this match">
-        <div class="pk-top">🎲 a match for you
+        <div class="pk-top">a match for you
           <button class="pk-roll" title="another">⟳</button></div>
         <div class="pk-name">${escapeHtml(nm)}</div>
         <div class="pk-sub"><span>${escapeHtml(pick.style||'')}</span>
@@ -1313,6 +1721,125 @@
     harmonic = !harmonic; harmonicBtn.classList.toggle('on', harmonic);
   });
 
+  /* ---- facet filter popover ---------------------------------------- */
+  const filtBtn   = document.getElementById('map-filt-btn');
+  const filtPanel = document.getElementById('map-filt-panel');
+  if (filtBtn && filtPanel){
+    const $f = id => document.getElementById(id);
+    // Slider positions are 0-100 percent of the library's own observed range, so
+    // the control fits whatever is actually loaded instead of a hard-coded scale.
+    let bpmLo = 0, bpmHi = 200, lenLo = 0, lenHi = 600;
+    const pct2 = (p, lo, hi) => lo + (hi - lo) * (p / 100);
+    const fmtLen = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+    // Recompute the slider domains from the loaded nodes. Uses the 1st/99th
+    // percentile, not min/max: one BPM misread at 738 would otherwise squash the
+    // whole useful range into a few pixels.
+    function calibrate(){
+      const bs = NODES.map(n => n.bpm).filter(v => v > 0).sort((a, b) => a - b);
+      const ls = NODES.map(n => n.duration).filter(v => v > 0).sort((a, b) => a - b);
+      const pick = (arr, q, dflt) => arr.length ? arr[Math.floor(q * (arr.length - 1))] : dflt;
+      bpmLo = Math.floor(pick(bs, 0.01, 60));  bpmHi = Math.ceil(pick(bs, 0.99, 200));
+      lenLo = Math.floor(pick(ls, 0.01, 0));   lenHi = Math.ceil(pick(ls, 0.99, 600));
+      if (bpmHi <= bpmLo) bpmHi = bpmLo + 1;
+      if (lenHi <= lenLo) lenHi = lenLo + 1;
+    }
+
+    function readRange(loId, hiId, lo, hi){
+      const a = +$f(loId).value, b = +$f(hiId).value;
+      // parked at an end => no bound, so outliers stay visible until you narrow
+      return [a <= 0 ? null : pct2(a, lo, hi), b >= 100 ? null : pct2(b, lo, hi)];
+    }
+
+    const setTxtF = (id, v) => { const el = $f(id); if (el) el.textContent = v; };
+
+    function syncFilt(){
+      const b = FILT.bpm, l = FILT.len;
+      setTxtF('flt-bpm-v', (b[0] == null && b[1] == null) ? 'any'
+        : `${Math.round(b[0] ?? bpmLo)}–${Math.round(b[1] ?? bpmHi)}`);
+      setTxtF('flt-len-v', (l[0] == null && l[1] == null) ? 'any'
+        : `${fmtLen(l[0] ?? lenLo)}–${fmtLen(l[1] ?? lenHi)}`);
+      setTxtF('flt-tags-v', FILT.tags.length ? FILT.tags.join(' + ') : 'any');
+      filtBtn.classList.toggle('on', filtActive());
+      if (countMap && NODES.length){
+        const shown = NODES.filter(passes).length;
+        countMap.textContent = filtActive() || filterFam || flaggedOnly
+          ? `${shown} of ${NODES.length} tracks · filtered`
+          : `${NODES.length} tracks · ${FAMS.length} genres · ${mapMode}`;
+      }
+    }
+
+    // Populate the key + playlist + tag choosers from what's actually loaded.
+    async function populate(){
+      calibrate();
+      const keys = [...new Set(NODES.map(n => n.camelot).filter(Boolean))]
+        .sort((a, b) => (parseInt(a) - parseInt(b)) || a.localeCompare(b));
+      const ksel = $f('flt-key');
+      if (ksel) ksel.innerHTML = `<option value="">any key</option>`
+        + keys.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('');
+      const tags = [...new Set(NODES.flatMap(n => n.tags || []))].sort();
+      const tbox = $f('flt-tags');
+      if (tbox) tbox.innerHTML = tags.length
+        ? tags.map(t => `<button class="flt-tag" data-t="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')
+        : `<span class="mp-hint">no tags yet</span>`;
+      if (tbox) for (const b of tbox.querySelectorAll('.flt-tag')) {
+        b.onclick = () => {
+          const t = b.dataset.t, i = FILT.tags.indexOf(t);
+          if (i >= 0) FILT.tags.splice(i, 1); else FILT.tags.push(t);
+          b.classList.toggle('on', FILT.tags.includes(t));
+          syncFilt();
+        };
+      }
+      try {
+        const pls = await (await fetch('/playlists')).json();
+        const list = Array.isArray(pls) ? pls : (pls.playlists || []);
+        const psel = $f('flt-pl');
+        if (psel) psel.innerHTML = `<option value="">any playlist</option>`
+          + list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+      } catch(_) { /* playlists are optional */ }
+      syncFilt();
+    }
+    window.mapFilterPopulate = populate;
+
+    // let anything outside this block (the popup's tag chips) refresh the panel
+    syncFilterUI = syncFilt;
+    const onFilt = () => { syncFilt(); };
+    $f('flt-artist').addEventListener('input', e => {
+      FILT.artist = e.target.value.trim().toLowerCase(); onFilt();
+    });
+    $f('flt-key').addEventListener('change', e => { FILT.key = e.target.value; onFilt(); });
+    $f('flt-pl').addEventListener('change', async e => {
+      FILT.playlist = e.target.value || null;
+      playlistHashes = null;
+      if (FILT.playlist){
+        try {
+          const d = await (await fetch(`/playlists/${FILT.playlist}`)).json();
+          const hs = d.tracks || d.hashes || [];
+          playlistHashes = new Set(hs.map(x => (typeof x === 'string' ? x : x && x.hash)).filter(Boolean));
+        } catch(_) { playlistHashes = null; }
+      }
+      onFilt();
+    });
+    for (const id of ['flt-bpm-lo','flt-bpm-hi']) $f(id).addEventListener('input', () => {
+      FILT.bpm = readRange('flt-bpm-lo','flt-bpm-hi', bpmLo, bpmHi); onFilt();
+    });
+    for (const id of ['flt-len-lo','flt-len-hi']) $f(id).addEventListener('input', () => {
+      FILT.len = readRange('flt-len-lo','flt-len-hi', lenLo, lenHi); onFilt();
+    });
+    $f('flt-reset').addEventListener('click', () => {
+      FILT = JSON.parse(JSON.stringify(FILT_EMPTY));
+      playlistHashes = null;
+      $f('flt-artist').value = ''; $f('flt-key').value = ''; $f('flt-pl').value = '';
+      $f('flt-bpm-lo').value = 0; $f('flt-bpm-hi').value = 100;
+      $f('flt-len-lo').value = 0; $f('flt-len-hi').value = 100;
+      for (const b of filtPanel.querySelectorAll('.flt-tag.on')) b.classList.remove('on');
+      syncFilt();
+    });
+    filtBtn.addEventListener('click', e => { e.stopPropagation(); filtPanel.hidden = !filtPanel.hidden; });
+    filtPanel.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => { filtPanel.hidden = true; });
+  }
+
   /* ---- label options popover --------------------------------------- */
   const lblBtn   = document.getElementById('map-lbl-btn');
   const lblPanel = document.getElementById('map-lbl-panel');
@@ -1329,6 +1856,9 @@
       setChk('lbl-subalways', LBL.subAlways);
       setChk('lbl-color', LBL.colorFam);
       setChk('lbl-counts', LBL.counts);
+      setChk('lbl-flat', LBL.flat);
+      setVal('lbl-lw',   Math.round(LBL.linkWidth * 100));
+      setTxt('lbl-lw-v', LBL.linkWidth.toFixed(1) + '×');
       setVal('lbl-op',   Math.round(LBL.opacity * 100));
       setVal('lbl-dist', Math.round(LBL.dist * 100));
       setVal('lbl-size', Math.round(LBL.size * 100));
@@ -1341,7 +1871,8 @@
       setTxt('lbl-maxs-v', LBL.maxSub ? LBL.maxSub : 'all');
       setVal('lbl-only', LBL.onlyFam || '');
       lblBtn.classList.toggle('on',
-        !LBL.showFam || !LBL.showSub || !!LBL.onlyFam || !!LBL.maxFam || !!LBL.maxSub);
+        !LBL.showFam || !LBL.showSub || !!LBL.onlyFam || !!LBL.maxFam || !!LBL.maxSub
+        || LBL.flat || LBL.linkWidth !== 1);
     };
     syncLbl();
     lblBtn.addEventListener('click', e => {
@@ -1356,6 +1887,8 @@
     bind('lbl-subalways', el => LBL.subAlways = el.checked);
     bind('lbl-color',     el => LBL.colorFam  = el.checked);
     bind('lbl-counts',    el => LBL.counts    = el.checked);
+    bind('lbl-flat',      el => LBL.flat      = el.checked);
+    bind('lbl-lw',        el => LBL.linkWidth = +el.value / 100);
     bind('lbl-only',      el => LBL.onlyFam   = el.value);
     bind('lbl-op',        el => LBL.opacity   = +el.value / 100);
     bind('lbl-dist',      el => LBL.dist      = +el.value / 100);
@@ -1421,17 +1954,27 @@
     document.body.classList.toggle('view-guide', viewName === 'guide');
     document.body.classList.toggle('view-library', viewName === 'library');
     document.body.classList.toggle('view-options', viewName === 'options');
+    document.body.classList.toggle('view-genres', viewName === 'genres');
+    document.body.classList.toggle('view-vibes', viewName === 'vibes');
     const libView = document.getElementById('library-view');
     if (libView) libView.hidden = viewName !== 'library';
     const optView = document.getElementById('options-view');
     if (optView) optView.hidden = viewName !== 'options';
+    const genView = document.getElementById('genres-view');
+    if (genView) genView.hidden = viewName !== 'genres';
+    const vibView = document.getElementById('vibes-view');
+    if (vibView) vibView.hidden = viewName !== 'vibes';
     if (viewName === 'guide' && window.vibeLoadGuide) window.vibeLoadGuide();
     if (viewName === 'library' && window.vibeLoadLibrary) window.vibeLoadLibrary();
     if (viewName === 'options' && window.vibeLoadOptions) window.vibeLoadOptions();
+    if (viewName === 'genres' && window.vibeLoadGenres) window.vibeLoadGenres();
+    if (viewName === 'vibes' && window.vibeLoadVibes) window.vibeLoadVibes();
     showMap(viewName === 'map');
     const hash = viewName==='map' ? '#map' : (viewName==='guide' ? '#guide'
                  : (viewName==='library' ? '#library'
-                 : (viewName==='options' ? '#options' : '#')));
+                 : (viewName==='vibes' ? '#vibes'
+                 : (viewName==='genres' ? '#genres'
+                 : (viewName==='options' ? '#options' : '#')))));
     try{ history.replaceState(null,'', hash); }catch(_){}
   }
   function showMap(on){
@@ -1443,6 +1986,9 @@
         resize();
         if (mapMode === 'tree') fitTree(); else view.zoom = clamp(0.95/(MAXR||1), 0.25, 1.6);
         startLoop();
+        // the filter choosers are built from the loaded library, so they can only
+        // be populated once the nodes exist
+        if (window.mapFilterPopulate) window.mapFilterPopulate();
         const m = /^#map=(.+)$/.exec(deepHash);
         if (m && byHash.has(m[1])) selectNode(m[1]);
       });

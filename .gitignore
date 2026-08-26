@@ -31,3 +31,29 @@ desktop_backend.log
 /dist/
 /build/
 /vendor/
+
+# --- Every Noise genre reference ---
+# Derived from a page with no licence whose robots.txt is "Disallow: /".
+# Built locally by tools/build_enao.py; never committed or redistributed.
+src/vibenative/data/enao.json
+
+# machine-local settings written by the Options tab (holds an absolute DB path)
+/settings.ini
+
+# your taxonomy edits (Genres tab -> placement), and reset's backup of them.
+# Local like settings.ini: it's your library's opinion, not the project's.
+/taxonomy.json
+/taxonomy.json.bak
+
+# --- editor / runtime artefacts kept local ---
+.claude/
+.webview/
+desktop_backend.log.prev
+
+# --- electronic-genre crawl (tools/crawl_genres.py) ---
+# Derived aggregate of CC0 (Wikidata, MusicBrainz) and CC BY-SA (DBpedia,
+# Wikipedia) sources. Rebuildable in ~10 min, so it is kept local rather than
+# committed; the file's own "licences" block carries the attribution.
+src/vibenative/data/genres_electronic.json
+# Cached HTTP responses, so re-runs cost the upstream sources nothing.
+.cache/

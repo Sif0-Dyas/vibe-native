@@ -9,6 +9,9 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<!-- genre vocabulary backing the override input's dropdown; filled by map.js -->
+<datalist id="ovr-genre-list"></datalist>
+
 <!-- vibes side panel -->
 <div id="vibe-panel">
   <div class="sib-hd">
@@ -69,6 +72,8 @@
     <button class="tab active" data-view="list" type="button">&#8801; List</button>
     <button class="tab" data-view="library" type="button" title="browse every analyzed track in your library">&#8803; Library</button>
     <button class="tab" data-view="map" type="button">&#10038; Map</button>
+    <button class="tab" data-view="genres" type="button" title="the genre taxonomy: families, keystones, BPM and your top tracks">&#9673; Genres</button>
+    <button class="tab" data-view="vibes" type="button" title="your own categories: what each vibe means, and its tracks">&#9672; Vibes</button>
     <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
     <button class="tab" data-view="options" type="button" title="settings & status">&#9881; Options</button>
   </nav>
@@ -135,6 +140,16 @@
   <div id="opt-body" class="opt-body">Loading&hellip;</div>
 </section>
 
+<!-- the genre taxonomy: families -> keystones -> subgenres, with per-genre detail -->
+<section id="genres-view" hidden aria-label="Genres">
+  <div id="gen-body" class="opt-body">Loading&hellip;</div>
+</section>
+
+<!-- vibes: user-created categories, each with free-form notes -->
+<section id="vibes-view" hidden aria-label="Vibes">
+  <div id="vib-body" class="opt-body">Loading&hellip;</div>
+</section>
+
 <!-- interactive genre constellation of the whole library -->
 <section id="map-view" hidden aria-label="Genre map">
   <div class="map-top">
@@ -154,6 +169,31 @@
       <option value="">all genres</option>
     </select>
     <div class="map-lblwrap">
+      <button id="map-filt-btn" class="map-toggle" type="button" title="filter by artist, key, tags, playlist, BPM or length">&#9781;</button>
+      <div id="map-filt-panel" class="map-panel" hidden>
+        <div class="mp-head">Filter</div>
+        <label class="mp-field"><span>Artist</span>
+          <input type="text" id="flt-artist" class="mp-text" placeholder="any" autocomplete="off" spellcheck="false"></label>
+        <label class="mp-field"><span>Key</span>
+          <select id="flt-key" class="map-filter"><option value="">any key</option></select></label>
+        <label class="mp-field"><span>Playlist</span>
+          <select id="flt-pl" class="map-filter"><option value="">any playlist</option></select></label>
+        <div class="mp-field"><span>Tags <i id="flt-tags-v">any</i></span>
+          <div id="flt-tags" class="flt-tags"></div></div>
+        <div class="mp-sep"></div>
+        <div class="mp-field"><span>BPM <i id="flt-bpm-v">any</i></span>
+          <div class="flt-dual">
+            <input type="range" id="flt-bpm-lo" min="0" max="100" value="0">
+            <input type="range" id="flt-bpm-hi" min="0" max="100" value="100">
+          </div></div>
+        <div class="mp-field"><span>Length <i id="flt-len-v">any</i></span>
+          <div class="flt-dual">
+            <input type="range" id="flt-len-lo" min="0" max="100" value="0">
+            <input type="range" id="flt-len-hi" min="0" max="100" value="100">
+          </div></div>
+        <div class="mp-hint">sliders at their ends mean "no limit"</div>
+        <div class="mp-btns"><button id="flt-reset" type="button" class="mp-reset">clear filters</button></div>
+      </div>
       <button id="map-lbl-btn" class="map-toggle" type="button" title="label options (hide, colour, spacing, transparency)">&#127991;</button>
       <div id="map-lbl-panel" class="map-panel" hidden>
         <div class="mp-head">Labels</div>
@@ -162,6 +202,10 @@
         <label class="mp-row"><input type="checkbox" id="lbl-subalways"><span>Always show subgenres</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-color"><span>Colour-match genres</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-counts"><span>Show track counts</span></label>
+        <div class="mp-sep"></div>
+        <label class="mp-row"><input type="checkbox" id="lbl-flat"><span>Flat (2-D) view</span></label>
+        <label class="mp-field"><span>Line thickness <i id="lbl-lw-v">1.0&times;</i></span>
+          <input type="range" id="lbl-lw" min="25" max="400" value="100"></label>
         <div class="mp-sep"></div>
         <label class="mp-field"><span>Isolate genre</span>
           <select id="lbl-only" class="map-filter"><option value="">show all</option></select></label>
@@ -261,6 +305,8 @@
 <script src="/static/playlist.js"></script>
 <script src="/static/library.js"></script>
 <script src="/static/options.js"></script>
+<script src="/static/genres.js"></script>
+<script src="/static/vibes.js"></script>
 <script src="/static/map.js"></script>
 </body>
 </html>

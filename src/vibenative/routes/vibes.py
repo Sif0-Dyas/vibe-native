@@ -16,11 +16,11 @@ from ._shared import bp
 def vibes_list():
     with _db_lock, closing(db()) as conn, conn as c:
         rows = c.execute(
-            "SELECT v.id, v.name, COUNT(t.hash) FROM vibes v "
+            "SELECT v.id, v.name, COUNT(t.hash), COALESCE(v.description, '') FROM vibes v "
             "LEFT JOIN vibe_tracks t ON t.vibe_id = v.id "
             "GROUP BY v.id ORDER BY v.name"
         ).fetchall()
-    return jsonify([{"id": r[0], "name": r[1], "count": r[2]} for r in rows])
+    return jsonify([{"id": r[0], "name": r[1], "count": r[2], "description": r[3]} for r in rows])
 
 
 @bp.post("/vibes")
@@ -286,3 +286,23 @@ def vibes_playlist(vid):
         )
     out.sort(key=lambda x: -x["sim"])
     return jsonify(out)
+
+
+@bp.post("/vibes/<int:vid>/description")
+def vibes_description(vid):
+    """Set a vibe's description.
+
+    Free-form and unbounded: a vibe is your own category, and the notes about
+    what belongs in it are worth as much room as they need. Stored verbatim
+    apart from stripping surrounding whitespace -- no length cap, no
+    reformatting, so paragraphs and line breaks survive a round trip.
+    """
+    data = request.get_json(silent=True) or {}
+    if "description" not in data:
+        return jsonify({"error": "description required"}), 400
+    text = str(data.get("description") or "").strip()
+    with _db_lock, closing(db()) as conn, conn as c:
+        n = c.execute("UPDATE vibes SET description=? WHERE id=?", (text, vid)).rowcount
+    if not n:
+        return jsonify({"error": "vibe not found"}), 404
+    return jsonify({"ok": True, "id": vid, "description": text, "length": len(text)})

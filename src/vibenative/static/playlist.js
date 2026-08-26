@@ -174,6 +174,8 @@
       `<div class="pl-saved-item" data-id="${p.id}">` +
       `<button class="pl-saved-load" title="load this playlist">${esc(p.name)}</button>` +
       `<span class="pl-saved-n">${p.count}</span>` +
+      `<a class="pl-saved-rb" href="/playlists/${p.id}/rekordbox" download ` +
+      `title="export for Rekordbox — carries star ratings and grade/note comments">&#8681; rb</a>` +
       `<button class="pl-saved-del" title="delete this saved playlist">✕</button></div>`).join('');
     savedList.querySelectorAll('.pl-saved-item').forEach(el => {
       const id = el.dataset.id;
