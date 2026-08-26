@@ -1708,3 +1708,26 @@ body.view-genres #genres-view{ display:block; }
 .vibe-note-in:focus{ outline:none; border-color:var(--accent-a); }
 .vibe-note-row{ display:flex; align-items:center; gap:8px; justify-content:flex-end; }
 .vibe-note-msg{ font-size:10px; color:var(--dim); margin-right:auto; }
+
+/* --- Vibes tab --- */
+#vibes-view{ display:none; }
+body.view-vibes #vibes-view{ display:block; }
+.vib-card h3{ display:flex; align-items:baseline; gap:10px; }
+.vib-note{
+  width:100%; box-sizing:border-box; resize:vertical; min-height:70px;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-size:12.5px; line-height:1.55; padding:8px 10px;
+  font-family:'DM Sans',sans-serif; margin-top:4px;
+}
+.vib-note:focus{ outline:none; border-color:var(--accent-a); }
+.vib-row{ display:flex; align-items:center; gap:8px; margin-top:7px; }
+.vib-msg{ font-size:10px; color:var(--dim); margin-right:auto; }
+.vib-members{ margin-top:8px; }
+.vib-members[hidden]{ display:none; }
+.vib-state{
+  font-size:9px; text-transform:uppercase; letter-spacing:.06em;
+  border-radius:8px; padding:1px 6px; border:1px solid var(--line);
+}
+.vib-state.ok{ color:#4ade80; border-color:rgba(74,222,128,.45); }
+.vib-state.warn{ color:#ffc043; border-color:rgba(255,192,67,.45); }
+.vib-state.bad{ color:#ffb03b; border-color:rgba(255,176,59,.35); opacity:.85; }

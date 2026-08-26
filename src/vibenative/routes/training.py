@@ -198,3 +198,53 @@ def training_reject():
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute("INSERT OR IGNORE INTO training_rejects(hash, genre) VALUES(?,?)", (h, genre))
     return jsonify({"ok": True, "hash": h, "genre": genre})
+
+
+# Rough readiness bands for a per-genre training set. A shallow head over 1280-d
+# embeddings needs variety more than volume, but one or two tracks cannot
+# represent a genre no matter how many frames they yield -- it learns those
+# recordings, not the sound. These are guidance, not gates: training with less
+# is allowed, it just won't generalise.
+TRAIN_THIN = 5
+TRAIN_READY = 20
+
+
+@bp.get("/training/status")
+def training_status_route():
+    """What you have taught the app, per genre, and what still needs examples.
+
+    Reads the ``~/genre_training/<genre>/`` folders that ``/override`` and
+    ``/save_training`` file audio into -- the same folders ``training/train_head.py``
+    consumes -- so this reports the real training set rather than an intention.
+    """
+    root = Path.home() / "genre_training"
+    genres = []
+    if root.is_dir():
+        for d in sorted(root.iterdir()):
+            if not d.is_dir():
+                continue
+            try:
+                n = sum(1 for f in d.iterdir() if f.is_file() and not f.name.startswith("._"))
+            except OSError:
+                continue
+            genres.append(
+                {
+                    "genre": d.name,
+                    "files": n,
+                    "state": "ready"
+                    if n >= TRAIN_READY
+                    else ("thin" if n >= TRAIN_THIN else "sparse"),
+                    "needs": max(0, TRAIN_READY - n),
+                }
+            )
+    from ..analysis import CUSTOM_HEAD_PATH
+
+    return jsonify(
+        {
+            "folder": str(root),
+            "genres": sorted(genres, key=lambda g: -g["files"]),
+            "total_files": sum(g["files"] for g in genres),
+            "custom_head": CUSTOM_HEAD_PATH.exists(),
+            "thresholds": {"thin": TRAIN_THIN, "ready": TRAIN_READY},
+        }
+    )

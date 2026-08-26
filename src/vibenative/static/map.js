@@ -1769,21 +1769,26 @@
     document.body.classList.toggle('view-library', viewName === 'library');
     document.body.classList.toggle('view-options', viewName === 'options');
     document.body.classList.toggle('view-genres', viewName === 'genres');
+    document.body.classList.toggle('view-vibes', viewName === 'vibes');
     const libView = document.getElementById('library-view');
     if (libView) libView.hidden = viewName !== 'library';
     const optView = document.getElementById('options-view');
     if (optView) optView.hidden = viewName !== 'options';
     const genView = document.getElementById('genres-view');
     if (genView) genView.hidden = viewName !== 'genres';
+    const vibView = document.getElementById('vibes-view');
+    if (vibView) vibView.hidden = viewName !== 'vibes';
     if (viewName === 'guide' && window.vibeLoadGuide) window.vibeLoadGuide();
     if (viewName === 'library' && window.vibeLoadLibrary) window.vibeLoadLibrary();
     if (viewName === 'options' && window.vibeLoadOptions) window.vibeLoadOptions();
     if (viewName === 'genres' && window.vibeLoadGenres) window.vibeLoadGenres();
+    if (viewName === 'vibes' && window.vibeLoadVibes) window.vibeLoadVibes();
     showMap(viewName === 'map');
     const hash = viewName==='map' ? '#map' : (viewName==='guide' ? '#guide'
                  : (viewName==='library' ? '#library'
+                 : (viewName==='vibes' ? '#vibes'
                  : (viewName==='genres' ? '#genres'
-                 : (viewName==='options' ? '#options' : '#'))));
+                 : (viewName==='options' ? '#options' : '#')))));
     try{ history.replaceState(null,'', hash); }catch(_){}
   }
   function showMap(on){

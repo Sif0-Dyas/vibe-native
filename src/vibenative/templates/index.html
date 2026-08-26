@@ -73,6 +73,7 @@
     <button class="tab" data-view="library" type="button" title="browse every analyzed track in your library">&#8803; Library</button>
     <button class="tab" data-view="map" type="button">&#10038; Map</button>
     <button class="tab" data-view="genres" type="button" title="the genre taxonomy: families, keystones, BPM and your top tracks">&#9673; Genres</button>
+    <button class="tab" data-view="vibes" type="button" title="your own categories: what each vibe means, and its tracks">&#9672; Vibes</button>
     <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
     <button class="tab" data-view="options" type="button" title="settings & status">&#9881; Options</button>
   </nav>
@@ -142,6 +143,11 @@
 <!-- the genre taxonomy: families -> keystones -> subgenres, with per-genre detail -->
 <section id="genres-view" hidden aria-label="Genres">
   <div id="gen-body" class="opt-body">Loading&hellip;</div>
+</section>
+
+<!-- vibes: user-created categories, each with free-form notes -->
+<section id="vibes-view" hidden aria-label="Vibes">
+  <div id="vib-body" class="opt-body">Loading&hellip;</div>
 </section>
 
 <!-- interactive genre constellation of the whole library -->
@@ -300,6 +306,7 @@
 <script src="/static/library.js"></script>
 <script src="/static/options.js"></script>
 <script src="/static/genres.js"></script>
+<script src="/static/vibes.js"></script>
 <script src="/static/map.js"></script>
 </body>
 </html>
