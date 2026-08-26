@@ -56,7 +56,104 @@
       bpmCell(k.bpm) +
       (subs ? '<div class="gen-subs">' + subs + '</div>' : '') +
       (top ? '<div class="gen-toph">most representative</div><ol class="gen-top">' + top + '</ol>' : '') +
+      '<div class="gen-actions"><button class="gen-train" data-g="' + esc(k.keystone) +
+        '">train this genre</button></div>' +
+      '<div class="gen-panel" hidden></div>' +
     '</div>';
+  }
+
+  /* Per-genre training console. Everything that acts on ONE genre lives here:
+     what it has, the tracks to teach it from, and reset/export/import scoped to
+     it alone -- so a genre that has been fed the wrong tracks can be cleared
+     without discarding every other genre's work. */
+  function trainPanel(box, genre) {
+    box.innerHTML = '<div class="opt-note">loading…</div>';
+    Promise.all([
+      fetch('/training/set/' + encodeURIComponent(genre) + '?top=10').then(function (r) { return r.json(); }),
+      fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+    ]).then(function (out) {
+      var d = out[0], st = out[1] || { thresholds: { ready: 20 } };
+      var mine = ((st.genres || []).filter(function (g) { return g.genre === genre; })[0]) || { files: d.files, state: 'sparse', needs: st.thresholds.ready };
+      var tracks = (d.top || []).map(function (t) {
+        return '<li><label><input type="checkbox" class="gen-pick" value="' + esc(t.hash) + '"' +
+          (t.in_training ? ' checked disabled' : '') + '> ' + esc(t.title) +
+          ' <i>' + esc(t.style) + (t.bpm ? ' · ' + Math.round(t.bpm) : '') + '</i>' +
+          (t.in_training ? ' <span class="gen-in">in training</span>' : '') + '</label></li>';
+      }).join('');
+      box.innerHTML =
+        '<div class="gen-panel-grid">' +
+          '<div><span class="gk">files</span> ' + d.files + '</div>' +
+          '<div><span class="gk">labelled</span> ' + d.labelled + '</div>' +
+          '<div><span class="gk">rejected</span> ' + d.rejected + '</div>' +
+          '<div><span class="gk">reads as this</span> ' + d.library_tracks + '</div>' +
+          '<div><span class="vib-state ' +
+            (mine.state === 'ready' ? 'ok' : mine.state === 'thin' ? 'warn' : 'bad') + '">' +
+            mine.state + '</span>' + (mine.needs ? ' needs ' + mine.needs + ' more' : ' ready') + '</div>' +
+        '</div>' +
+        (tracks ? '<div class="gen-toph">top tracks — tick to add as training examples</div>' +
+                  '<ol class="gen-top gen-picks">' + tracks + '</ol>' :
+                  '<div class="opt-note">No library tracks read as this genre yet.</div>') +
+        '<div class="gen-actions">' +
+          '<button class="gen-add">add ticked</button>' +
+          '<a class="gen-exp" href="/training/set/' + encodeURIComponent(genre) + '/export" download>export</a>' +
+          '<button class="gen-imp">import</button>' +
+          '<input type="file" class="gen-imp-file" accept=".json,application/json" hidden>' +
+          '<button class="gen-reset">reset this genre</button>' +
+        '</div>' +
+        '<div class="opt-note gen-msg">Reset archives this genre&rsquo;s audio and clears only ' +
+        'its labels — every other genre keeps its training.</div>';
+
+      var msg = box.querySelector('.gen-msg');
+      var say = function (t, bad) {
+        msg.innerHTML = '<b class="' + (bad ? 'opt-bad' : 'opt-good') + '">' + esc(t) + '</b>';
+      };
+
+      box.querySelector('.gen-add').onclick = function () {
+        var picks = [].slice.call(box.querySelectorAll('.gen-pick:checked:not(:disabled)'))
+          .map(function (i) { return i.value; });
+        if (!picks.length) { say('tick some tracks first', true); return; }
+        fetch('/training/set/' + encodeURIComponent(genre) + '/add', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hashes: picks })
+        }).then(function (r) { return r.json(); }).then(function (j) {
+          if (j.error) { say(j.error, true); return; }
+          say('added ' + j.added + ' track(s), ' + j.audio_copied + ' audio file(s) copied');
+          trainPanel(box, genre);
+        }).catch(function () { say('add failed', true); });
+      };
+
+      var file = box.querySelector('.gen-imp-file');
+      box.querySelector('.gen-imp').onclick = function () { file.click(); };
+      file.onchange = function () {
+        var f = file.files[0]; if (!f) return;
+        f.text().then(function (txt) {
+          var m; try { m = JSON.parse(txt); } catch (_) { say('not valid JSON', true); return; }
+          return fetch('/training/set/import', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ manifest: m, genre: genre })
+          }).then(function (r) { return r.json(); }).then(function (j) {
+            if (j.error) { say(j.error, true); return; }
+            say('imported ' + j.labels_added + ' label(s), copied ' + j.audio_copied +
+                (j.missing_from_library ? ', ' + j.missing_from_library + ' not in your library' : ''));
+            trainPanel(box, genre);
+          });
+        }).catch(function () { say('import failed', true); });
+        file.value = '';
+      };
+
+      box.querySelector('.gen-reset').onclick = function () {
+        if (!window.confirm('Reset training for "' + genre + '"?\n\nIts audio is archived (not ' +
+            'deleted) and only this genre’s labels are cleared. Every other genre keeps its ' +
+            'training.')) return;
+        fetch('/training/set/' + encodeURIComponent(genre) + '/reset', { method: 'POST' })
+          .then(function (r) { return r.json(); }).then(function (j) {
+            if (j.error) { say(j.error, true); return; }
+            say('cleared ' + j.labels_cleared + ' label(s)' +
+                (j.archived_to ? ' · audio archived' : ''));
+            trainPanel(box, genre);
+          }).catch(function () { say('reset failed', true); });
+      };
+    }).catch(function () { box.innerHTML = '<div class="opt-note">could not load</div>'; });
   }
 
   function render(families) {
@@ -100,6 +197,16 @@
         '</div>' +
       '</div>';
     wireActions();
+    // one console per keystone card, built on demand -- each is several queries
+    body.querySelectorAll('.gen-train').forEach(function (b) {
+      b.onclick = function () {
+        var panel = b.closest('.gen-key').querySelector('.gen-panel');
+        if (!panel.hidden) { panel.hidden = true; b.textContent = 'train this genre'; return; }
+        panel.hidden = false;
+        b.textContent = 'hide training';
+        trainPanel(panel, b.dataset.g);
+      };
+    });
     void total;
   }
 

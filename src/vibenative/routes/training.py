@@ -248,3 +248,109 @@ def training_status_route():
             "thresholds": {"thin": TRAIN_THIN, "ready": TRAIN_READY},
         }
     )
+
+
+@bp.get("/training/set/<genre>")
+def trainset_detail(genre):
+    """One genre's training set: files, labels, and the library tracks that
+    currently read as it (which is both a health check and the pool to pick more
+    training examples from)."""
+    from .. import trainsets
+
+    try:
+        top = max(1, min(int(request.args.get("top", 10)), 100))
+    except (TypeError, ValueError):
+        top = 10
+    return jsonify(trainsets.detail(genre, top_n=top))
+
+
+@bp.post("/training/set/<genre>/reset")
+def trainset_reset(genre):
+    """Clear ONE genre's training -- for when a single genre has been fed the
+    wrong tracks and started skewing, without discarding every other genre's
+    work. Audio is archived, not deleted."""
+    from .. import trainsets
+
+    try:
+        return jsonify(trainsets.reset(genre))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except OSError as e:
+        return jsonify({"error": f"could not archive the folder: {e}"}), 500
+
+
+@bp.get("/training/set/<genre>/export")
+def trainset_export(genre):
+    """Download one genre's training set as a manifest (hashes, not audio)."""
+    from flask import Response
+
+    from .. import trainsets
+
+    data = trainsets.export(genre)
+    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    return Response(
+        json.dumps(data, indent=1),
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="training-{safe or "genre"}.json"'},
+    )
+
+
+@bp.post("/training/set/import")
+def trainset_import():
+    """Merge an exported training set back in. Never replaces: importing twice
+    is harmless, and importing into a genre with existing work adds to it."""
+    from .. import trainsets
+
+    body = request.get_json(silent=True) or {}
+    manifest = body.get("manifest") if "manifest" in body else body
+    try:
+        return jsonify(trainsets.import_(manifest, genre=body.get("genre")))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.post("/training/set/<genre>/add")
+def trainset_add(genre):
+    """Add library tracks to a genre's training set by hash.
+
+    The tracks are already analysed, so this records the label and copies the
+    audio across when a server-side path is known -- no re-analysis, and it
+    works from anywhere a track can be selected.
+    """
+    import time as _time
+
+    from .. import trainsets
+
+    hashes = [h for h in ((request.get_json(silent=True) or {}).get("hashes") or []) if h]
+    if not hashes:
+        return jsonify({"error": "hashes required"}), 400
+    safe = trainsets._safe(genre)
+    if not safe:
+        return jsonify({"error": "invalid genre name"}), 400
+
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = {
+            r[0]: (r[1] or "").strip()
+            for r in c.execute(
+                "SELECT hash, filepath FROM tracks WHERE hash IN (%s)"  # nosec B608  # ints/params below
+                % ",".join("?" * len(hashes)),
+                hashes,
+            )
+        }
+        now = _time.time()
+        c.executemany(
+            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
+            [(h, genre, "manual", now) for h in rows],
+        )
+    copied = 0
+    for h, fp in rows.items():
+        if fp and _copy_into_training(fp, genre):
+            copied += 1
+    return jsonify(
+        {
+            "genre": genre,
+            "added": len(rows),
+            "audio_copied": copied,
+            "not_in_library": [h for h in hashes if h not in rows],
+        }
+    )

@@ -1731,3 +1731,26 @@ body.view-vibes #vibes-view{ display:block; }
 .vib-state.ok{ color:#4ade80; border-color:rgba(74,222,128,.45); }
 .vib-state.warn{ color:#ffc043; border-color:rgba(255,192,67,.45); }
 .vib-state.bad{ color:#ffb03b; border-color:rgba(255,176,59,.35); opacity:.85; }
+
+/* --- per-genre training console (inside a keystone card) --- */
+.gen-actions{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; }
+.gen-actions a.gen-exp{
+  font-size:11px; text-decoration:none; color:var(--dim); padding:3px 9px;
+  border:1px solid var(--line); border-radius:5px;
+}
+.gen-actions a.gen-exp:hover{ color:var(--accent-a); border-color:var(--accent-a); }
+.gen-reset{ margin-left:auto; }
+.gen-reset:hover{ color:#ffb03b; border-color:rgba(255,176,59,.5); }
+.gen-panel{ margin-top:9px; padding-top:9px; border-top:1px solid var(--line); }
+.gen-panel[hidden]{ display:none; }
+.gen-panel-grid{
+  display:flex; flex-wrap:wrap; gap:4px 14px; font-size:11px; color:var(--text);
+  font-family:'JetBrains Mono',monospace; margin-bottom:6px; align-items:center;
+}
+.gen-panel-grid .gk{ color:var(--dimmer); text-transform:uppercase;
+  letter-spacing:.06em; font-size:9px; margin-right:3px; }
+.gen-picks{ max-height:230px; overflow-y:auto; }
+.gen-picks label{ cursor:pointer; display:inline-flex; gap:6px; align-items:baseline; }
+.gen-picks input{ accent-color:var(--accent-a); }
+.gen-in{ font-size:9px; color:var(--accent-a); }
+.gen-msg{ margin-top:6px; }
