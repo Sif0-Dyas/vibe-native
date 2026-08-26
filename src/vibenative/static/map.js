@@ -1127,8 +1127,20 @@
                autocomplete="off" spellcheck="false" maxlength="1000">
       </div>
       <div class="pop-omit-row">
+        <button class="pop-adjust" title="nudge how much of each genre this track is — keeps the rest of the read">⚖ adjust</button>
         <button class="pop-override" title="set the genre yourself (persists + saved for training)">✎ override</button>
         <button class="pop-omit" title="delete this track's analysis (audio file untouched)">✕ omit</button>
+      </div>
+      <div class="pop-adj" hidden>
+        <div class="ovr-h">how much of each genre is this?</div>
+        <div class="adj-rows"><span class="pop-bar">…</span></div>
+        <div class="ovr-typed">
+          <input class="adj-add-in" type="text" placeholder="add a genre it missed…" list="ovr-genre-list"
+                 autocomplete="off" spellcheck="false">
+          <button class="adj-add">add</button>
+          <button class="adj-close" title="done">✕</button>
+        </div>
+        <div class="ovr-hint">Nudges the read instead of replacing it — use <b>override</b> if it's flat wrong.</div>
       </div>
       <div class="pop-ovr" hidden>
         <div class="ovr-cands"></div>
@@ -1174,6 +1186,7 @@
       };
     }
     wireRating(popEl, n.hash);
+    wireAdjust(popEl, n);
     popEl.querySelector('.pop-omit').onclick = () => omitTrack(n);
     const ovrRow = popEl.querySelector('.pop-ovr'), omitRow = popEl.querySelector('.pop-omit-row');
     const ovrIn = popEl.querySelector('.pop-ovr-in');
@@ -1300,6 +1313,145 @@
     return all.find(g => g.toLowerCase() === q)
         || all.find(g => g.toLowerCase().startsWith(q))
         || null;
+  }
+
+  // --- adjust: nudge the blend instead of replacing it ----------------------
+  // An override answers "what is this" with one word and throws away everything
+  // the model got right. This bends the read instead: each genre carries a step
+  // you raise or lower, so "this is a VERY house track" and "that Tech Trance is
+  // a misread" are both sayable without flattening the rest to zero.
+  //
+  // The step is what's stored, never the multiplier it computes -- the server
+  // can retune the curve without silently rewriting what you meant by it.
+  function wireAdjust(popEl, n){
+    const btn  = popEl.querySelector('.pop-adjust');
+    const box  = popEl.querySelector('.pop-adj');
+    const rows = popEl.querySelector('.adj-rows');
+    const omitRow = popEl.querySelector('.pop-omit-row');
+    const addIn = popEl.querySelector('.adj-add-in');
+    if (!btn || !box) return;
+
+    let state = null;          // {steps, base, adjusted, max_step, words}
+    let saving = null;         // in-flight POST, so rapid clicks coalesce
+    let moved = false;         // did anything actually change? -> re-cluster on close
+
+    // Re-cluster once, when the user is done. Doing it per-press would slide the
+    // dot away from the cursor between clicks.
+    const done = () => {
+      box.hidden = true; omitRow.hidden = false;
+      if (moved){ moved = false; if (NODES.length) layout(); }
+    };
+
+    const wordFor = s => (state && state.words && state.words[String(s)]) || 'as read';
+
+    function render(){
+      if (!state){ rows.innerHTML = `<span class="pop-bar">…</span>`; return; }
+      const shown = new Map();
+      for (const e of state.adjusted || []) shown.set(e.style, e.score);
+      // A genre pushed all the way down can fall out of the top-N; keep its row
+      // visible so the press is undoable rather than stranded.
+      for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
+      if (!shown.size){ rows.innerHTML = `<div class="ovr-h">nothing read for this track</div>`; return; }
+      const max = state.max_step || 3;
+      rows.innerHTML = [...shown.entries()].map(([style, score]) => {
+        const step = (state.steps || {})[style] || 0;
+        const pct  = Math.round((score || 0) * 100);
+        return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
+          <button class="adj-step" data-d="-1" ${step <= -max ? 'disabled' : ''} title="less">−</button>
+          <button class="adj-step" data-d="1" ${step >= max ? 'disabled' : ''} title="more">＋</button>
+          <span class="adj-meter" title="${escapeHtml(style)} — ${escapeHtml(wordFor(step))}">
+            <i style="width:${pct}%"></i>
+            <b>${escapeHtml(style)}</b>${step ? `<em>${escapeHtml(wordFor(step))}</em>` : ''}
+          </span>
+          <span class="adj-pct">${pct}%</span>
+        </div>`;
+      }).join('');
+      for (const b of rows.querySelectorAll('.adj-step')){
+        b.onclick = () => bump(b.closest('.adj-row').dataset.g, Number(b.dataset.d));
+      }
+    }
+
+    // Optimistic: the row moves on click and the server's answer replaces it a
+    // moment later. Waiting for the round-trip made the +/- feel broken.
+    function bump(style, delta){
+      if (!state) return;
+      const max = state.max_step || 3;
+      const next = Math.max(-max, Math.min(max, ((state.steps || {})[style] || 0) + delta));
+      state.steps = { ...(state.steps || {}) };
+      if (next) state.steps[style] = next; else delete state.steps[style];
+      render();
+      save();
+    }
+
+    function save(){
+      const steps = state.steps || {};
+      saving = (saving || Promise.resolve()).then(async () => {
+        try{
+          const r = await fetch(`/weights/${n.hash}`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ steps }) });
+          const body = await r.json();
+          if (steps !== state.steps) return;   // superseded by a later click
+          state.steps = body.steps || {};
+          state.adjusted = body.adjusted && body.adjusted.length ? body.adjusted : state.base;
+          render();
+          applyToNode(n, state.adjusted);
+          moved = true;
+        }catch(_){ /* the row already moved; the next click retries */ }
+      });
+    }
+
+    btn.onclick = async () => {
+      if (!box.hidden){ done(); return; }
+      omitRow.hidden = true; box.hidden = false;
+      refreshGenreList();
+      rows.innerHTML = `<span class="pop-bar">…</span>`;
+      try{
+        state = await (await fetch(`/weights/${n.hash}`)).json();
+      }catch(_){ rows.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
+      render();
+    };
+    popEl.querySelector('.adj-close').onclick = done;
+
+    const addGenre = () => {
+      const g = completeGenre(addIn.value) || (addIn.value || '').trim();
+      if (!g || !state) return;
+      addIn.value = '';
+      // Enters at "moderately" -- a genre you had to type is one you mean, and
+      // starting at +1 read as barely-there next to what the model already found.
+      if (!(state.steps || {})[g]) { state.steps = { ...(state.steps || {}), [g]: 2 }; render(); save(); }
+    };
+    popEl.querySelector('.adj-add').onclick = addGenre;
+    addIn.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ addGenre(); return; }
+      if (e.key === 'Escape'){ done(); return; }
+      if (e.key === 'Tab' && addIn.value.trim()){
+        const hit = completeGenre(addIn.value);
+        if (hit && hit.toLowerCase() !== addIn.value.trim().toLowerCase()){
+          e.preventDefault(); addIn.value = hit;
+          addIn.setSelectionRange(hit.length, hit.length);
+        }
+      }
+    });
+  }
+
+  // Recolour one dot from an adjusted blend. Deliberately does NOT re-cluster:
+  // layout() would move the dot out from under the cursor mid-adjustment, so the
+  // colour follows every press and the position catches up on close.
+  function applyToNode(n, adjusted){
+    if (!adjusted || !adjusted.length) return;
+    const top = adjusted[0], second = adjusted[1];
+    n.style = top.style; n.score = top.score;
+    n.fam = familyOf(top.style) || 'Other';
+    n.cands = adjusted.map(e => ({ style: e.style, score: e.score }));
+    n.mix = second ? [second.style, Math.min(0.5, second.score / ((top.score || 0) + second.score))] : null;
+    let sh = styleShade(n.fam, top.style);
+    if (n.mix && n.mix[1] > 0.02){          // same blend layout() applies
+      const f2 = familyOf(n.mix[0]) || n.fam;
+      sh = mixShade(sh, styleShade(f2, n.mix[0]), n.mix[1]);
+    }
+    n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
+    n.flag = false; n.suggest = null;
   }
 
   // override: persist a manual genre; the track moves to its new cluster

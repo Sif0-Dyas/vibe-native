@@ -532,3 +532,68 @@ def filepaths_count_route():
         return jsonify(filepaths.count_files(wsl_to_windows(folder)))
     except NotADirectoryError:
         return jsonify({"error": f"not a directory: {folder}"}), 400
+
+
+@bp.get("/weights/<h>")
+def weights_get(h):
+    """A track's manual weight adjustments and the blend they produce."""
+    from .. import weights as W
+
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
+    if not row:
+        return jsonify({"error": "track not found"}), 404
+    try:
+        p = json.loads(row[0]) if row[0] else {}
+    except ValueError:
+        p = {}
+    base = ((p.get("relabel") or {}).get("styles")) or p.get("salience") or p.get("styles") or []
+    return jsonify(
+        {
+            "hash": h,
+            "steps": p.get("weights") or {},
+            "base": base[:8],
+            "adjusted": W.read_with_steps(p) or base[:8],
+            "max_step": W.MAX_STEP,
+            "words": {str(k): v for k, v in W.STEP_WORDS.items()},
+        }
+    )
+
+
+@bp.post("/weights/<h>")
+def weights_put(h):
+    """Set a track's per-genre adjustments.
+
+    Body: ``{"steps": {"House": 3, "Tech Trance": -3}}``. A step of 0 is removed
+    rather than stored, so "no opinion" and "explicitly neutral" stay the same
+    thing and the payload doesn't accumulate dead entries.
+
+    Only the adjustments are written; the analysed read underneath is untouched,
+    so clearing them restores exactly what the model said.
+    """
+    from .. import weights as W
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get("steps")
+    if not isinstance(raw, dict):
+        return jsonify({"error": "steps object required"}), 400
+    steps = {}
+    for style, v in raw.items():
+        s = W.clamp_step(v)
+        if s and str(style).strip():
+            steps[str(style).strip()] = s
+
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
+        if not row:
+            return jsonify({"error": "track not found"}), 404
+        try:
+            p = json.loads(row[0]) if row[0] else {}
+        except ValueError:
+            p = {}
+        if steps:
+            p["weights"] = steps
+        else:
+            p.pop("weights", None)
+        c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+    return jsonify({"hash": h, "steps": steps, "adjusted": W.read_with_steps(p) or []})

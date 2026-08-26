@@ -63,20 +63,34 @@ def _artist_of(payload, title, filename):
 def _dominant_style(payload):
     """The track's identity, by precedence:
 
-    1. a manual override (POST /override) -- you said so, it wins outright;
-    2. a retroactive re-label (``relabel``) -- a newer head's opinion, applied
+    1. a manual override (POST /override) -- "it IS this", it wins outright;
+    2. manual weight adjustments (``weights``) -- "it leans this way", the read
+       nudged by hand; see ``vibenative.weights``;
+    3. a retroactive re-label (``relabel``) -- a newer head's opinion, applied
        without re-scanning; see ``vibenative.relabel``;
-    3. the salience read -- the energy/confidence/recurrence-weighted identity
+    4. the salience read -- the energy/confidence/recurrence-weighted identity
        from the original analysis;
-    4. the top flat style.
+    5. the top flat style.
 
-    A re-label outranks salience because it is the *newer* judgement: it exists
-    only when a head has been trained since the track was analysed. It cannot be
-    merged into salience, which needs per-frame predictions the database doesn't
-    keep -- so it sits alongside, and the original read stays intact underneath.
+    Adjustments outrank both automatic reads because they are those reads with
+    your judgement applied; an override outranks them only because it is the
+    blunter statement. A re-label outranks salience because it is the *newer*
+    judgement -- it exists only when a head has been trained since the track was
+    analysed, and cannot be merged into salience, which needs per-frame
+    predictions the database doesn't keep.
+
+    Every tier leaves the ones beneath it intact, so any of them can be undone.
     """
     if payload.get("override"):
         return payload["override"], 1.0
+    # Manual weight adjustments outrank any automatic read: they ARE the reads,
+    # nudged by hand. They sit below a full override only because an override is
+    # the blunter, more explicit statement -- "it is this", not "it leans this".
+    from ..weights import read_with_steps
+
+    adj = read_with_steps(payload)
+    if adj:
+        return adj[0].get("style"), round(float(adj[0].get("score", 0)), 4)
     rel = (payload.get("relabel") or {}).get("styles") or []
     if rel:
         return rel[0].get("style"), round(float(rel[0].get("score", 0)), 4)
@@ -93,10 +107,16 @@ def _second_style(payload, top_style, top_score):
     """The runner-up style + its weight relative to the top read, for colour
     blending on the map (a track that's partly a 2nd genre leans toward its
     colour). Returns [style2, weight2] with weight2 in [0, 0.5], or None when
-    there's an override or no distinct runner-up."""
+    there's an override or no distinct runner-up.
+
+    Reads the same adjusted blend ``_dominant_style`` does, so a track you've
+    hand-weighted leans toward the colour you gave it. Reading raw salience here
+    would have left the dot's blend arguing with its own label."""
     if payload.get("override"):
         return None
-    ranked = payload.get("salience") or payload.get("styles") or []
+    from ..weights import read_with_steps
+
+    ranked = read_with_steps(payload) or payload.get("salience") or payload.get("styles") or []
     for s in ranked:
         st, sc = s.get("style"), float(s.get("score", 0) or 0)
         if st and st != top_style and sc > 0:

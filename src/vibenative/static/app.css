@@ -1294,12 +1294,12 @@ body.view-options .lensbar{ display:none; }
 /* omit / forget a track from the map popup */
 .pop-omit-row{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line); display:flex; gap:6px; }
 .pop-omit-row[hidden]{ display:none; }
-.pop-override, .pop-omit{
+.pop-adjust, .pop-override, .pop-omit{
   flex:1; background:none; border:1px solid var(--line); border-radius:7px;
   color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:10.5px;
   padding:7px; cursor:pointer;
 }
-.pop-override:hover{ color:var(--text); border-color:var(--accent-a); background:rgba(86,180,233,.10); }
+.pop-adjust:hover, .pop-override:hover{ color:var(--text); border-color:var(--accent-a); background:rgba(86,180,233,.10); }
 .pop-omit:hover{ color:var(--err); border-color:var(--err); background:rgba(229,86,79,.10); }
 /* inline override editor */
 /* Override panel: the track's own runner-up reads first (one click each), then
@@ -1332,6 +1332,55 @@ body.view-options .lensbar{ display:none; }
 }
 .pop-ovr-save:hover{ border-color:var(--accent-a); color:var(--accent-a); }
 .pop-ovr-cancel:hover{ border-color:var(--dimmer); }
+
+/* Adjust panel: per-genre +/- steps. An override replaces the read; this bends
+   it, so the layout is a list of what the model heard with a nudge on each --
+   the bar shows the resulting share so a press has visible consequences. */
+.pop-adj{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line);
+  display:flex; flex-direction:column; gap:7px; }
+.pop-adj[hidden]{ display:none; }
+.adj-rows{ display:flex; flex-direction:column; gap:4px; }
+.adj-row{ display:grid; grid-template-columns:auto auto 1fr 30px; gap:5px;
+  align-items:center; font-size:11px; }
+.adj-step{
+  width:19px; height:19px; padding:0; line-height:1; cursor:pointer;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:5px;
+  color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px;
+}
+.adj-step:hover:not(:disabled){ border-color:var(--accent-a); color:var(--accent-a); }
+.adj-step:disabled{ opacity:.3; cursor:default; }
+/* The share is a fill *behind* the name, not its own column -- at 320px wide
+   the popup can't afford a separate bar and still show the genre. */
+.adj-meter{
+  position:relative; display:flex; align-items:baseline; gap:5px; min-width:0;
+  padding:3px 6px; border-radius:5px; background:rgba(255,255,255,.05); overflow:hidden;
+}
+.adj-meter i{
+  position:absolute; left:0; top:0; bottom:0; background:rgba(86,180,233,.20);
+  transition:width .18s ease;
+}
+.adj-meter b{ position:relative; font-weight:500; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.adj-meter em{ position:relative; font-style:normal; font-size:9px; color:var(--dim);
+  white-space:nowrap; flex:none; }
+/* Only a genre you've actually moved gets the accent, so the panel reads as
+   "these are my judgements" against "this is what the model said". */
+.adj-row.moved .adj-meter i{ background:rgba(86,180,233,.38); }
+.adj-row.moved .adj-meter b{ color:var(--accent-a); }
+.adj-row.moved .adj-meter em{ color:var(--accent-a); }
+.adj-pct{ font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--dim);
+  text-align:right; }
+.adj-add-in{
+  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 9px;
+}
+.adj-add-in:focus{ outline:none; border-color:var(--accent-a); }
+.adj-add, .adj-close{
+  background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text);
+  font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; cursor:pointer;
+}
+.adj-add:hover{ border-color:var(--accent-a); color:var(--accent-a); }
+.adj-close:hover{ border-color:var(--dimmer); }
 
 /* likely-misread flag */
 .pop-flag{

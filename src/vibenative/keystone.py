@@ -557,7 +557,13 @@ def classify(payload):
     # Salience is otherwise the better signal, but it's energy-weighted and can
     # come back all-zero on a very quiet track, so the flat scores backstop it
     # rather than dropping the track out of the taxonomy entirely.
-    weights, styles = _tally((payload.get("relabel") or {}).get("styles"))
+    from .weights import read_with_steps
+
+    # Same precedence as routes._shared._dominant_style, or the map and the
+    # label would disagree about a track you had just adjusted by hand.
+    weights, styles = _tally(read_with_steps(payload))
+    if not weights:
+        weights, styles = _tally((payload.get("relabel") or {}).get("styles"))
     if not weights:
         weights, styles = _tally(payload.get("salience"))
     if not weights:
