@@ -216,6 +216,33 @@ def overlay_reset_route():
     return jsonify(taxonomy.reset())
 
 
+# --- colour presets -----------------------------------------------------------
+@bp.get("/palettes")
+def palettes_route():
+    """Every colour preset with its swatches and its measured separation.
+
+    The separation numbers ship with the list on purpose: the presets are not
+    equally readable, and a picker that hid that would be pretending they were.
+    """
+    from .. import palettes as PP
+
+    mode = "light" if request.args.get("mode") == "light" else "dark"
+    return jsonify({"current": PP.current(), "default": PP.DEFAULT, "presets": PP.summarise(mode)})
+
+
+@bp.post("/palettes/<name>")
+def palette_apply_route(name):
+    """Switch to a colour preset. Per-genre colours are left alone -- they are
+    the exceptions layered on top, and dropping them here would silently discard
+    hand-picked colours as a side effect of trying a scheme out."""
+    from .. import palettes as PP
+
+    try:
+        return jsonify({"current": PP.apply(name)})
+    except ValueError:
+        return jsonify({"error": f"unknown palette {name!r}", "known": PP.names()}), 404
+
+
 # --- snapshots ----------------------------------------------------------------
 @bp.get("/snapshots")
 def snapshots_list_route():

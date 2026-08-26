@@ -18,6 +18,7 @@
   var OVERLAY = { archgenre: {}, colors: {} };
   var ARCHGENRES = [];
   var OVERLAY_PATH = '';
+  var PALETTES = { current: 'studio', presets: [] };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -288,6 +289,7 @@
         '</div>' +
         '<div class="opt-note" id="gen-msg"></div>' +
       '</div>' +
+      paletteCard() +
       // Where the edits live. Worth stating plainly: this file is the reason a
       // placement survives nuking the database, and it can be edited by hand or
       // copied to another machine -- neither of which is discoverable otherwise.
@@ -362,6 +364,16 @@
         panel.hidden = false;
         b.textContent = 'hide';
         trainPanel(panel, b.dataset.g);
+      };
+    });
+    body.querySelectorAll('.pal').forEach(function (b2) {
+      b2.onclick = function () {
+        if (b2.dataset.p === PALETTES.current) return;
+        fetch('/palettes/' + encodeURIComponent(b2.dataset.p), { method: 'POST' })
+          .then(function (r) { return r.json(); }).then(function (j) {
+            if (j.current) PALETTES.current = j.current;
+            load();
+          }).catch(function () {});
       };
     });
     var taxReset = document.getElementById('gen-tax-reset');
@@ -467,6 +479,40 @@
     };
   }
 
+  /* The colour-scheme picker. Each preset shows its swatches and how well it
+     actually separates -- the schemes are NOT equally readable, and a picker
+     that hid that would be pretending otherwise. Nothing here is destructive:
+     switching back is one click, and per-genre colours survive a switch. */
+  function paletteCard() {
+    var rows = (PALETTES.presets || []).map(function (p) {
+      var sep = p.separation || {};
+      var swatches = (p.colors || []).map(function (c) {
+        return '<i title="' + esc(c.keystone) + '" style="background:' + esc(c.color) + '"></i>';
+      }).join('');
+      var on = p.name === PALETTES.current;
+      return '<button class="pal' + (on ? ' on' : '') + '" data-p="' + esc(p.name) + '">' +
+        '<span class="pal-head">' +
+          '<span class="pal-name">' + esc(p.label) + '</span>' +
+          (on ? '<span class="pal-on">in use</span>' : '') +
+          '<span class="pal-sep ' + esc(sep.verdict || '') + '">' +
+            (sep.worst == null ? '—' : 'ΔE ' + sep.worst) +
+            (sep.verdict ? ' · ' + esc(sep.verdict) : '') + '</span>' +
+        '</span>' +
+        '<span class="pal-swatches">' + swatches + '</span>' +
+        '<span class="pal-blurb">' + esc(p.blurb) + '</span>' +
+      '</button>';
+    }).join('');
+    return '<div class="opt-card"><h3>Colour scheme</h3>' +
+      '<div class="opt-note">Applies to every genre at once. A colour you set on a ' +
+      'single card overrides the scheme and survives switching between them. ' +
+      '<b>ΔE</b> is how far apart the closest two colours are — bigger is easier to ' +
+      'tell apart, and the verdict compares each scheme to the default rather than ' +
+      'to an absolute line (no scheme separates every pair; that is a property of ' +
+      'colour, not a bug).</div>' +
+      '<div class="pals">' + rows + '</div>' +
+    '</div>';
+  }
+
   /* Reload the whole tab. `keep` re-opens the card that was just edited, so
      changing a genre's placement doesn't drop you back at the top of the page. */
   function load(keep) {
@@ -478,9 +524,12 @@
       fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; })
         .catch(function () { return null; }),
       fetch('/taxonomy/overlay').then(function (r) { return r.json(); })
+        .catch(function () { return null; }),
+      fetch('/palettes').then(function (r) { return r.json(); })
         .catch(function () { return null; })
     ]).then(function (out) {
-      var groups = out[0] || [], st = out[1], tx = out[2];
+      var groups = out[0] || [], st = out[1], tx = out[2], pal = out[3];
+      if (pal) PALETTES = pal;
       if (tx) {
         OVERLAY = tx.overlay || OVERLAY;
         OVERLAY.archgenre = OVERLAY.archgenre || {};

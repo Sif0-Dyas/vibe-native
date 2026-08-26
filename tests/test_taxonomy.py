@@ -48,6 +48,7 @@ def test_no_file_means_no_opinions():
         "colors": {},
         "hidden": [],
         "order": [],
+        "palette": "",
     }
 
 

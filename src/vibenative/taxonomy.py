@@ -39,6 +39,9 @@ VERSION = 1
 # older one, and vice versa.
 _MAPS = ("aliases", "archgenre", "family", "colors")
 _LISTS = ("hidden", "order")
+# Scalars. "" means "no choice made", which is how a preset returns to the
+# default without the file having to carry a line saying so.
+_SCALARS = ("palette",)
 
 _lock = threading.Lock()
 _cache = None  # the parsed overlay
@@ -60,7 +63,7 @@ def path():
 
 
 def _blank():
-    return {k: {} for k in _MAPS} | {k: [] for k in _LISTS}
+    return {k: {} for k in _MAPS} | {k: [] for k in _LISTS} | {k: "" for k in _SCALARS}
 
 
 def _clean(raw):
@@ -89,6 +92,9 @@ def _clean(raw):
             if v and v not in seen:
                 seen.add(v)
                 out[key].append(v)
+    for key in _SCALARS:
+        v = raw.get(key)
+        out[key] = str(v).strip() if isinstance(v, (str, int, float)) else ""
     # Aliases resolve case-insensitively, matching keystone._USER_ALIASES.
     out["aliases"] = {k.lower(): v for k, v in out["aliases"].items()}
     return out
@@ -140,6 +146,9 @@ def save(overlay):
     for k in _LISTS:
         if clean[k]:
             body[k] = clean[k]
+    for k in _SCALARS:
+        if clean[k]:
+            body[k] = clean[k]
     p = path()
     p.parent.mkdir(parents=True, exist_ok=True)
     # Write-then-replace: a crash mid-write leaves the previous overlay intact
@@ -167,6 +176,7 @@ def patch(changes):
     """
     cur = {k: dict(v) for k, v in load().items() if isinstance(v, dict)}
     cur |= {k: list(v) for k, v in load().items() if isinstance(v, list)}
+    cur |= {k: load()[k] for k in _SCALARS}
     for key in _MAPS:
         for k, v in (changes.get(key) or {}).items():
             k = str(k).strip()
@@ -179,6 +189,9 @@ def patch(changes):
     for key in _LISTS:
         if key in changes:
             cur[key] = changes.get(key) or []
+    for key in _SCALARS:
+        if key in changes:
+            cur[key] = "" if changes[key] is None else str(changes[key]).strip()
     return save(cur)
 
 

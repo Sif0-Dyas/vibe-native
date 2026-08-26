@@ -170,22 +170,49 @@
   // deterministic 0..1 hash of a string
   function hash01(s){ let h = 0; for (let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) | 0;
     return (((h % 4096) + 4096) % 4096) / 4096; }
-  // A subgenre's colour = its family's hue nudged a little (so it still reads as
-  // the same family) plus a small saturation/lightness wobble -- subgenres come
-  // out distinct but kin, so a family cluster shows its internal groupings even
-  // from afar. Returns {h, s, dl} (hue, saturation, lightness delta).
+  function hexHsl(hex){
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    if (!m) return null;
+    const r = parseInt(m[1],16)/255, g = parseInt(m[2],16)/255, b = parseInt(m[3],16)/255;
+    const mx = Math.max(r,g,b), mn = Math.min(r,g,b), d = mx-mn, l = (mx+mn)/2;
+    let h = 0;
+    if (d !== 0){
+      if (mx===r) h = ((g-b)/d) % 6; else if (mx===g) h = (b-r)/d + 2; else h = (r-g)/d + 4;
+      h = ((h*60) % 360 + 360) % 360;
+    }
+    const sat = d === 0 ? 0 : d / (1 - Math.abs(2*l - 1));
+    return { h, s: sat*100, l: l*100 };
+  }
+
+  // Keystone colour by style name, harvested from the server's own paint. The
+  // server owns the palette -- the solved default, the chosen preset, and any
+  // colour set per genre all resolve there -- so the map reads its colours out
+  // rather than deriving a second, disagreeing set from a static family table.
+  let KCOL = {};
+
+  // A subgenre's colour = its keystone's hue nudged a little (so it still reads
+  // as the same genre) plus a small saturation/lightness wobble -- subgenres come
+  // out distinct but kin, so a cluster shows its internal groupings even from
+  // afar. Returns {h, s, dl} (hue, saturation, lightness delta from the base 58).
   function styleShade(fam, style){
-    const base = famHue(fam);
     const ov = style ? SUB_HUE[`${fam}||${style}`] : null;   // per-subgenre override
+    const paint = style ? hexHsl(KCOL[style]) : null;
+    const base = paint ? paint.h : famHue(fam);
     if (!style || style === fam)
-      return { h: (ov == null ? base : ov), s: 64, dl: 0 };
+      return { h: (ov == null ? base : ov), s: paint ? paint.s : 64, dl: paint ? paint.l - 58 : 0 };
     const r = hash01(style + '|' + fam);
+    // A narrower nudge when the hue came from the palette: +/-36 was safe around
+    // a family hue with nothing next to it, but the palette packs keystones close
+    // enough that that much wander would push a subgenre into its neighbour's
+    // colour -- the one thing the palette is solved to prevent.
+    const spread = paint ? 12 : 36;
     return {
-      // an overridden subgenre uses its chosen hue exactly; otherwise the family
-      // hue nudged +/- 36 degrees so untouched subgenres still read as kin.
-      h: ov != null ? ov : ((base + (r*2 - 1)*36) % 360 + 360) % 360,
-      s: 48 + Math.floor(hash01('s' + style) * 38),   // 48..86 (wide, for shade contrast)
-      dl: (hash01('l' + style)*2 - 1) * 15,           // +/- 15 lightness
+      h: ov != null ? ov : ((base + (r*2 - 1)*spread) % 360 + 360) % 360,
+      // Wobble *around* the palette's saturation rather than across a fixed
+      // range, or Pastel and Neon would come out the same on the map.
+      s: paint ? Math.max(0, Math.min(100, paint.s + (hash01('s' + style)*2 - 1) * 12))
+               : 48 + Math.floor(hash01('s' + style) * 38),
+      dl: (paint ? paint.l - 58 : 0) + (hash01('l' + style)*2 - 1) * (paint ? 7 : 15),
     };
   }
   // blend shade b into a by t (0..1); hue interpolated along the short arc so a
@@ -224,6 +251,13 @@
   /* ---- build 3-D positions for the current mode -------------------- */
   function layout(){
     byHash.clear();
+    // Harvest the server's paint first: every shade below depends on it, so it
+    // has to be complete before the first lookup rather than filled in as we go.
+    KCOL = {};
+    for (const n of NODES){
+      if (n.style && n.kcolor) KCOL[n.style] = n.kcolor;
+      for (const r of n.rings || []) if (r.keystone && r.color) KCOL[r.keystone] = r.color;
+    }
     for (const n of NODES){
       n.fam = familyOf(n.style || n.styles[0] || 'Other') || 'Other';
       let sh = styleShade(n.fam, n.style || n.styles[0]);   // per-subgenre shade of the family
