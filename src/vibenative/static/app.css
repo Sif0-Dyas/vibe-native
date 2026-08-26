@@ -1809,3 +1809,65 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
 @media (prefers-reduced-motion: reduce){
   .gen-key.pulsing{ animation:none; }
 }
+
+/* ---- Genres / Vibes use the full window, not the settings column ----
+   .opt-body is capped at 720px because it is built for a settings page. Reusing
+   it here meant a grid that could only ever fit two columns, so tall cards read
+   as one long stack and most of the screen went unused. */
+#genres-view .opt-body,
+#vibes-view .opt-body{ max-width:1700px; }
+
+/* Tiles: compact until selected. The selected one spans the whole row so its
+   detail gets real width instead of being squeezed into a column. */
+.gen-keys{
+  display:grid; gap:10px;
+  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  align-items:start;
+}
+.gen-key{ padding:0; overflow:hidden; }
+.gen-key.open{ grid-column:1/-1; }
+.gen-tile{
+  display:grid; width:100%; cursor:pointer; text-align:left; gap:6px 9px;
+  grid-template-columns:auto 1fr auto;
+  grid-template-areas:"wave title meta" "foot foot foot";
+  background:none; border:none; padding:10px 11px; color:inherit; align-items:center;
+}
+.gen-tile:hover{ background:rgba(255,255,255,.04); }
+.gen-key.open .gen-tile{ background:rgba(255,255,255,.05); }
+.gen-wavebox{ grid-area:wave; }
+.gen-titles{ grid-area:title; min-width:0; display:block; }
+.gen-name{
+  display:block; font-family:'Syne',sans-serif; font-weight:800; font-size:14px;
+  color:var(--text); line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.gen-tilemeta{ grid-area:meta; display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.gen-sig{
+  font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dimmer);
+  border:1px solid var(--line); border-radius:4px; padding:0 4px;
+}
+.gen-tilefoot{ grid-area:foot; display:flex; align-items:center; gap:6px; }
+.gen-tilefoot .gen-count{
+  margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim);
+}
+.gen-detail{ padding:0 11px 11px; border-top:1px solid var(--line); margin-top:2px; padding-top:9px; }
+.gen-detail[hidden]{ display:none; }
+.gen-feel{
+  font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text);
+  display:flex; gap:5px 10px; flex-wrap:wrap; margin-bottom:6px;
+}
+/* Open cards lay their detail out in columns rather than one tall run. */
+.gen-key.open .gen-detail{
+  display:grid; gap:4px 22px;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  align-items:start;
+}
+.gen-key.open .gen-actions,
+.gen-key.open .gen-panel{ grid-column:1/-1; }
+
+/* A clearer beat: the border colour AND a soft ring, so it reads at a glance
+   without being a strobe. */
+@keyframes genPulse{
+  0%   { border-color:var(--line); box-shadow:0 0 0 0 transparent; }
+  12%  { border-color:var(--gen-col); box-shadow:0 0 9px -1px var(--gen-col); }
+  100% { border-color:var(--line); box-shadow:0 0 0 0 transparent; }
+}

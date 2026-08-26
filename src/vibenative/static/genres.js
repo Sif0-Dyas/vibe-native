@@ -67,33 +67,50 @@
     var beat = avg ? (60 / avg).toFixed(3) + 's' : null;
     var pulse = beat ? ' style="--gen-beat:' + beat + ';--gen-col:' + esc(k.color) + '"' : '';
 
-    return '<div class="gen-key' + (beat ? ' pulsing' : '') + '"' + pulse + '>' +
-      '<div class="gen-card-top">' +
-        '<span class="gen-wavebox" style="border-color:' + esc(k.color) + '33">' +
+    var sig = k.signature || '4/4';
+    var feel = k.feel || '';
+
+    // Tile = always visible. Detail = revealed on select, and the tile then
+    // spans the full grid row so the detail has real width instead of being
+    // squeezed into a column.
+    return '<div class="gen-key' + (beat ? ' pulsing' : '') + '"' + pulse +
+        ' data-g="' + esc(k.keystone) + '">' +
+      '<button class="gen-tile" type="button">' +
+        '<span class="gen-wavebox" style="border-color:' + esc(k.color) + '55">' +
           waveSvg(k.color, k.keystone) + '</span>' +
-        '<div class="gen-titles">' +
-          '<h4>' + esc(k.keystone) + '</h4>' +
-          '<span class="gen-level" data-g="' + esc(k.keystone) + '" title="tier in the hierarchy">' +
-            esc(k.tier || 'keystone') + '</span>' +
+        '<span class="gen-titles">' +
+          '<span class="gen-name">' + esc(k.keystone) + '</span>' +
+          '<span class="gen-level">' + esc(k.tier || 'keystone') + '</span>' +
+        '</span>' +
+        '<span class="gen-tilemeta">' +
+          '<span class="gen-bpmbig">' + (avg ? Math.round(avg) : '—') + '<i>bpm</i></span>' +
+          '<span class="gen-sig">' + esc(sig) + '</span>' +
+        '</span>' +
+        '<span class="gen-tilefoot">' +
+          '<span class="vib-state ' +
+            (tr.state === 'ready' ? 'ok' : tr.state === 'thin' ? 'warn' : 'bad') + '">' +
+            esc(tr.state) + '</span>' +
+          '<span class="gen-count">' + k.count + '</span>' +
+        '</span>' +
+      '</button>' +
+      '<div class="gen-detail" hidden>' +
+        (k.blurb ? '<p class="gen-blurb">' + esc(k.blurb) + '</p>' : '') +
+        (feel ? '<div class="gen-feel"><span class="gk">feel</span> ' + esc(feel) +
+                '<span class="gk">signature</span> ' + esc(sig) + '</div>' : '') +
+        bpmCell(k.bpm) +
+        '<div class="gen-card-stats">' +
+          '<span class="gen-statlab">' + tr.files + ' training file' +
+            (tr.files === 1 ? '' : 's') +
+            (tr.needs ? ' · needs ' + tr.needs + ' more' : ' · ready') + '</span>' +
         '</div>' +
-        '<div class="gen-bpmbig">' + (avg ? Math.round(avg) + '<i>bpm</i>' : '<i>—</i>') + '</div>' +
+        (subs ? '<div class="gen-subs">' + subs + '</div>' : '') +
+        (top ? '<div class="gen-toph">top tracks</div><ol class="gen-top">' + top + '</ol>' : '') +
+        '<div class="gen-actions">' +
+          '<button class="gen-train" data-g="' + esc(k.keystone) + '">train</button>' +
+          '<button class="gen-reset-top" data-g="' + esc(k.keystone) + '">reset</button>' +
+        '</div>' +
+        '<div class="gen-panel" hidden></div>' +
       '</div>' +
-      '<div class="gen-card-stats">' +
-        '<span class="vib-state ' + (tr.state === 'ready' ? 'ok' : tr.state === 'thin' ? 'warn' : 'bad') +
-          '">' + esc(tr.state) + '</span>' +
-        '<span class="gen-statlab">' + tr.files + ' training file' + (tr.files === 1 ? '' : 's') +
-          (tr.needs ? ' · needs ' + tr.needs + ' more' : '') + '</span>' +
-        '<span class="gen-count">' + k.count + ' track' + (k.count === 1 ? '' : 's') + '</span>' +
-      '</div>' +
-      (k.blurb ? '<p class="gen-blurb">' + esc(k.blurb) + '</p>' : '') +
-      bpmCell(k.bpm) +
-      (subs ? '<div class="gen-subs">' + subs + '</div>' : '') +
-      (top ? '<div class="gen-toph">top tracks</div><ol class="gen-top">' + top + '</ol>' : '') +
-      '<div class="gen-actions">' +
-        '<button class="gen-train" data-g="' + esc(k.keystone) + '">train</button>' +
-        '<button class="gen-reset-top" data-g="' + esc(k.keystone) + '">reset</button>' +
-      '</div>' +
-      '<div class="gen-panel" hidden></div>' +
     '</div>';
   }
 
@@ -237,6 +254,22 @@
       '</div>';
     wireActions();
     // one console per keystone card, built on demand -- each is several queries
+    // Select a tile to expand it. One at a time: several open cards each
+    // spanning the full row turns the grid back into the column this replaced.
+    body.querySelectorAll('.gen-tile').forEach(function (t) {
+      t.onclick = function () {
+        var cardEl = t.closest('.gen-key');
+        var wasOpen = cardEl.classList.contains('open');
+        body.querySelectorAll('.gen-key.open').forEach(function (o) {
+          o.classList.remove('open');
+          o.querySelector('.gen-detail').hidden = true;
+        });
+        if (!wasOpen) {
+          cardEl.classList.add('open');
+          cardEl.querySelector('.gen-detail').hidden = false;
+        }
+      };
+    });
     body.querySelectorAll('.gen-reset-top').forEach(function (b) {
       b.onclick = function () {
         var g = b.dataset.g;

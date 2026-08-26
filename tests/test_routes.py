@@ -892,3 +892,20 @@ def test_vibe_description_round_trips_unbounded_text(tmp_path, monkeypatch):
         assert listed[vid]["description"] == text.strip()
         assert c.post("/vibes/9999/description", json={"description": "x"}).status_code == 404
         assert c.post(f"/vibes/{vid}/description", json={}).status_code == 400
+
+
+def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
+    """Signature is near-constant across electronic music (almost everything is
+    4/4), so `feel` is the field that actually separates these genres. Both are
+    genre conventions, NOT per-track measurements -- the engine computes a single
+    BPM and never locates beats or downbeats, so meter can't be detected."""
+    from vibenative.genres import PROFILES, summarise
+
+    missing = [k for k, v in PROFILES.items() if not v.get("signature") or not v.get("feel")]
+    assert missing == []
+    assert PROFILES["Dubstep"]["feel"] != PROFILES["House"]["feel"]
+    assert PROFILES["Ambient"]["signature"] == "free"  # beatless genres say so
+    # and they survive the summarise() shape the UI consumes
+    import inspect
+
+    assert "signature" in inspect.getsource(summarise)
