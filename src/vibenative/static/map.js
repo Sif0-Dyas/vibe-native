@@ -58,17 +58,34 @@
      still appears until you actually narrow the range -- an outlier shouldn't be
      silently hidden by a control you never touched.
   --------------------------------------------------------------------------- */
-  const FILT_EMPTY = { artist:'', key:'', tags:[], playlist:null,
+  const FILT_EMPTY = { artist:'', key:'', style:'', tags:[], playlist:null,
                        bpm:[null,null], len:[null,null] };
   let FILT = JSON.parse(JSON.stringify(FILT_EMPTY));
   let playlistHashes = null;        // Set of hashes for the chosen playlist, or null
-  let highlightTag = null;          // hovered tag -> its tracks twinkle as a preview
+  // Hovered chip -> its tracks twinkle as a preview of what clicking would show.
+  // {kind, value} rather than a bare tag: genre and artist chips preview the same
+  // way, and they are the ones you can actually see on a library with no tags.
+  let HL = null;
+
+  // The one place that answers "does this track match that chip". Both the hover
+  // preview and the filter go through it, so the twinkle can never promise a
+  // different set than the click delivers -- which was the whole point of having
+  // a preview.
+  function nodeHas(n, kind, value){
+    if (!value) return false;
+    if (kind === 'tag')    return (n.tags || []).includes(value);
+    // Substring, to match how FILT.artist is applied -- "Sub Focus" should
+    // preview the same tracks it filters to, including "Sub Focus & Wilkinson".
+    if (kind === 'artist') return (n.artist || '').toLowerCase().includes(String(value).toLowerCase());
+    if (kind === 'style')  return n.style === value || (n.styles || []).includes(value);
+    return false;
+  }
   // Set by the filter panel so anything that changes FILT can refresh the
   // controls and the counter. A no-op until the panel has been wired.
   let syncFilterUI = () => {};
 
   const filtActive = () =>
-    !!(FILT.artist || FILT.key || FILT.tags.length || FILT.playlist
+    !!(FILT.artist || FILT.key || FILT.style || FILT.tags.length || FILT.playlist
        || FILT.bpm[0] != null || FILT.bpm[1] != null
        || FILT.len[0] != null || FILT.len[1] != null);
 
@@ -85,6 +102,9 @@
     if (flaggedOnly && !n.flag) return false;
     if (FILT.artist && !(n.artist || '').toLowerCase().includes(FILT.artist)) return false;
     if (FILT.key && n.camelot !== FILT.key) return false;
+    // A track counts as its genre even when that genre is only a runner-up read,
+    // so filtering to House finds the tracks that are partly House too.
+    if (FILT.style && !nodeHas(n, 'style', FILT.style)) return false;
     // tags are AND: picking two means "has both", which is how you narrow down
     if (FILT.tags.length && !FILT.tags.every(t => (n.tags || []).includes(t))) return false;
     if (playlistHashes && !playlistHashes.has(n.hash)) return false;
@@ -701,7 +721,7 @@
       // tag currently under the cursor -- the "what would this filter show me"
       // preview. Phase-offset per node so they sparkle rather than strobe in
       // unison, which reads as a glitch instead of a highlight.
-      const lit = highlightTag && (n.tags || []).includes(highlightTag);
+      const lit = HL && nodeHas(n, HL.kind, HL.value);
       const tw = lit
         ? 1.25 + 0.55*Math.sin(t*7 + n.ph*3)
         : 0.9 + 0.1*Math.sin(t*1.6 + n.ph);
@@ -1137,10 +1157,12 @@
         <b>${escapeHtml(n.suggest || '?')}</b></div>` : ''}
       <div id="pop-pick"><div class="pop-bar" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">finding a match…</div></div>
       ${other.length ? `<div class="pop-h">also reads as</div>
-        <div class="pop-artists">${other.map(s=>`<span class="chip">${escapeHtml(s)}</span>`).join('')}</div>` : ''}
+        <div class="pop-artists">${other.map(s=>
+          `<button class="chip chip-act" data-kind="style" data-v="${escapeHtml(s)}"
+            title="click to show only ${escapeHtml(s)} · hover to preview">${escapeHtml(s)}</button>`).join('')}</div>` : ''}
       ${(n.tags||[]).length ? `<div class="pop-h">tags</div>
         <div class="pop-tags">${(n.tags||[]).map(t=>
-          `<button class="pop-tag${FILT.tags.includes(t)?' on':''}" data-t="${escapeHtml(t)}"
+          `<button class="pop-tag${FILT.tags.includes(t)?' on':''}" data-kind="tag" data-v="${escapeHtml(t)}"
             title="click to filter the map · hover to preview">${escapeHtml(t)}</button>`).join('')}</div>` : ''}
       <div class="pop-h">similar artists</div>
       <div class="pop-artists" id="pop-artists"><span class="pop-bar">…</span></div>
@@ -1204,21 +1226,7 @@
       });
       addBtn.textContent = '✓ in playlist'; addBtn.classList.add('added');
     };
-    // Tag chips: click filters the map to that tag, hover previews which tracks
-    // *would* survive by making them twinkle -- so you can see the effect of a
-    // filter before committing to it.
-    for (const b of popEl.querySelectorAll('.pop-tag')) {
-      const tag = b.dataset.t;
-      b.onmouseenter = () => { highlightTag = tag; };
-      b.onmouseleave = () => { highlightTag = null; };
-      b.onclick = () => {
-        const i = FILT.tags.indexOf(tag);
-        if (i >= 0) FILT.tags.splice(i, 1); else FILT.tags.push(tag);
-        b.classList.toggle('on', FILT.tags.includes(tag));
-        highlightTag = null;
-        syncFilterUI();
-      };
-    }
+    wireChips(popEl);
     wireRating(popEl, n.hash);
     wireAdjust(popEl, n);
     popEl.querySelector('.pop-omit').onclick = () => omitTrack(n);
@@ -1488,6 +1496,49 @@
     n.flag = false; n.suggest = null;
   }
 
+  /* Every chip in the popup behaves the same way: hover previews which tracks
+     *would* survive by making them twinkle, click commits that as a filter.
+     Clicking an active one clears it, so a chip is a toggle rather than a
+     one-way trip into a filtered view you then have to go find the panel to
+     escape.
+
+     Genre and artist chips were inert until now, which on a library with no tags
+     meant every chip you could actually see did nothing. */
+  function wireChips(root){
+    for (const b of root.querySelectorAll('[data-kind][data-v]')) {
+      const kind = b.dataset.kind, value = b.dataset.v;
+      b.onmouseenter = () => { HL = { kind, value }; };
+      b.onmouseleave = () => { HL = null; };
+      b.onclick = () => {
+        HL = null;
+        if (kind === 'tag') {
+          const i = FILT.tags.indexOf(value);
+          if (i >= 0) FILT.tags.splice(i, 1); else FILT.tags.push(value);
+        } else if (kind === 'artist') {
+          const v = value.toLowerCase();
+          FILT.artist = FILT.artist === v ? '' : v;
+        } else if (kind === 'style') {
+          FILT.style = FILT.style === value ? '' : value;
+        }
+        markChips(root);
+        syncFilterUI();
+      };
+    }
+    markChips(root);
+  }
+
+  // Which chips are currently filtering. Recomputed rather than toggled in place
+  // so a chip clicked here and a filter cleared in the panel can't disagree.
+  function markChips(root){
+    for (const b of root.querySelectorAll('[data-kind][data-v]')) {
+      const k = b.dataset.kind, v = b.dataset.v;
+      const on = k === 'tag' ? FILT.tags.includes(v)
+        : k === 'artist' ? FILT.artist === v.toLowerCase()
+        : k === 'style' ? FILT.style === v : false;
+      b.classList.toggle('on', on);
+    }
+  }
+
   // override: persist a manual genre; the track moves to its new cluster
   async function overrideTrack(n, genre){
     genre = (genre || '').trim(); if (!genre) return;
@@ -1586,9 +1637,15 @@
     for (const s of sim){ const a=(s.artist||'').trim();
       if (a && !seen.has(a.toLowerCase())){ seen.add(a.toLowerCase()); artists.push(a); }
       if (artists.length>=6) break; }
-    if (artEl) artEl.innerHTML = artists.length
-      ? artists.map(a=>`<span class="chip">${escapeHtml(a)}</span>`).join('')
-      : '<span class="pop-bar">--</span>';
+    if (artEl) {
+      artEl.innerHTML = artists.length
+        ? artists.map(a=>`<button class="chip chip-act" data-kind="artist" data-v="${escapeHtml(a)}"
+              title="click to show only ${escapeHtml(a)} · hover to preview">${escapeHtml(a)}</button>`).join('')
+        : '<span class="pop-bar">--</span>';
+      // These arrive after the popup is built (they need /similar), so they miss
+      // the wiring pass the rest of the chips got.
+      wireChips(artEl);
+    }
   }
   const stripArtist = (title, artist) =>
     (artist && title.toLowerCase().startsWith(artist.toLowerCase()+' - '))
@@ -1760,7 +1817,15 @@
       setTxtF('flt-len-v', (l[0] == null && l[1] == null) ? 'any'
         : `${fmtLen(l[0] ?? lenLo)}–${fmtLen(l[1] ?? lenHi)}`);
       setTxtF('flt-tags-v', FILT.tags.length ? FILT.tags.join(' + ') : 'any');
+      // A chip in the popup writes straight to FILT, so the controls have to be
+      // pushed back into sync or the panel would show "any" over a live filter.
+      const asel = $f('flt-artist'); if (asel && asel.value.trim().toLowerCase() !== FILT.artist) asel.value = FILT.artist;
+      const ssel2 = $f('flt-style'); if (ssel2 && ssel2.value !== FILT.style) ssel2.value = FILT.style;
+      for (const b2 of (($f('flt-tags') || {}).querySelectorAll ? $f('flt-tags').querySelectorAll('.flt-tag') : []))
+        b2.classList.toggle('on', FILT.tags.includes(b2.dataset.t));
       filtBtn.classList.toggle('on', filtActive());
+      // Clearing a filter from the panel has to un-mark the chip that set it.
+      if (popEl && !popEl.hidden) markChips(popEl);
       if (countMap && NODES.length){
         const shown = NODES.filter(passes).length;
         countMap.textContent = filtActive() || filterFam || flaggedOnly
@@ -1777,6 +1842,14 @@
       const ksel = $f('flt-key');
       if (ksel) ksel.innerHTML = `<option value="">any key</option>`
         + keys.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('');
+      // Every genre any track reads as, not just the dominant ones -- a chip for
+      // a runner-up read has to be selectable in the panel too, or clicking it
+      // would set a filter the control could not show.
+      const styles = [...new Set(NODES.flatMap(n => [n.style, ...(n.styles || [])]).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+      const ssel = $f('flt-style');
+      if (ssel) ssel.innerHTML = `<option value="">any genre</option>`
+        + styles.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('');
       const tags = [...new Set(NODES.flatMap(n => n.tags || []))].sort();
       const tbox = $f('flt-tags');
       if (tbox) tbox.innerHTML = tags.length
@@ -1808,6 +1881,7 @@
       FILT.artist = e.target.value.trim().toLowerCase(); onFilt();
     });
     $f('flt-key').addEventListener('change', e => { FILT.key = e.target.value; onFilt(); });
+    $f('flt-style').addEventListener('change', e => { FILT.style = e.target.value; onFilt(); });
     $f('flt-pl').addEventListener('change', async e => {
       FILT.playlist = e.target.value || null;
       playlistHashes = null;

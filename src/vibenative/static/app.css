@@ -1666,6 +1666,18 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .pop-tag.on{ color:var(--accent-a); border-color:var(--accent-a);
   background:rgba(34,211,238,.10); }
 
+/* Genre and artist chips act exactly like tag chips -- hover previews, click
+   filters -- so they get the same affordance. They used to be inert <span>s,
+   which on a library with no tags meant every chip you could see did nothing. */
+.chip-act{
+  cursor:pointer; font-family:inherit; font-size:10px; padding:2px 8px;
+  border-radius:10px; background:rgba(255,255,255,.05);
+  border:1px solid var(--line); color:var(--dim);
+}
+.chip-act:hover{ color:var(--text); border-color:var(--dimmer); }
+.chip-act.on{ color:var(--accent-a); border-color:var(--accent-a);
+  background:rgba(34,211,238,.10); }
+
 /* --- Options: clickable paths + inline DB-path editor --- */
 .opt-path{ cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
 .opt-path:hover{ color:var(--accent-a); }
