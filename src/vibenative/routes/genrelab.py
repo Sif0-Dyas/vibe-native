@@ -43,6 +43,11 @@ def genres_route():
             p["archgenre"] = K.archgenre_of(p["keystone"])
             grouped.setdefault(p["archgenre"], []).append(p)
         total = sum(p["count"] for p in profiles) or 1
+        # Ordered groups first, then anything the order doesn't mention. Filtering
+        # to the known order alone would silently drop a group -- and every track
+        # in it -- the moment a user overlay invented an archgenre for it.
+        order = [a for a in K.archgenre_order() if a in grouped]
+        order += [a for a in grouped if a not in order]
         return jsonify(
             [
                 {
@@ -52,8 +57,7 @@ def genres_route():
                     "standalone": a in K.STANDALONE_ARCHGENRES,
                     "keystones": grouped[a],
                 }
-                for a in K.archgenre_order()
-                if a in grouped
+                for a in order
             ]
         )
     return jsonify(genres.by_family(top_n=top, mode=mode))
@@ -150,6 +154,66 @@ def relabel_revert_route():
     from .. import relabel
 
     return jsonify(relabel.revert())
+
+
+# --- taxonomy overlay ---------------------------------------------------------
+# The user's edits to the genre tables, kept in a JSON file outside the database
+# so they survive the re-scans that throw the database away. See ``taxonomy``.
+@bp.get("/taxonomy/overlay")
+def overlay_get_route():
+    """The current overlay, plus where it lives and what it may contain.
+
+    The path is returned because hand-editing the file is a supported way to use
+    it, and the UI has no other way to tell you where to look.
+    """
+    from .. import keystone as K
+    from .. import taxonomy
+
+    return jsonify(
+        {
+            "overlay": taxonomy.load(),
+            "path": str(taxonomy.path()),
+            "version": taxonomy.VERSION,
+            "archgenres": K.archgenre_order(),
+            "families": K.FAMILY_ORDER,
+        }
+    )
+
+
+@bp.post("/taxonomy/overlay")
+def overlay_patch_route():
+    """Merge edits into the overlay.
+
+    Body is the overlay shape, e.g. ``{"archgenre": {"Halftime": "Drum n Bass"}}``.
+    A map value of ``null`` clears that entry, which is how you go back to the
+    built-in default rather than overriding it with something else.
+    """
+    from .. import taxonomy
+
+    d = request.get_json(silent=True)
+    if not isinstance(d, dict):
+        return jsonify({"error": "object required"}), 400
+    return jsonify({"overlay": taxonomy.patch(d), "path": str(taxonomy.path())})
+
+
+@bp.post("/taxonomy/overlay/reset")
+def overlay_reset_route():
+    """Drop every taxonomy edit. Requires the confirmation word.
+
+    Nothing is deleted -- the file is renamed, so a mis-click is recoverable.
+    Same stance as the training reset below.
+    """
+    from .. import snapshots, taxonomy
+
+    confirm = (request.get_json(silent=True) or {}).get("confirm")
+    if (confirm or "").strip().upper() != snapshots.CONFIRM_WORD:
+        return jsonify(
+            {
+                "error": f"type {snapshots.CONFIRM_WORD} to confirm",
+                "confirm_word": snapshots.CONFIRM_WORD,
+            }
+        ), 400
+    return jsonify(taxonomy.reset())
 
 
 # --- snapshots ----------------------------------------------------------------

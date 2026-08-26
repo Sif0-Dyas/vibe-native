@@ -13,6 +13,18 @@ import tempfile
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolated_taxonomy(tmp_path, monkeypatch):
+    """Point the taxonomy overlay at a scratch path for every test.
+
+    The overlay changes how every genre resolves. Without this the suite would
+    read whatever the developer has saved in the app -- so a run would pass or
+    fail depending on whose machine it was on, and a genuine regression could
+    hide behind someone's local edit.
+    """
+    monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
+
+
 @pytest.fixture()
 def client():
     os.environ["FAKE_ANALYZER"] = "1"

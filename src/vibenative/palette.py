@@ -176,6 +176,14 @@ def keystone_color(keystone, mode="dark"):
     plain grey. Family reads from position on the map and from the label, which
     were always going to carry it.
     """
+    # A user colour wins outright, including over the neutral -- claiming a hue
+    # for a genre the solver left grey is a legitimate thing to want, and the
+    # separation guarantees below only bind the eight slots this file solved.
+    from .taxonomy import color_override
+
+    chosen = color_override(keystone)
+    if chosen:
+        return chosen
     idx = KEYSTONE_SLOT.get(keystone)
     if idx is None:
         return NEUTRAL.get(mode, NEUTRAL["dark"])

@@ -260,20 +260,44 @@ def archgenre_of(keystone):
     A keystone with no entry is its own archgenre -- House is not "a kind of
     Dance", it is the top of its own tree.
     """
+    from .taxonomy import archgenre_override
+
     if not keystone:
         return OTHER_FAMILY
     if family_of(keystone) == OTHER_FAMILY:
         return OTHER_FAMILY
+    # "" is a real answer here -- "I promoted this to stand on its own" -- and
+    # has to be distinguishable from "no opinion", or a keystone the shipped
+    # table files under something could never be lifted out of it.
+    ov = archgenre_override(keystone)
+    if ov is not None:
+        return ov or keystone
     return ARCHGENRE_OF.get(keystone, keystone)
 
 
 def archgenre_order():
     """Archgenres in display order: the standalone ones, then the groupings."""
+    from .taxonomy import load as user_overlay
+    from .taxonomy import order as user_order
+
     groups = []
     for a in ARCHGENRE_OF.values():
         if a not in groups:
             groups.append(a)
-    return STANDALONE_ARCHGENRES + groups + [OTHER_FAMILY]
+    # An overlay can name an archgenre the built-in tables have never heard of --
+    # "put Halftime under Drum n Bass" makes Drum n Bass one, though it ships as
+    # a keystone. Without this the group has no place in the order and every
+    # track in it drops out of the Genres tab.
+    for a in user_overlay()["archgenre"].values():
+        if a and a not in groups:
+            groups.append(a)
+    built_in = STANDALONE_ARCHGENRES + groups + [OTHER_FAMILY]
+    # A user ordering leads; anything it doesn't mention keeps its built-in
+    # position behind it, so a partial ordering ("I only care that House is
+    # first") is a usable thing to write.
+    out = [a for a in user_order() if a not in (OTHER_FAMILY,)]
+    out += [a for a in built_in if a not in out]
+    return out
 
 
 # --- families: the tier above keystones ---------------------------------------
@@ -308,8 +332,14 @@ FAMILY_ORDER = ["Dance", "Bass", "Chill", "Experimental", OTHER_FAMILY]
 
 
 def family_of(keystone):
-    """The family a keystone belongs to. Non-electronic keystones get "Other"."""
-    return _KEYSTONE_TO_FAMILY.get(keystone, OTHER_FAMILY)
+    """The family a keystone belongs to. Non-electronic keystones get "Other".
+
+    A user overlay wins: the shipped table is one library's opinion, and this is
+    where the person with the library says otherwise. See ``taxonomy``.
+    """
+    from .taxonomy import family_override
+
+    return family_override(keystone) or _KEYSTONE_TO_FAMILY.get(keystone, OTHER_FAMILY)
 
 
 def keystone_of(label):
@@ -328,6 +358,11 @@ def keystone_of(label):
     style = tail.strip().lower()
     if not style:
         return None
+    # A user alias outranks every built-in table: it is the one statement in
+    # this chain that somebody made on purpose about their own library.
+    hit = _overlay_alias(style, parent)
+    if hit:
+        return hit
     if style in _OVERRIDES:
         return _OVERRIDES[style]
 
@@ -364,6 +399,23 @@ def keystone_of(label):
     return _word_keystone(style)
 
 
+def _overlay_alias(style, parent):
+    """A user-defined alias for this style, or None.
+
+    Scoped to bare styles and ``Electronic---`` labels on purpose. Several style
+    names live under two parents with unrelated meanings -- ``Rock---Hardcore``
+    is Black Flag, ``Electronic---Hardcore`` is gabber -- so letting an overlay
+    entry for "hardcore" apply parent-blind would re-introduce exactly the
+    mis-filing the parent-first rule exists to prevent. Names you type in the
+    override box arrive bare, which is the case this serves.
+    """
+    if parent and parent != "Electronic":
+        return None
+    from .taxonomy import alias_of
+
+    return alias_of(style)
+
+
 def _lexicon_keystone(style):
     """Resolve via the electronic-genre lexicon's parent hierarchy.
 
@@ -395,6 +447,9 @@ def _keystone_no_lexicon(label):
     style = tail.strip().lower()
     if not style:
         return None
+    hit = _overlay_alias(style, parent)
+    if hit:
+        return hit
     if style in _OVERRIDES:
         return _OVERRIDES[style]
     if parent:

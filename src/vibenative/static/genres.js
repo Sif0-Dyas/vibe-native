@@ -13,6 +13,12 @@
 (function () {
   var body;
 
+  /* The user's taxonomy edits, loaded alongside the genre list. Held here rather
+     than re-fetched per card so a page of 18 cards costs one request. */
+  var OVERLAY = { archgenre: {}, colors: {} };
+  var ARCHGENRES = [];
+  var OVERLAY_PATH = '';
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
@@ -50,6 +56,62 @@
     }
     return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
            'style="color:' + esc(color) + '">' + bars.join('') + '</svg>';
+  }
+
+  /* Where this genre sits, and what colour it gets -- the two things the built-in
+     tables decide that only the person with the library can correct.
+
+     Saved to a JSON file beside settings.ini, NOT to the database: the database
+     gets thrown away and rebuilt on every re-scan, and a placement that died
+     with it would have to be re-entered each time. */
+  function placementRow(k) {
+    var opts = ['<option value="">— stands alone (its own archgenre) —</option>'].concat(
+      ARCHGENRES.filter(function (a) { return a !== k.keystone; }).map(function (a) {
+        return '<option value="' + esc(a) + '"' +
+          (OVERLAY.archgenre[k.keystone] === a || (!(k.keystone in OVERLAY.archgenre) && k.archgenre === a && k.tier !== 'archgenre')
+            ? ' selected' : '') + '>' + esc(a) + '</option>';
+      })
+    ).join('');
+    var edited = (k.keystone in OVERLAY.archgenre) || (k.keystone in OVERLAY.colors);
+    return '<div class="gen-place" data-g="' + esc(k.keystone) + '">' +
+      '<span class="gk">sits under</span>' +
+      '<select class="place-arch">' + opts + '</select>' +
+      '<span class="gk">colour</span>' +
+      '<input class="place-col" type="color" value="' + esc(k.color || '#888888') + '">' +
+      (edited ? '<button class="place-clear" title="back to the built-in default">reset</button>' : '') +
+      '<span class="place-say"></span>' +
+    '</div>';
+  }
+
+  /* Persist one placement edit, then reload so every tier heading, grouping and
+     colour on the page follows -- moving a keystone changes the section it is
+     listed under, which a local repaint cannot show. */
+  function savePlacement(box) {
+    var genre = box.dataset.g;
+    var say = box.querySelector('.place-say');
+    var patch = { archgenre: {}, colors: {} };
+    patch.archgenre[genre] = box.querySelector('.place-arch').value;
+    patch.colors[genre] = box.querySelector('.place-col').value;
+    say.textContent = 'saving…'; say.className = 'place-say';
+    fetch('/taxonomy/overlay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      OVERLAY = j.overlay || OVERLAY;
+      load(genre);
+    }).catch(function () { say.textContent = 'save failed'; say.className = 'place-say bad'; });
+  }
+
+  function clearPlacement(box) {
+    var genre = box.dataset.g;
+    fetch('/taxonomy/overlay', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archgenre: (function (o) { o[genre] = null; return o; })({}),
+                             colors: (function (o) { o[genre] = null; return o; })({}) })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      OVERLAY = j.overlay || OVERLAY;
+      load(genre);
+    }).catch(function () { /* the page is still consistent; the next load retries */ });
   }
 
   function keystoneCard(k) {
@@ -105,6 +167,7 @@
         '</div>' +
         (subs ? '<div class="gen-subs">' + subs + '</div>' : '') +
         (top ? '<div class="gen-toph">top tracks</div><ol class="gen-top">' + top + '</ol>' : '') +
+        placementRow(k) +
         '<div class="gen-actions">' +
           '<button class="gen-train" data-g="' + esc(k.keystone) + '">train</button>' +
           '<button class="gen-reset-top" data-g="' + esc(k.keystone) + '">reset</button>' +
@@ -225,6 +288,18 @@
         '</div>' +
         '<div class="opt-note" id="gen-msg"></div>' +
       '</div>' +
+      // Where the edits live. Worth stating plainly: this file is the reason a
+      // placement survives nuking the database, and it can be edited by hand or
+      // copied to another machine -- neither of which is discoverable otherwise.
+      '<div class="opt-card"><h3>Your taxonomy edits</h3>' +
+        '<div class="opt-note">Placement and colour changes are saved to ' +
+        '<code>' + esc(OVERLAY_PATH || 'taxonomy.json') + '</code> — a plain JSON file ' +
+        'outside the database, so they survive a full re-scan. It holds only what you ' +
+        'changed; everything else keeps following the built-in tables. Safe to edit by ' +
+        'hand or copy to another machine.</div>' +
+        '<div class="opt-actions"><button id="gen-tax-reset">reset all edits</button></div>' +
+        '<div class="opt-note" id="gen-tax-msg"></div>' +
+      '</div>' +
       families.map(function (f) {
         var name = f.archgenre || f.family;
         // A standalone archgenre IS its keystone (House, Techno...), so the
@@ -288,6 +363,34 @@
         b.textContent = 'hide';
         trainPanel(panel, b.dataset.g);
       };
+    });
+    var taxReset = document.getElementById('gen-tax-reset');
+    if (taxReset) taxReset.onclick = function () {
+      var el = document.getElementById('gen-tax-msg');
+      var word = window.prompt(
+        'Discard every taxonomy edit and go back to the built-in tables?' +
+        '\n\nThe file is renamed, not deleted, so this is recoverable.' +
+        '\n\nType RESET to confirm:');
+      if (!word) return;
+      fetch('/taxonomy/overlay/reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: word })
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.error) { el.innerHTML = '<b class="opt-bad">' + esc(j.error) + '</b>'; return; }
+        load();
+      }).catch(function () { el.innerHTML = '<b class="opt-bad">reset failed</b>'; });
+    };
+
+    // Placement: the archgenre a keystone sits under and the colour it carries.
+    // Both save on change -- there is no Save button because there is nothing to
+    // batch, and a forgotten one would silently lose the edit.
+    body.querySelectorAll('.gen-place').forEach(function (box) {
+      box.querySelector('.place-arch').onchange = function () { savePlacement(box); };
+      box.querySelector('.place-col').onchange = function () { savePlacement(box); };
+      var clr = box.querySelector('.place-clear');
+      if (clr) clr.onclick = function () { clearPlacement(box); };
+      // Clicking inside the row must not toggle the card shut underneath it.
+      box.onclick = function (e) { e.stopPropagation(); };
     });
     void total;
   }
@@ -364,16 +467,27 @@
     };
   }
 
-  window.vibeLoadGenres = function () {
+  /* Reload the whole tab. `keep` re-opens the card that was just edited, so
+     changing a genre's placement doesn't drop you back at the top of the page. */
+  function load(keep) {
     body = document.getElementById('gen-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
     Promise.all([
       fetch('/genres?top=5&by=archgenre').then(function (r) { return r.json(); }),
       fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; }),
+      fetch('/taxonomy/overlay').then(function (r) { return r.json(); })
         .catch(function () { return null; })
     ]).then(function (out) {
-      var groups = out[0] || [], st = out[1];
+      var groups = out[0] || [], st = out[1], tx = out[2];
+      if (tx) {
+        OVERLAY = tx.overlay || OVERLAY;
+        OVERLAY.archgenre = OVERLAY.archgenre || {};
+        OVERLAY.colors = OVERLAY.colors || {};
+        ARCHGENRES = tx.archgenres || ARCHGENRES;
+        OVERLAY_PATH = tx.path || '';
+      }
       // Fold training readiness onto each keystone so a card can show it without
       // a request of its own -- 18 cards would otherwise mean 18 round trips.
       var byGenre = {};
@@ -386,8 +500,18 @@
         });
       });
       render(groups);
+      if (keep) {
+        var card = body.querySelector('.gen-key[data-g="' + keep.replace(/"/g, '\\"') + '"]');
+        if (card) {
+          var tile = card.querySelector('.gen-tile');
+          if (tile) tile.click();
+          card.scrollIntoView({ block: 'nearest' });
+        }
+      }
     }).catch(function () {
       body.innerHTML = '<div class="opt-card">Could not load the genre taxonomy.</div>';
     });
-  };
+  }
+
+  window.vibeLoadGenres = function () { load(); };
 })();
