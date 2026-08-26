@@ -225,6 +225,57 @@ FUSION_NAMES = {
 
 _STYLE_TO_KEYSTONE = {s: k for k, styles in _ELECTRONIC.items() for s in styles}
 
+# --- the three tiers ----------------------------------------------------------
+# archgenre -> keystone -> subgenre.
+#
+# The archgenre is what you'd call a room at a festival; the keystone is what a
+# track *is*; the subgenre is detail. House is an archgenre, not a member of a
+# "Dance" grouping -- it stands on its own the way Techno and Trance do. Bass
+# stays a grouping because dubstep and drum and bass are genuinely siblings under
+# it, where "dance" was a category so broad it grouped almost everything.
+#
+# Only the archgenres that hold more than one keystone need listing; a keystone
+# with no archgenre above it IS its own archgenre (House, Techno, Trance...).
+# That keeps the table small and stops it drifting from _ELECTRONIC.
+ARCHGENRE_OF = {
+    "Dubstep": "Bass",
+    "Drum n Bass": "Bass",
+    "Halftime": "Bass",
+    "Trap": "Bass",
+    "Breakbeat": "Bass",
+    "Ambient": "Chill",
+    "Downtempo": "Chill",
+    "Lo-Fi": "Chill",
+    "Experimental": "Experimental",
+    "Industrial": "Experimental",
+}
+
+# Where a keystone that stands alone sits in the display order.
+STANDALONE_ARCHGENRES = ["House", "Techno", "Trance", "Hard Dance", "Electro", "Disco"]
+
+
+def archgenre_of(keystone):
+    """The archgenre a keystone belongs to.
+
+    A keystone with no entry is its own archgenre -- House is not "a kind of
+    Dance", it is the top of its own tree.
+    """
+    if not keystone:
+        return OTHER_FAMILY
+    if family_of(keystone) == OTHER_FAMILY:
+        return OTHER_FAMILY
+    return ARCHGENRE_OF.get(keystone, keystone)
+
+
+def archgenre_order():
+    """Archgenres in display order: the standalone ones, then the groupings."""
+    groups = []
+    for a in ARCHGENRE_OF.values():
+        if a not in groups:
+            groups.append(a)
+    return STANDALONE_ARCHGENRES + groups + [OTHER_FAMILY]
+
+
 # --- families: the tier above keystones ---------------------------------------
 # Three levels, widest first: family -> keystone -> subgenre. The family answers
 # "what kind of set does this belong in", which is the question you're asking
@@ -488,6 +539,8 @@ def classify(payload):
         k = keystone_of(override) or override
         return {
             "keystones": [k],
+            "archgenre": archgenre_of(k),
+            "archgenres": [archgenre_of(k)],
             "family": family_of(k),
             "families": [family_of(k)],
             "cross_family": False,
@@ -527,8 +580,15 @@ def classify(payload):
         f = family_of(k)
         if f not in families:
             families.append(f)
+    arches = []
+    for k in keystones:
+        a = archgenre_of(k)
+        if a not in arches:
+            arches.append(a)
     return {
         "keystones": keystones,
+        "archgenre": arches[0],
+        "archgenres": arches,
         "family": families[0],
         "families": families,
         "cross_family": len(families) > 1,

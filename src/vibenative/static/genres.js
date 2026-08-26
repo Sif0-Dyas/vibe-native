@@ -36,6 +36,22 @@
            '<span class="gk">yours</span> ' + obs + flag + '</div>';
   }
 
+  /* A tiny waveform in the genre's own colour. Drawn from the genre name so it
+     is stable per genre rather than random noise that changes on every render --
+     it should read as that genre's mark, not decoration. */
+  function waveSvg(color, seed) {
+    var n = 26, bars = [], acc = 0, i;
+    for (i = 0; i < String(seed).length; i++) acc = (acc * 31 + String(seed).charCodeAt(i)) % 9973;
+    for (i = 0; i < n; i++) {
+      acc = (acc * 1103515245 + 12345) % 2147483648;
+      var h = 3 + (acc % 100) / 100 * 15;                  // 3..18 of a 22 box
+      bars.push('<rect x="' + (i * 2.2) + '" y="' + ((22 - h) / 2).toFixed(1) +
+                '" width="1.3" height="' + h.toFixed(1) + '" rx="0.6"/>');
+    }
+    return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
+           'style="color:' + esc(color) + '">' + bars.join('') + '</svg>';
+  }
+
   function keystoneCard(k) {
     var subs = (k.subgenres || []).slice(0, 8).map(function (s) {
       return '<span class="gen-sub">' + esc(s.style) + '<i>' + s.count + '</i></span>';
@@ -43,21 +59,40 @@
     var top = (k.top || []).map(function (t) {
       return '<li>' + esc(t.title) + (t.bpm ? ' <i>' + Math.round(t.bpm) + '</i>' : '') + '</li>';
     }).join('');
-    return '<div class="gen-key">' +
-      '<div class="gen-key-head">' +
-        '<span class="gen-dot" style="background:' + esc(k.color) + '"></span>' +
-        '<b>' + esc(k.keystone) + '</b>' +
-        '<span class="gen-n">' + k.count + '</span>' +
-        (k.slotted ? '' : '<span class="gen-muted" title="only eight keystones can carry a ' +
-          'distinct hue; this one uses the neutral and reads from its position and label' +
-          '">no colour</span>') +
+    var o = (k.bpm && k.bpm.observed) || null;
+    var avg = o ? o.median : null;
+    var tr = k.training || { state: 'sparse', files: 0, needs: 20 };
+    // Pulse the border on the beat, in the genre's colour. Subtle: a page of 18
+    // cards each at its own tempo would strobe if this were high contrast.
+    var beat = avg ? (60 / avg).toFixed(3) + 's' : null;
+    var pulse = beat ? ' style="--gen-beat:' + beat + ';--gen-col:' + esc(k.color) + '"' : '';
+
+    return '<div class="gen-key' + (beat ? ' pulsing' : '') + '"' + pulse + '>' +
+      '<div class="gen-card-top">' +
+        '<span class="gen-wavebox" style="border-color:' + esc(k.color) + '33">' +
+          waveSvg(k.color, k.keystone) + '</span>' +
+        '<div class="gen-titles">' +
+          '<h4>' + esc(k.keystone) + '</h4>' +
+          '<span class="gen-level" data-g="' + esc(k.keystone) + '" title="tier in the hierarchy">' +
+            esc(k.tier || 'keystone') + '</span>' +
+        '</div>' +
+        '<div class="gen-bpmbig">' + (avg ? Math.round(avg) + '<i>bpm</i>' : '<i>—</i>') + '</div>' +
       '</div>' +
-      (k.blurb ? '<div class="gen-blurb">' + esc(k.blurb) + '</div>' : '') +
+      '<div class="gen-card-stats">' +
+        '<span class="vib-state ' + (tr.state === 'ready' ? 'ok' : tr.state === 'thin' ? 'warn' : 'bad') +
+          '">' + esc(tr.state) + '</span>' +
+        '<span class="gen-statlab">' + tr.files + ' training file' + (tr.files === 1 ? '' : 's') +
+          (tr.needs ? ' · needs ' + tr.needs + ' more' : '') + '</span>' +
+        '<span class="gen-count">' + k.count + ' track' + (k.count === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      (k.blurb ? '<p class="gen-blurb">' + esc(k.blurb) + '</p>' : '') +
       bpmCell(k.bpm) +
       (subs ? '<div class="gen-subs">' + subs + '</div>' : '') +
-      (top ? '<div class="gen-toph">most representative</div><ol class="gen-top">' + top + '</ol>' : '') +
-      '<div class="gen-actions"><button class="gen-train" data-g="' + esc(k.keystone) +
-        '">train this genre</button></div>' +
+      (top ? '<div class="gen-toph">top tracks</div><ol class="gen-top">' + top + '</ol>' : '') +
+      '<div class="gen-actions">' +
+        '<button class="gen-train" data-g="' + esc(k.keystone) + '">train</button>' +
+        '<button class="gen-reset-top" data-g="' + esc(k.keystone) + '">reset</button>' +
+      '</div>' +
       '<div class="gen-panel" hidden></div>' +
     '</div>';
   }
@@ -174,9 +209,13 @@
         '<div class="opt-note" id="gen-msg"></div>' +
       '</div>' +
       families.map(function (f) {
+        var name = f.archgenre || f.family;
+        // A standalone archgenre IS its keystone (House, Techno...), so the
+        // heading would just repeat the card title underneath it.
+        var solo = f.standalone && f.keystones.length === 1;
         return '<div class="opt-card gen-fam">' +
-          '<h3>' + esc(f.family) + ' <span class="gen-n">' + f.count +
-          ' · ' + Math.round(f.share * 100) + '%</span></h3>' +
+          (solo ? '' : '<h3>' + esc(name) + ' <span class="gen-n">' + f.count +
+            ' · ' + Math.round(f.share * 100) + '% · archgenre</span></h3>') +
           '<div class="gen-keys">' + f.keystones.map(keystoneCard).join('') + '</div>' +
         '</div>';
       }).join('') +
@@ -198,12 +237,22 @@
       '</div>';
     wireActions();
     // one console per keystone card, built on demand -- each is several queries
+    body.querySelectorAll('.gen-reset-top').forEach(function (b) {
+      b.onclick = function () {
+        var g = b.dataset.g;
+        if (!window.confirm('Reset training for "' + g + '"?\n\n' +
+            'Its audio is archived (not deleted) and only this genre’s ' +
+            'labels are cleared. Every other genre keeps its training.')) return;
+        fetch('/training/set/' + encodeURIComponent(g) + '/reset', { method: 'POST' })
+          .then(function () { window.vibeLoadGenres(); }).catch(function () {});
+      };
+    });
     body.querySelectorAll('.gen-train').forEach(function (b) {
       b.onclick = function () {
         var panel = b.closest('.gen-key').querySelector('.gen-panel');
-        if (!panel.hidden) { panel.hidden = true; b.textContent = 'train this genre'; return; }
+        if (!panel.hidden) { panel.hidden = true; b.textContent = 'train'; return; }
         panel.hidden = false;
-        b.textContent = 'hide training';
+        b.textContent = 'hide';
         trainPanel(panel, b.dataset.g);
       };
     });
@@ -286,7 +335,25 @@
     body = document.getElementById('gen-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
-    fetch('/genres?top=5').then(function (r) { return r.json(); }).then(render).catch(function () {
+    Promise.all([
+      fetch('/genres?top=5&by=archgenre').then(function (r) { return r.json(); }),
+      fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; })
+    ]).then(function (out) {
+      var groups = out[0] || [], st = out[1];
+      // Fold training readiness onto each keystone so a card can show it without
+      // a request of its own -- 18 cards would otherwise mean 18 round trips.
+      var byGenre = {};
+      ((st && st.genres) || []).forEach(function (g) { byGenre[g.genre] = g; });
+      var ready = (st && st.thresholds && st.thresholds.ready) || 20;
+      groups.forEach(function (grp) {
+        grp.keystones.forEach(function (k) {
+          k.training = byGenre[k.keystone] || { state: 'sparse', files: 0, needs: ready };
+          k.tier = grp.standalone ? 'archgenre' : 'keystone';
+        });
+      });
+      render(groups);
+    }).catch(function () {
       body.innerHTML = '<div class="opt-card">Could not load the genre taxonomy.</div>';
     });
   };

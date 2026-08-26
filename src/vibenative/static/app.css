@@ -1664,8 +1664,15 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .pl-saved-rb:hover{ color:var(--accent-a); border-color:var(--accent-a); }
 
 /* --- Genres tab: family cards holding keystone cards --- */
-#genres-view{ display:none; }
+/* Matches the options-view contract exactly. Missing the three "hide the other
+   furniture" rules left main#drop displayed underneath, which scrolled over the
+   tab bar and made the view impossible to navigate away from. */
+#genres-view{ display:none; flex:1; min-height:0; overflow-y:auto; }
+#genres-view[hidden]{ display:none; }
 body.view-genres #genres-view{ display:block; }
+body.view-genres main#drop{ display:none; }
+body.view-genres > footer.actionbar{ display:none; }
+body.view-genres .lensbar{ display:none; }
 .gen-fam h3 .gen-n{ font-family:'JetBrains Mono',monospace; font-size:11px;
   color:var(--dim); font-weight:400; margin-left:8px; }
 .gen-keys{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; }
@@ -1710,8 +1717,12 @@ body.view-genres #genres-view{ display:block; }
 .vibe-note-msg{ font-size:10px; color:var(--dim); margin-right:auto; }
 
 /* --- Vibes tab --- */
-#vibes-view{ display:none; }
+#vibes-view{ display:none; flex:1; min-height:0; overflow-y:auto; }
+#vibes-view[hidden]{ display:none; }
 body.view-vibes #vibes-view{ display:block; }
+body.view-vibes main#drop{ display:none; }
+body.view-vibes > footer.actionbar{ display:none; }
+body.view-vibes .lensbar{ display:none; }
 .vib-card h3{ display:flex; align-items:baseline; gap:10px; }
 .vib-note{
   width:100%; box-sizing:border-box; resize:vertical; min-height:70px;
@@ -1754,3 +1765,47 @@ body.view-vibes #vibes-view{ display:block; }
 .gen-picks input{ accent-color:var(--accent-a); }
 .gen-in{ font-size:9px; color:var(--accent-a); }
 .gen-msg{ margin-top:6px; }
+
+/* --- genre cards: waveform · title · tempo, then stats, summary, tracks --- */
+.gen-card-top{ display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+.gen-wavebox{
+  flex:0 0 auto; width:62px; height:26px; border-radius:5px;
+  border:1px solid var(--line); background:rgba(255,255,255,.04);
+  display:flex; align-items:center; justify-content:center;
+}
+.gen-wave{ width:54px; height:20px; fill:currentColor; opacity:.9; }
+.gen-titles{ min-width:0; flex:1; }
+.gen-titles h4{
+  margin:0; font-family:'Syne',sans-serif; font-weight:800; font-size:16px;
+  color:var(--text); line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.gen-level{
+  font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--dimmer);
+  border:1px solid var(--line); border-radius:8px; padding:0 6px; display:inline-block; margin-top:3px;
+}
+.gen-bpmbig{
+  flex:0 0 auto; font-family:'JetBrains Mono',monospace; font-size:19px;
+  color:var(--text); line-height:1; text-align:right;
+}
+.gen-bpmbig i{ display:block; font-style:normal; font-size:8px;
+  letter-spacing:.12em; color:var(--dimmer); margin-top:2px; }
+.gen-card-stats{ display:flex; align-items:center; gap:7px; margin-bottom:7px; flex-wrap:wrap; }
+.gen-statlab{ font-size:10px; color:var(--dim); }
+.gen-card-stats .gen-count{
+  margin-left:auto; font-family:'JetBrains Mono',monospace;
+  font-size:10px; color:var(--dim);
+}
+/* H1/H2/H3-style descending emphasis: title, then summary, then detail. */
+p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); }
+
+/* Border breathes on the beat, in the genre's own colour. Subtle on purpose:
+   18 cards at 18 tempos would strobe if this were high contrast. */
+@keyframes genPulse{
+  0%   { border-color:var(--line); }
+  18%  { border-color:var(--gen-col); }
+  100% { border-color:var(--line); }
+}
+.gen-key.pulsing{ animation:genPulse var(--gen-beat,0.5s) ease-out infinite; }
+@media (prefers-reduced-motion: reduce){
+  .gen-key.pulsing{ animation:none; }
+}

@@ -28,11 +28,34 @@ def genres_route():
     response much smaller when only the counts are wanted).
     """
     from .. import genres
+    from .. import keystone as K
 
     top = max(0, min(int(request.args.get("top", 5) or 0), 25))
     mode = "light" if request.args.get("mode") == "light" else "dark"
     if request.args.get("flat"):
         return jsonify(genres.summarise(top_n=top, mode=mode))
+    if request.args.get("by") == "archgenre":
+        # archgenre -> keystone, the display hierarchy. Grouped here rather than
+        # in the client so the tier logic has exactly one owner.
+        profiles = genres.summarise(top_n=top, mode=mode)
+        grouped = {}
+        for p in profiles:
+            p["archgenre"] = K.archgenre_of(p["keystone"])
+            grouped.setdefault(p["archgenre"], []).append(p)
+        total = sum(p["count"] for p in profiles) or 1
+        return jsonify(
+            [
+                {
+                    "archgenre": a,
+                    "count": sum(p["count"] for p in grouped[a]),
+                    "share": round(sum(p["count"] for p in grouped[a]) / total, 4),
+                    "standalone": a in K.STANDALONE_ARCHGENRES,
+                    "keystones": grouped[a],
+                }
+                for a in K.archgenre_order()
+                if a in grouped
+            ]
+        )
     return jsonify(genres.by_family(top_n=top, mode=mode))
 
 
