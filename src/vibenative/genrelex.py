@@ -5,9 +5,11 @@ The model knows 400 Discogs styles. You type more than that -- ``riddim``,
 doesn't recognise falls into the non-electronic *Other* family, which is the
 worst possible answer for an electronic library.
 
-This reads the crawl produced by ``tools/crawl_genres.py`` (on the
-``worktree-genre-crawler`` branch): 610 electronic genres assembled from
-Wikidata (CC0), DBpedia and Wikipedia (CC BY-SA) and MusicBrainz (CC0). Unlike
+This reads the crawl produced by ``tools/crawl_genres.py``: 610 electronic
+genres assembled from Wikidata (CC0), DBpedia and Wikipedia (CC BY-SA) and
+MusicBrainz (CC0). The crawl output is git-ignored, so a clean checkout has to
+run the tool once (``python tools/crawl_genres.py``) before the lexicon does
+anything -- see "Genre reference data" in the README. Unlike
 the Every Noise snapshot it superseded, those sources are properly licensed and
 the file carries its own attribution block.
 

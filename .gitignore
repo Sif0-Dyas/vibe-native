@@ -45,7 +45,10 @@ src/vibenative/data/enao.json
 .webview/
 desktop_backend.log.prev
 
-# --- electronic-genre crawl (tools/crawl_genres.py, worktree-genre-crawler) ---
+# --- electronic-genre crawl (tools/crawl_genres.py) ---
 # Derived aggregate of CC0 (Wikidata, MusicBrainz) and CC BY-SA (DBpedia,
-# Wikipedia) sources; rebuildable, so kept local like the Every Noise snapshot.
+# Wikipedia) sources. Rebuildable in ~10 min, so it is kept local rather than
+# committed; the file's own "licences" block carries the attribution.
 src/vibenative/data/genres_electronic.json
+# Cached HTTP responses, so re-runs cost the upstream sources nothing.
+.cache/
