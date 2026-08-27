@@ -1964,7 +1964,7 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
      rendering as "Hous/e". 90px is the floor at which a short genre name
      fits on one line at 14px Syne. */
   grid-template-columns:auto minmax(90px,1fr) auto;
-  grid-template-areas:"wave title meta" "foot foot foot";
+  grid-template-areas:"wave title meta" "subs subs subs" "foot foot foot";
   background:none; border:none; padding:10px 11px; color:inherit; align-items:center;
 }
 .gen-tile:hover{ background:rgba(255,255,255,.04); }
@@ -2302,3 +2302,30 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
   color:var(--text); padding:4px 8px; cursor:pointer;
 }
 .tc-acts button:hover{ color:var(--accent-a); border-color:var(--accent-a); }
+
+/* Subgenres on the COLLAPSED genre tile.
+   These used to live only inside the opened card, which made an archgenre with
+   one keystone (House, Techno, Trance) look childless next to a multi-keystone
+   one like Bass -- even though House has 22 subgenres. What is inside a genre
+   is the main thing this tab exists to show, so it should not need a click. */
+.gen-subrow{
+  grid-area:subs; display:flex; flex-wrap:wrap; gap:3px; min-width:0;
+  margin-top:-2px;
+}
+.gen-subrow .gen-sub{
+  font-size:9.5px; padding:0 5px; border-radius:8px;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.gen-submore{
+  font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dimmer);
+  align-self:center; padding-left:2px;
+}
+/* Opened, the tile strip is redundant with the full labelled list below it. */
+.gen-key.open .gen-subrow{ display:none; }
+
+/* A heading and the list it introduces are ONE grid item. The open card lays
+   its detail out with auto-fit columns, and as separate items the heading and
+   its content landed in different columns -- "subgenres in your library" on the
+   right with its chips on the far left. */
+.gen-block{ min-width:0; }
+.gen-block .gen-toph{ margin-top:0; }

@@ -201,6 +201,8 @@ def summarise(top_n=5, mode="dark"):
                               "min": 80, "max": 738, "n": 662},
                  "octave_flag": None},
          "subgenres": [{"style": "Progressive House", "count": 167}, ...],
+             -- counts are TRACKS whose dominant subgenre is that style, so they
+             sum to at most the keystone's own count and agree with the map,
          "top": [{"hash": ..., "title": ..., "share": 1.0}, ...]}
 
     ``top`` is the most *representative* tracks -- highest share of this
@@ -226,9 +228,22 @@ def summarise(top_n=5, mode="dark"):
                 b["bpm"].append(float(bpm))
             except (TypeError, ValueError):
                 pass
+        # ONE subgenre per track: the strongest read within this keystone.
+        #
+        # This used to increment every subgenre a track read as, which is a
+        # different quantity entirely -- "tracks that contain any Progressive
+        # House" rather than "tracks that ARE Progressive House". Displayed
+        # beside the keystone's track count it read as nonsense: House holds
+        # 1,437 tracks and its top five subgenres summed to 3,380. It also
+        # disagreed with the map legend, which has always counted the dominant
+        # style, so the same label carried two different numbers in one app.
+        #
+        # cls["subgenres"] is ordered by score, so the first entry belonging to
+        # this keystone is its dominant subgenre.
         for s in cls["subgenres"]:
             if s.get("keystone") == primary and s.get("style"):
                 b["subgenres"][s["style"]] = b["subgenres"].get(s["style"], 0) + 1
+                break
         lead = cls["subgenres"][0]["score"] if cls["subgenres"] else 0.0
         b["tracks"].append(
             {

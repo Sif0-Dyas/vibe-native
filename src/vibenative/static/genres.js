@@ -104,9 +104,25 @@
   }
 
   function keystoneCard(k) {
-    var subs = (k.subgenres || []).slice(0, 8).map(function (s) {
+    /* A keystone's own name shows up in its subgenre list (House lists "House",
+       Dubstep lists "Dubstep"). That is the tier being restated, not a child of
+       it, and printing "House > House" is the same duplication the tree view
+       had to be fixed for. */
+    var kids = (k.subgenres || []).filter(function (s) { return s.style !== k.keystone; });
+    var chip = function (s) {
       return '<span class="gen-sub">' + esc(s.style) + '<i>' + s.count + '</i></span>';
-    }).join('');
+    };
+    var subs = kids.slice(0, 14).map(chip).join('');
+    // The first few ride on the COLLAPSED tile. Seeing what is inside a genre is
+    // the main reason to look at this tab, and hiding it behind a click made
+    // whole archgenres read as childless.
+    var TILE_SUBS = 5;
+    var tileSubs = kids.length
+      ? '<span class="gen-subrow">' + kids.slice(0, TILE_SUBS).map(chip).join('') +
+        (kids.length > TILE_SUBS
+          ? '<span class="gen-submore">+' + (kids.length - TILE_SUBS) + ' more</span>' : '') +
+        '</span>'
+      : '';
     var top = (k.top || []).map(function (t) {
       return '<li>' + esc(t.title) + (t.bpm ? ' <i>' + Math.round(t.bpm) + '</i>' : '') + '</li>';
     }).join('');
@@ -144,6 +160,7 @@
         '<span class="gen-tilemeta">' +
           '<span class="gen-bpmbig">' + (avg ? Math.round(avg) : '—') + '<i>bpm</i></span>' +
         '</span>' +
+        tileSubs +
         '<span class="gen-tilefoot">' +
           '<span class="gen-sig" title="Time signature — how the beats are counted. ' +
             'Almost all dance music is 4/4.">' + esc(sig) + '</span>' +
@@ -165,8 +182,14 @@
             (tr.files === 1 ? '' : 's') +
             (tr.needs ? ' · needs ' + tr.needs + ' more' : ' · ready') + '</span>' +
         '</div>' +
-        (subs ? '<div class="gen-subs">' + subs + '</div>' : '') +
-        (top ? '<div class="gen-toph">top tracks</div><ol class="gen-top">' + top + '</ol>' : '') +
+        (subs ? '<div class="gen-block">' +
+                  '<div class="gen-toph">subgenres in your library</div>' +
+                  '<div class="gen-subs">' + subs + '</div>' +
+                '</div>' : '') +
+        (top ? '<div class="gen-block">' +
+                 '<div class="gen-toph">top tracks</div>' +
+                 '<ol class="gen-top">' + top + '</ol>' +
+               '</div>' : '') +
         placementRow(k) +
         '<div class="gen-actions">' +
           '<button class="gen-train" data-g="' + esc(k.keystone) + '">train</button>' +
