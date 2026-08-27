@@ -46,6 +46,12 @@ _SCALARS = ("palette",)
 _lock = threading.Lock()
 _cache = None  # the parsed overlay
 _stamp = None  # (mtime, size) of the file it came from
+# NOTE: an earlier version of this file cached the stat() for half a second to
+# avoid ~47,000 syscalls per /map build. It was reverted: it made an external
+# write invisible for up to that long, which is a real semantic change (a write
+# followed immediately by a read could return the old overlay), and it bought
+# only ~0.47s of a ~6s request. The large win was caching path resolution in
+# paths.settings_ini(), which removed ~3.1s and changes no semantics at all.
 
 
 def path():

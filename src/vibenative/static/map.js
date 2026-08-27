@@ -71,12 +71,23 @@
   // preview and the filter go through it, so the twinkle can never promise a
   // different set than the click delivers -- which was the whole point of having
   // a preview.
+  /* The artists credited on a track. The server splits the credit string (see
+     vibenative/artists.py); this is the accessor everything else goes through
+     so a node from an older payload without the split still behaves. */
+  function artistsOf(n){
+    if (n.artists && n.artists.length) return n.artists;
+    return n.artist ? [n.artist] : [];
+  }
+
   function nodeHas(n, kind, value){
     if (!value) return false;
     if (kind === 'tag')    return (n.tags || []).includes(value);
-    // Substring, to match how FILT.artist is applied -- "Sub Focus" should
-    // preview the same tracks it filters to, including "Sub Focus & Wilkinson".
-    if (kind === 'artist') return (n.artist || '').toLowerCase().includes(String(value).toLowerCase());
+    // Substring over the SPLIT credits, matching how FILT.artist is applied, so
+    // hovering an artist chip previews exactly the tracks clicking it filters to.
+    if (kind === 'artist'){
+      const v = String(value).toLowerCase();
+      return artistsOf(n).some(a => a.toLowerCase().includes(v));
+    }
     if (kind === 'style')  return n.style === value || (n.styles || []).includes(value);
     return false;
   }
@@ -104,7 +115,10 @@
     if (mapMode === 'solar' && (!SOLAR_SET || !SOLAR_SET.has(n.hash))) return false;
     if (filterFam && n.grp !== filterFam) return false;
     if (flaggedOnly && !n.flag) return false;
-    if (FILT.artist && !(n.artist || '').toLowerCase().includes(FILT.artist)) return false;
+    // Match against the SPLIT credits, so filtering to "Chris Lorenzo" finds
+    // "AC Slater/Chris Lorenzo/Fly With Us" as well as his solo tracks. Falls
+    // back to the raw credit for any node the server did not split.
+    if (FILT.artist && !artistsOf(n).some(a => a.toLowerCase().includes(FILT.artist))) return false;
     if (FILT.key && n.camelot !== FILT.key) return false;
     // A track counts as its genre even when that genre is only a runner-up read,
     // so filtering to House finds the tracks that are partly House too.
@@ -326,9 +340,19 @@
      coarse steps) which caps it at a few hundred sprites for any library while
      staying visually indistinguishable from exact colours. */
   const STAR_SPRITES = new Map();
-  const SPRITE_R = 32;                              // sprite half-size in px
+  // 64, not 32: the context is scaled by devicePixelRatio, so a sprite drawn at
+  // its nominal size is already magnified 2x on a HiDPI display before zoom is
+  // considered. The colour key is quantised coarsely enough that the cache
+  // stays in the low hundreds of entries even at 128x128 each.
+  const SPRITE_R = 64;                              // sprite half-size in px
   const CORE_SCALE = 1.45;                          // lit body vs. the old flat dot
   const GLOW_SCALE = 2.6;                           // corona reach vs. core radius
+  // Above this on-screen core radius the sprite is being magnified past its own
+  // resolution and goes soft, so those few stars are drawn with a real gradient
+  // instead. The threshold is in CSS pixels and deliberately low: at any given
+  // moment only a handful of stars are this big, so the per-frame gradient cost
+  // is negligible, while every small star still comes from the cache.
+  const CRISP_ABOVE = 9;
   // How much of the corona is added per star. Deliberately small: the corona is
   // drawn with 'lighter', which ACCUMULATES, and a dense cluster stacks hundreds
   // of them on the same pixels. At full strength that saturates to a solid white
@@ -888,6 +912,10 @@
     for (const n of NODES){
       const sub = n.style || n.fam;
       const fam = parentOf[sub] || n.fam;
+      // Stash the resolved parent on the node: the tree card looks branches up
+      // by it, and recomputing the resolution there could disagree with what
+      // was actually drawn.
+      n.treeFam = fam;
       (groups[fam] ||= { subs:{}, count:0, self:0 });
       groups[fam].count++;
       // A style named after its own family IS that family, not a child of it.
@@ -1005,6 +1033,87 @@
     }
   }
 
+  /* ---- tree: sample a track from a branch --------------------------- */
+  const treeCardEl = document.getElementById('tree-card');
+  let treeCardNode = null;                 // the branch the card is showing
+
+  function closeTreeCard(){
+    if (treeCardEl) treeCardEl.hidden = true;
+    treeCardNode = null;
+    treeCardTrack = null;
+    stopPreview();
+  }
+
+  /* Tracks under a tree node: everything in the family for a family node, or
+     just that subgenre for a leaf. Uses the same parent resolution buildTree()
+     applied, so the card can never show a track the branch does not contain. */
+  function treeMembers(nd){
+    if (!nd) return [];
+    if (nd.kind === 'fam') return NODES.filter(n => (n.treeFam || n.fam) === nd.fam);
+    return NODES.filter(n =>
+      (n.treeFam || n.fam) === nd.fam && (n.style || n.fam) === nd.label);
+  }
+
+  let treeCardTrack = null;                // the track the card is showing
+
+  function rerollTreeCard(){
+    if (!treeCardNode) return;
+    const members = treeMembers(treeCardNode);
+    if (!members.length) return;
+    const others = (members.length > 1 && treeCardTrack)
+      ? members.filter(m => m.hash !== treeCardTrack.hash) : members;
+    renderTreeCard(treeCardNode, others[Math.floor(Math.random() * others.length)]);
+  }
+
+  function renderTreeCard(nd, pick){
+    if (!treeCardEl) return;
+    const members = treeMembers(nd);
+    if (!members.length){ closeTreeCard(); return; }
+    const n = pick || members[Math.floor(Math.random() * members.length)];
+    treeCardNode = nd;
+    treeCardTrack = n;
+    const sh = nd.kind === 'fam' ? null : styleShade(nd.fam, nd.label);
+    const col = nd.kind === 'fam' ? famCss(nd.fam)
+      : `hsl(${sh.h} ${clamp(sh.s, 45, 85)}% 62%)`;
+    const bits = [];
+    if (n.bpm) bits.push(Math.round(n.bpm) + ' bpm');
+    if (n.camelot) bits.push(escapeHtml(n.camelot));
+    if (n.duration) bits.push(fmtTime(n.duration));
+    treeCardEl.innerHTML =
+      `<div class="tc-head" style="border-color:${col}">
+         <span class="tc-branch" style="color:${col}">${escapeHtml(nd.label)}</span>
+         <span class="tc-n">${members.length} track${members.length === 1 ? '' : 's'}</span>
+         <button class="tc-x" title="close">&#10005;</button>
+       </div>
+       <div class="tc-body">
+         <div class="tc-title">${escapeHtml(n.artist ? stripArtist(n.title, n.artist) : n.title)}</div>
+         ${artistsOf(n).length ? `<div class="tc-artist">${escapeHtml(artistsOf(n).join(' · '))}</div>` : ''}
+         <div class="tc-meta">${bits.join(' · ')}</div>
+       </div>
+       <div class="tc-acts">
+         ${n.a ? `<button class="tc-play" title="hear a few seconds">&#9654; sample</button>` : ''}
+         <button class="tc-more" title="another track from this branch">&#8635; another</button>
+         <button class="tc-open" title="find this track on the map">&#10038; show on map</button>
+       </div>`;
+    treeCardEl.hidden = false;
+
+    treeCardEl.querySelector('.tc-x').onclick = closeTreeCard;
+    // Never hands back the track already showing -- "another" that returns the
+    // same one reads as a broken button.
+    treeCardEl.querySelector('.tc-more').onclick = rerollTreeCard;
+    treeCardEl.querySelector('.tc-open').onclick = () => {
+      closeTreeCard();
+      mapMode = 'regions';
+      modeEl && modeEl.querySelectorAll('.mm')
+        .forEach(m => m.classList.toggle('active', m.dataset.mode === 'regions'));
+      syncModeControls();
+      layout(); fitView();
+      selectNode(n.hash);
+    };
+    const play = treeCardEl.querySelector('.tc-play');
+    if (play) play.onclick = () => previewTrack(n);
+  }
+
   /* ---- canvas sizing ----------------------------------------------- */
   function resize(){
     DPR = Math.min(2, window.devicePixelRatio || 1);
@@ -1055,6 +1164,10 @@
     // an unbounded array at 60fps, and every click tested against thousands of
     // stale boxes from earlier camera positions.
     famLabelHits = []; styleLabelHits = [];
+    // How many nodes each group / subgenre actually has ON SCREEN this frame.
+    // Labels are gated on these so a filter that hides a genre hides its label
+    // too, instead of leaving a name floating over nothing.
+    const visFam = {}, visSub = {};
     const order = [];
     for (const n of NODES){
       if (!passes(n)) continue;                         // genre / flag / facet filters
@@ -1075,6 +1188,13 @@
       const depth = LBL.flat ? 1 : clamp((z2+1.15)/2.3, 0, 1);
       const rp = LBL.flat ? 1 : persp;          // flat: every dot the same size
       const r = clamp(4.2*rp*Math.sqrt(view.zoom)*ratingBoost(n), 1.2, 46);
+      // Cull anything whose glow cannot reach the viewport. At high zoom most
+      // of the library sits off-screen, and blitting it was pure waste.
+      const reach = r * GLOW_SCALE + 2;
+      if (sxp < -reach || sxp > W + reach || syp < -reach || syp > H + reach) continue;
+      visFam[n.grp] = (visFam[n.grp] || 0) + 1;
+      const sk = `${n.fam}||${n.style || n.fam}`;
+      visSub[sk] = (visSub[sk] || 0) + 1;
       proj.set(n.hash, { sx:sxp, sy:syp, z:z2, r, depth, node:n });
       order.push(n.hash);
     }
@@ -1142,13 +1262,32 @@
         // top, so a crowded cluster keeps its shape instead of saturating.
         const prevA = ctx.globalAlpha;
         const gr = p.r * GLOW_SCALE;
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = prevA * GLOW_ALPHA;
-        ctx.drawImage(starSprite(n.hue, n.sat||64, li, 'corona'), p.sx-gr, p.sy-gr, gr*2, gr*2);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = prevA;
+        // The corona is skipped on the smallest, faintest stars. At that size it
+        // is under a pixel of visible contribution but still a full blit, and on
+        // a 3000-track map that is thousands of wasted draws per frame.
+        if (p.r > 1.8 && prevA > 0.12){
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = prevA * GLOW_ALPHA;
+          ctx.drawImage(starSprite(n.hue, n.sat||64, li, 'corona'), p.sx-gr, p.sy-gr, gr*2, gr*2);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = prevA;
+        }
         const cr = p.r * CORE_SCALE;
-        ctx.drawImage(starSprite(n.hue, n.sat||64, li, 'core'), p.sx-cr, p.sy-cr, cr*2, cr*2);
+        if (cr > CRISP_ABOVE){
+          // Big enough that the 64px sprite would visibly blur -- shade it
+          // directly. Same stops as the sprite, so a star does not change
+          // appearance as it crosses the threshold.
+          const g = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, cr);
+          g.addColorStop(0.00, `hsla(${n.hue} ${Math.min(100,(n.sat||64)+26)}% ${clamp(li+34,44,96)}% / 1)`);
+          g.addColorStop(0.30, `hsla(${n.hue} ${Math.min(100,(n.sat||64)+12)}% ${clamp(li+14,26,84)}% / 1)`);
+          g.addColorStop(0.62, `hsla(${n.hue} ${n.sat||64}% ${li}% / 0.95)`);
+          g.addColorStop(0.86, `hsla(${n.hue} ${n.sat||64}% ${clamp(li-6,10,80)}% / 0.45)`);
+          g.addColorStop(1.00, `hsla(${n.hue} ${n.sat||64}% ${clamp(li-8,8,78)}% / 0)`);
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(p.sx, p.sy, cr, 0, 6.2832); ctx.fill();
+        } else {
+          ctx.drawImage(starSprite(n.hue, n.sat||64, li, 'core'), p.sx-cr, p.sy-cr, cr*2, cr*2);
+        }
       } else {
         ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
         ctx.fillStyle = `hsl(${n.hue} ${n.sat||64}% ${li}%)`;
@@ -1251,6 +1390,10 @@
       if (!LBL.showFam) break;                          // family labels hidden
       if (LBL.onlyFam && f !== LBL.onlyFam) continue;   // isolate one genre's label
       if (filterFam && f !== filterFam) continue;
+      // No stars from this genre on screen -> no label. Chips, facet filters
+      // and culling all feed this, so the labels always describe what is
+      // actually drawn.
+      if (!visFam[f]) continue;
       const p = projPt(CENTROIDS[f]);
       if (p.persp <= 0) continue;
       const depth = clamp((p.z2+1.15)/2.3, 0, 1);
@@ -1379,6 +1522,7 @@
       for (const key in STYLE_CENTROIDS){
         if (filterFam && !key.startsWith(filterFam + '||')) continue;
         if (LBL.onlyFam && !key.startsWith(LBL.onlyFam + '||')) continue;   // isolate one genre
+        if (!visSub[key]) continue;                      // nothing of it on screen
         const fam = key.slice(0, key.indexOf('||'));
         // "always show subgenres" (or an isolated genre) bypasses the zoom/focus
         // gate so they stay readable without having to zoom into the cluster.
@@ -1617,6 +1761,18 @@
     if (!moved && !wasPanning){                     // treat as click -> hit test
       const r = canvas.getBoundingClientRect();
       const mx = e.clientX-r.left, my = e.clientY-r.top;
+      if (mapMode === 'tree'){
+        for (const h of treeHits){
+          if (Math.hypot(mx-h.sx, my-h.sy) > h.r+6) continue;
+          // Clicking the branch already on screen re-rolls it. Re-rendering the
+          // same track would look like the click did nothing.
+          if (treeCardNode === h.node) rerollTreeCard();
+          else renderTreeCard(h.node);
+          return;
+        }
+        closeTreeCard();
+        return;
+      }
       // a dot under the cursor wins -> select it + open the popup (the precise
       // target; labels overlap dense clusters, so they must NOT pre-empt this).
       let best=null, bz=-Infinity;
@@ -1690,7 +1846,10 @@
 
   async function previewTrack(n){
     stopPreview();
-    if (mapMode === 'tree' || !n) return;
+    // Tree mode used to be excluded here because nothing in it was selectable.
+    // The tree card's "sample" button is, so the only thing left to reject is
+    // an absent track.
+    if (!n) return;
     const my = PREV.token;                          // stopPreview() just bumped it
     if (typeof PLAYER !== 'undefined'){ try { PLAYER.audio.pause(); } catch(_){ /* none */ } }
     // resolve a source: the server copy, else a persisted dropped-file handle
@@ -1742,7 +1901,10 @@
       <button class="pop-x" title="close">close ✕</button>
       <span class="pop-fam" style="background:${famCss(n.fam)}">${escapeHtml(n.fam)}</span>
       <div class="pop-title">${escapeHtml(n.artist ? stripArtist(n.title, n.artist) : n.title)}</div>
-      ${n.artist ? `<div class="pop-artist">${escapeHtml(n.artist)}</div>` : ''}
+      ${artistsOf(n).length ? `<div class="pop-artist">${artistsOf(n).map(a =>
+        `<button class="pop-artchip" data-kind="artist" data-v="${escapeHtml(a)}"
+          title="click to show only ${escapeHtml(a)} · hover to preview"
+          >${escapeHtml(a)}</button>`).join('<span class="pop-artsep">·</span>')}</div>` : ''}
       <div class="pop-meta">${meta}</div>
       <div class="pop-actions">${n.a
         ? `<button class="pop-play">▶ play</button>`
@@ -1777,7 +1939,10 @@
         <input class="rate-note" type="text" placeholder="note (exports as “A - note”)"
                autocomplete="off" spellcheck="false" maxlength="1000">
       </div>
-      ${n.artist ? `<div class="pop-h">rate the artist — ${escapeHtml(n.artist)}</div>
+      ${artistsOf(n).length ? `<div class="pop-h">rate the artist</div>
+      <div class="arate-pick">${artistsOf(n).map((a, i) =>
+        `<button class="arate-who${i === 0 ? ' on' : ''}" data-a="${escapeHtml(a)}"
+          >${escapeHtml(a)}</button>`).join('')}</div>
       <div class="pop-rate pop-rate-artist">
         <div class="arate-stars" role="group" aria-label="artist star rating">
           ${[1,2,3,4,5].map(i=>`<button class="arate-star rate-star" data-s="${i}"
@@ -1791,7 +1956,8 @@
         <input class="arate-note rate-note" type="text" placeholder="note about this artist"
                autocomplete="off" spellcheck="false" maxlength="1000">
       </div>
-      <div class="pop-ratehint">Applies to every track by ${escapeHtml(n.artist)}, not just this one.</div>` : ''}
+      <div class="pop-ratehint">Rates the selected artist across your whole library, not just
+        this track.${artistsOf(n).length > 1 ? ' Pick which one above.' : ''}</div>` : ''}
       <div class="pop-omit-row">
         <button class="pop-adjust" title="nudge how much of each genre this track is — keeps the rest of the read">⚖ adjust</button>
         <button class="pop-override" title="set the genre yourself (persists + saved for training)">✎ override</button>
@@ -1838,7 +2004,19 @@
     };
     wireChips(popEl);
     wireRating(popEl, n.hash);
-    if (n.artist) wireArtistRating(popEl, n.artist);
+    {
+      // A collaboration has several artists and each is rated separately, so the
+      // widget is bound to whichever is picked and re-bound when that changes.
+      const who = [...popEl.querySelectorAll('.arate-who')];
+      const bind = name => wireArtistRating(popEl, name);
+      if (who.length){
+        bind(who[0].dataset.a);
+        for (const b of who) b.onclick = () => {
+          who.forEach(x => x.classList.toggle('on', x === b));
+          bind(b.dataset.a);
+        };
+      }
+    }
     wireAdjust(popEl, n);
     popEl.querySelector('.pop-omit').onclick = () => omitTrack(n);
     const ovrRow = popEl.querySelector('.pop-ovr'), omitRow = popEl.querySelector('.pop-omit-row');
@@ -2728,7 +2906,7 @@
     const b = e.target.closest('.mm'); if (!b || b.dataset.mode===mapMode) return;
     mapMode = b.dataset.mode;
     modeEl.querySelectorAll('.mm').forEach(m => m.classList.toggle('active', m===b));
-    closePopup(); suggestEl.hidden = true;
+    closePopup(); closeTreeCard(); suggestEl.hidden = true;
     syncModeControls();
     if (mapMode === 'solar') await loadSolarSet();
     if (NODES.length){ layout(); resetView(); }
@@ -2827,15 +3005,79 @@
     }catch(_){ SOLAR_SET = null; }
   }
 
+  const loadEl = document.getElementById('map-loading');
+  const phaseEl = document.getElementById('ml-phase');
+  const fillEl = document.getElementById('ml-fill');
+  const hintEl = document.getElementById('ml-hint');
+
+  function loading(on, phase, frac){
+    if (!loadEl) return;
+    loadEl.hidden = !on;
+    if (phase && phaseEl) phaseEl.textContent = phase;
+    if (fillEl){
+      // A negative fraction means "no idea yet" -- the bar goes indeterminate
+      // rather than sitting at a dishonest 0%.
+      const known = typeof frac === 'number' && frac >= 0;
+      fillEl.classList.toggle('indet', !known);
+      fillEl.style.width = known ? (Math.round(frac * 100) + '%') : '';
+    }
+  }
+
+  /* fetch + JSON, reporting real download progress where the server gives us a
+     Content-Length. Falls back to a plain .json() when it does not (a chunked
+     or compressed response has no length to measure against). */
+  async function fetchJsonProgress(url, onFrac){
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const total = Number(r.headers.get('Content-Length') || 0);
+    if (!r.body || !total || !r.body.getReader) return r.json();
+    const reader = r.body.getReader();
+    const chunks = [];
+    let got = 0;
+    for (;;){
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got += value.length;
+      onFrac(Math.min(1, got / total));
+    }
+    const buf = new Uint8Array(got);
+    let off = 0;
+    for (const c of chunks){ buf.set(c, off); off += c.length; }
+    return JSON.parse(new TextDecoder('utf-8').decode(buf));
+  }
+
   async function loadMap(){
     try{
-      const data = await fetch('/map').then(r=>r.json());
+      // Phase 1 -- the server reads the library, classifies every track and
+      // builds the response. Nothing is measurable until it starts sending.
+      loading(true, 'Reading and sorting your library…', -1);
+      countMap.textContent = 'loading…';
+      const data = await fetchJsonProgress('/map', f => {
+        loading(true, 'Downloading your library… ' + Math.round(f * 100) + '%', f);
+      });
       NODES = data.nodes || []; EDGES = data.edges || [];
-      if (!NODES.length){ countMap.textContent='0 tracks -- scan some music first'; return; }
+      if (!NODES.length){
+        loading(false);
+        countMap.textContent='0 tracks -- scan some music first';
+        return;
+      }
+      if (hintEl) hintEl.textContent = NODES.length.toLocaleString() + ' tracks';
+      loading(true, 'Fetching your vibes and ratings…', 1);
       await loadOverlays();
       if (mapMode === 'solar') await loadSolarSet();
+      // Phase 3 -- the client-side work: projection, clustering, label anchors.
+      loading(true, 'Placing ' + NODES.length.toLocaleString() + ' stars…', 1);
+      // Yield once so the phase actually paints before layout() blocks the
+      // thread; without this the last message is never seen.
+      await new Promise(r => setTimeout(r, 0));
       resize(); layout();
-    }catch(err){ countMap.textContent='failed to load map'; console.error('map load failed', err); }
+      loading(false);
+    }catch(err){
+      loading(false);
+      countMap.textContent='failed to load map';
+      console.error('map load failed', err);
+    }
   }
   function switchTo(viewName){
     tabsEl.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view===viewName));

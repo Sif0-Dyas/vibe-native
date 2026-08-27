@@ -110,9 +110,30 @@ def check(emb, top_style, top_conf, exclude_hash=None):
     return _score(top_style, top_conf, sims[:K])
 
 
-def audit():
+def audit(prepared=None):
     """Scan the whole library fresh; return the list of flagged (likely-misread)
-    tracks, most-suspect (lowest confidence) first."""
+    tracks, most-suspect (lowest confidence) first.
+
+    ``prepared`` lets a caller that has ALREADY read and parsed the library hand
+    the work over rather than paying for it twice. It is a sequence of
+    ``(hash, title, parsed_payload, embedding_array)``. /map is the case that
+    matters: it parses every payload to build its nodes and then called this,
+    which re-queried and re-parsed the lot -- json.loads alone was 4.3s of a
+    4.7s call, on data already sitting in memory.
+
+    Called with nothing it behaves exactly as before, so /review and the tests
+    are unaffected.
+    """
+    if prepared is not None:
+        rows = list(prepared)
+        if len(rows) < 4:
+            return []
+        hashes = [r[0] for r in rows]
+        titles = [r[1] for r in rows]
+        payloads = [r[2] for r in rows]
+        embs = [r[3] for r in rows]
+        return _audit_core(hashes, titles, payloads, embs)
+
     with _db_lock, closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, title, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
@@ -125,6 +146,11 @@ def audit():
         titles.append(title)
         payloads.append(json.loads(payload))
         embs.append(np.frombuffer(blob, dtype=np.float32))
+    return _audit_core(hashes, titles, payloads, embs)
+
+
+def _audit_core(hashes, titles, payloads, embs):
+    """The scan itself, over already-parsed inputs."""
     M = np.vstack(embs)
     M = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-9)
     # Compute the cosine matrix in row-blocks and pull each row's top-K

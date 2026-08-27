@@ -133,13 +133,22 @@ def map_route():
         ).fetchall()
         tags_by_hash = _tags_by_hash(c)
     nodes, embs, emb_idx = [], [], []
+    # Every payload is parsed exactly once here and the parsed form is carried
+    # to the audit at the end. _map_node takes a dict as happily as a string.
+    # Previously the audit re-queried the library and json.loads()-ed the lot a
+    # second time, which was 4.3s of an 18s response spent re-deriving data that
+    # was already in memory.
+    audit_rows = []
     for h, title, filename, filepath, payload, blob in rows:
+        parsed = payload if isinstance(payload, dict) else json.loads(payload)
         nodes.append(
-            _map_node(h, title, filename, payload, filepath, tags_by_hash.get(h, ()), mode)
+            _map_node(h, title, filename, parsed, filepath, tags_by_hash.get(h, ()), mode)
         )
         if blob is not None:
-            embs.append(np.frombuffer(blob, dtype=np.float32))
+            emb = np.frombuffer(blob, dtype=np.float32)
+            embs.append(emb)
             emb_idx.append(len(nodes) - 1)
+            audit_rows.append((h, title, parsed, emb))
     edges = []
     m = len(embs)
     if m >= 2:
@@ -197,8 +206,18 @@ def map_route():
                 nodes[i]["e"] = [round(float(v), 4) for v in proj[k]]
         except np.linalg.LinAlgError:
             pass
+    # Split each credit into the artists it actually names. Done here, after the
+    # node loop, because the ampersand rule needs to see the WHOLE library: only
+    # the rest of the collection can say whether "Above & Beyond" is one act or
+    # two. See vibenative.artists.
+    from .. import artists as _artists
+
+    credit_index = _artists.build_index(n["artist"] for n in nodes)
+    for n in nodes:
+        n["artists"] = _artists.split_credit(n["artist"], credit_index)
+
     # annotate likely-misread reads so the map can mark them (fresh, whole-library)
-    flags = {f["hash"]: f for f in insight.audit()}
+    flags = {f["hash"]: f for f in insight.audit(prepared=audit_rows)}
     for n in nodes:
         fl = flags.get(n["hash"])
         n["flag"] = bool(fl)

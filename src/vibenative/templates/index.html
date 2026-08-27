@@ -289,6 +289,18 @@
     </div>
     <div id="map-tip" hidden></div>
     <div id="map-pop" hidden></div>
+    <!-- tree mode: clicking a branch samples a track from it -->
+    <div id="tree-card" hidden></div>
+    <!-- shown while /map is being built and downloaded; see loadMap() -->
+    <div id="map-loading" hidden>
+      <div class="ml-inner">
+        <div class="ml-title">Building your map</div>
+        <div class="ml-phase" id="ml-phase">Reading your library&hellip;</div>
+        <div class="ml-bar"><div class="ml-fill" id="ml-fill"></div></div>
+        <div class="ml-hint" id="ml-hint">The first load of a big library takes a few
+          seconds. It gets quicker after that.</div>
+      </div>
+    </div>
   </div>
 </section>
 

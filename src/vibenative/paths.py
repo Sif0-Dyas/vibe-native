@@ -10,11 +10,13 @@ filepaths stored in old rows so audio preview + section extraction keep working)
 
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
 _MNT = re.compile(r"^/mnt/([a-zA-Z])/(.*)$")
 
 
+@lru_cache(maxsize=1)
 def exe_dir() -> Path:
     """The folder holding the running program's executable: the .exe's directory in a
     PyInstaller build (where loose, exe-adjacent resources like ffmpeg live), or the
@@ -22,6 +24,7 @@ def exe_dir() -> Path:
     return Path(sys.executable).resolve().parent
 
 
+@lru_cache(maxsize=1)
 def settings_ini() -> Path:
     """Where the persisted app settings live, for both reading and writing.
 
@@ -37,6 +40,14 @@ def settings_ini() -> Path:
     if getattr(sys, "frozen", False):
         return exe_dir() / "settings.ini"
     return Path(__file__).resolve().parents[2] / "settings.ini"
+
+
+# Both are cached because each resolves a path against the filesystem and
+# neither answer can change while the process runs -- ``sys.frozen`` is fixed at
+# startup and ``__file__`` does not move. They were being called from inside the
+# per-genre lookup in taxonomy.load(), which a single /map build invokes ~47,000
+# times; the resolve() syscalls alone accounted for about 3 seconds of an
+# 18-second response.
 
 
 def resource_base() -> Path:

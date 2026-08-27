@@ -2203,3 +2203,102 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
 /* Mode-only selects must not push the toolbar onto a second line. They carry
    short option text now; this caps them regardless of the longest option. */
 .mode-only.map-filter{ max-width:132px; }
+
+/* ---- collaboration credits ------------------------------------------------
+   A credit like "AC Slater/Chris Lorenzo/Fly With Us" is three artists, and
+   each is independently clickable. Styled as text rather than as buttons: this
+   is the track's byline first and a control second. */
+.pop-artist{ display:flex; flex-wrap:wrap; align-items:baseline; gap:0 4px; }
+.pop-artchip{
+  background:none; border:0; padding:0; cursor:pointer;
+  font:inherit; color:var(--dim); text-align:left;
+  border-bottom:1px dashed transparent;
+}
+.pop-artchip:hover{ color:var(--accent-a); border-bottom-color:var(--accent-a); }
+.pop-artchip.on{ color:var(--accent-a); border-bottom-color:var(--accent-a); }
+.pop-artsep{ color:var(--dimmer); }
+
+/* Which of a collaboration's artists the rating below applies to. Only shown
+   with more than one, but harmless (and consistent) with one. */
+.arate-pick{ display:flex; flex-wrap:wrap; gap:4px; margin:2px 0 5px; }
+.arate-who{
+  font-family:'JetBrains Mono',monospace; font-size:10px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+  color:var(--dim); padding:1px 8px; cursor:pointer;
+}
+.arate-who:hover{ color:var(--text); border-color:var(--dimmer); }
+.arate-who.on{
+  color:var(--accent-b); border-color:var(--accent-b);
+  background:color-mix(in srgb, var(--accent-b) 14%, transparent);
+}
+
+/* ---- map loading overlay --------------------------------------------------
+   /map is a few seconds on a large library even after the server-side work was
+   cut ~3x. A blank canvas for that long reads as a hang, so the phases are
+   named. The bar is only determinate while bytes are actually arriving; the
+   server builds the whole response before sending any, and animating a fake
+   percentage through that would be a lie. */
+#map-loading{
+  position:absolute; inset:0; z-index:6; display:flex;
+  align-items:center; justify-content:center;
+  background:rgba(13,15,20,.82); backdrop-filter:blur(2px);
+}
+#map-loading[hidden]{ display:none; }
+.ml-inner{ width:min(340px,80%); text-align:center; }
+.ml-title{ font-family:'Syne',sans-serif; font-size:17px; font-weight:800; color:var(--text); }
+.ml-phase{
+  font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim);
+  margin:7px 0 10px; min-height:1.3em;
+}
+.ml-bar{ height:5px; border-radius:3px; background:rgba(255,255,255,.07); overflow:hidden; }
+.ml-fill{
+  height:100%; width:0; border-radius:3px; background:var(--grad);
+  transition:width .18s linear;
+}
+/* Indeterminate: the server is working and there is nothing to measure yet. */
+.ml-fill.indet{
+  width:35%; transition:none;
+  animation:mlSlide 1.15s ease-in-out infinite;
+}
+@keyframes mlSlide{
+  0%{ transform:translateX(-110%) } 100%{ transform:translateX(320%) }
+}
+.ml-hint{ font-size:11px; color:var(--dimmer); margin-top:9px; line-height:1.5; }
+@media (prefers-reduced-motion: reduce){
+  .ml-fill.indet{ animation:none; width:100%; opacity:.4; }
+}
+
+/* ---- tree card ------------------------------------------------------------
+   Tree mode answers "what is in my library"; this answers "what does this
+   branch sound like". Deliberately lighter than the full track popup -- one
+   track, a re-roll, and a way through to the map. */
+#tree-card{
+  position:absolute; right:16px; top:16px; z-index:5; width:290px;
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  box-shadow:0 10px 34px rgba(0,0,0,.5); overflow:hidden;
+}
+#tree-card[hidden]{ display:none; }
+.tc-head{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border-bottom:2px solid var(--line);
+  background:rgba(255,255,255,.03);
+}
+.tc-branch{ font-family:'Syne',sans-serif; font-weight:800; font-size:13px; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tc-n{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); margin-left:auto; }
+.tc-x{
+  background:none; border:0; color:var(--dim); cursor:pointer; font-size:11px;
+  padding:0 2px; line-height:1;
+}
+.tc-x:hover{ color:var(--text); }
+.tc-body{ padding:10px; }
+.tc-title{ font-size:13px; color:var(--text); line-height:1.35; }
+.tc-artist{ font-size:11.5px; color:var(--dim); margin-top:3px; }
+.tc-meta{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dimmer); margin-top:5px; }
+.tc-acts{ display:flex; gap:6px; padding:0 10px 10px; flex-wrap:wrap; }
+.tc-acts button{
+  font-family:'JetBrains Mono',monospace; font-size:10px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  color:var(--text); padding:4px 8px; cursor:pointer;
+}
+.tc-acts button:hover{ color:var(--accent-a); border-color:var(--accent-a); }
