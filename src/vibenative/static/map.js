@@ -42,6 +42,11 @@
   const rot = { x: -0.15, y: 0.5 };        // orbit angles
   const view = { zoom: 1, panx: 0, pany: 0 };
   const pivot = { x:0, y:0, z:0 };     // orbit centre (eased): see the frame loop
+  /* The cloud's centre of mass -- where the tracks actually are, as opposed to
+     where the coordinate system happens to start. This is the RESTING pivot:
+     with nothing selected the camera looks at it and orbits it. Rebuilt by
+     layout(), because it is a property of the arrangement. See gravity(). */
+  const BARY = { x:0, y:0, z:0 };
   let famPivot = null;                 // a clicked genre's centroid to orbit around
   let focusedFam = null;               // a clicked genre -> force ITS subgenre labels on
   let spinSpeed = 0.0006, running = false, rafId = null, filterFam = null;   // 10% of the 0.006 max
@@ -631,6 +636,9 @@
         solarPlace(n, 0);
       });
     });
+    // The sun is at the origin and every body orbits it, so the centre of mass
+    // is the origin by construction -- there is nothing to search for here.
+    BARY.x = BARY.y = BARY.z = 0;
     MAXR = 0.5;
     for (const n of members){ const d = Math.hypot(n.x3, n.y3, n.z3); if (d > MAXR) MAXR = d; }
   }
@@ -693,6 +701,57 @@
   }
 
   /* ---- build 3-D positions for the current mode -------------------- */
+  /* Where the map's mass is: the densest point of the star cloud.
+
+     The plain centre of mass is the wrong answer. It is the mean position, so a
+     handful of far-flung outliers drag it as hard as a thousand tracks in a
+     cluster, and between two clusters it lands in the empty space BETWEEN them
+     -- pointing the camera at nothing, which is exactly what we are fixing.
+
+     So: mean-shift. Start at the centre of mass, then repeatedly re-centre on
+     the Gaussian-weighted mean of whatever is nearby. Each step walks the point
+     uphill in density, and shrinking the bandwidth as it goes tightens it onto
+     the peak. That converges on the busiest REGION rather than the average
+     position -- gravity, not arithmetic.
+
+     Sampled on a stride so the cost is bounded by the sample, not the library:
+     the mode of a few thousand tracks is the mode of thirty thousand. */
+  function gravity(nodes){
+    if (!nodes.length){ BARY.x = BARY.y = BARY.z = 0; return; }
+    const stride = Math.max(1, Math.floor(nodes.length / 4000));
+    const pts = [];
+    for (let i = 0; i < nodes.length; i += stride){
+      const n = nodes[i];
+      if (Number.isFinite(n.x3) && Number.isFinite(n.y3) && Number.isFinite(n.z3)) pts.push(n);
+    }
+    if (!pts.length){ BARY.x = BARY.y = BARY.z = 0; return; }
+    let cx = 0, cy = 0, cz = 0;
+    for (const n of pts){ cx += n.x3; cy += n.y3; cz += n.z3; }
+    cx /= pts.length; cy /= pts.length; cz /= pts.length;
+    // Bandwidth starts at the cloud's RMS spread: wide enough that the first
+    // step sees the whole field and cannot get stuck in a local knot.
+    let v = 0;
+    for (const n of pts){
+      const dx = n.x3-cx, dy = n.y3-cy, dz = n.z3-cz;
+      v += dx*dx + dy*dy + dz*dz;
+    }
+    let h = Math.sqrt(v / pts.length) * 0.6;
+    if (!(h > 1e-6)){ BARY.x = cx; BARY.y = cy; BARY.z = cz; return; }   // one point, or all coincident
+    for (let it = 0; it < 12; it++){
+      const inv = 1 / (2*h*h);
+      let sx = 0, sy = 0, sz = 0, sw = 0;
+      for (const n of pts){
+        const dx = n.x3-cx, dy = n.y3-cy, dz = n.z3-cz;
+        const w = Math.exp(-(dx*dx + dy*dy + dz*dz) * inv);
+        sx += n.x3*w; sy += n.y3*w; sz += n.z3*w; sw += w;
+      }
+      if (!(sw > 0)) break;              // bandwidth collapsed past every point
+      cx = sx/sw; cy = sy/sw; cz = sz/sw;
+      h *= 0.88;
+    }
+    BARY.x = cx; BARY.y = cy; BARY.z = cz;
+  }
+
   function layout(){
     byHash.clear();
     // Harvest the server's paint first: every shade below depends on it, so it
@@ -847,8 +906,16 @@
       a.x+=n.x3; a.y+=n.y3; a.z+=n.z3; a.c++; }
     for (const f of FAMS){ const a=acc[f];
       CENTROIDS[f] = { x:a.x/a.c, y:a.y/a.c, z:a.z/a.c, n:COUNTS[f] }; }
+    gravity(NODES);
+    // Measured from BARY, not the origin: the projection subtracts the pivot, so
+    // the radius that has to fit on screen is the distance from what the camera
+    // is looking AT. Origin-relative, a cloud whose mass sits off to one side
+    // would fit its far edge and push the near one out of frame.
     MAXR = 0.5;
-    for (const n of NODES){ const d = Math.hypot(n.x3, n.y3, n.z3); if (d > MAXR) MAXR = d; }
+    for (const n of NODES){
+      const d = Math.hypot(n.x3-BARY.x, n.y3-BARY.y, n.z3-BARY.z);
+      if (d > MAXR) MAXR = d;
+    }
 
     // subgenre label anchors: centroid of each style sub-cluster with >=labelMin
     // members. In regions they fade in as you zoom into a cluster (semantic zoom /
@@ -1282,12 +1349,14 @@
       for (const n of NODES) if (n.orb) solarPlace(n, st);
     }
     if (spinSpeed > 0 && !anim && !dragging && mapMode !== 'solar') rot.y += spinSpeed;
-    // orbit centre (eased): a clicked genre's centroid, else the selected track,
-    // else the origin. So clicking a genre orbits AROUND that cluster.
+    // Orbit centre (eased): a clicked genre's centroid, else the selected track,
+    // else the cloud's centre of mass. So clicking a genre orbits AROUND that
+    // cluster, and letting go of everything falls back to orbiting the busiest
+    // part of the map rather than an arbitrary origin that may hold nothing.
     const sel = selHash ? byHash.get(selHash) : null;
-    const tx = famPivot ? famPivot.x : (sel ? sel.x3 : 0);
-    const ty = famPivot ? famPivot.y : (sel ? sel.y3 : 0);
-    const tz = famPivot ? famPivot.z : (sel ? sel.z3 : 0);
+    const tx = famPivot ? famPivot.x : (sel ? sel.x3 : BARY.x);
+    const ty = famPivot ? famPivot.y : (sel ? sel.y3 : BARY.y);
+    const tz = famPivot ? famPivot.z : (sel ? sel.z3 : BARY.z);
     pivot.x += (tx - pivot.x) * 0.12;
     pivot.y += (ty - pivot.y) * 0.12;
     pivot.z += (tz - pivot.z) * 0.12;
@@ -2751,6 +2820,11 @@
   function fitView(){
     view.panx=0; view.pany=0; rot.x=-0.15; anim=null;
     if (mapMode === 'tree'){ fitTree(); return; }
+    // Snap rather than ease. Framing the map is a cut, not a move: easing here
+    // would open the view off-centre and slide it into place, which reads as the
+    // map drifting on its own. Callers reach this with nothing selected, so the
+    // resting target is BARY.
+    pivot.x = BARY.x; pivot.y = BARY.y; pivot.z = BARY.z;
     if (mapMode === 'solar'){
       // Solar's bodies orbit in the XZ plane, so the default -0.15 tilt shows
       // the system almost edge-on and the rings collapse into lines. Look down
