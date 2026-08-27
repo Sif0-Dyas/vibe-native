@@ -1,7 +1,8 @@
 /* Audio preview for List rows: one <audio>, one track at a time — play /
    pause, seek by clicking the waveform, and the moving playhead.
 
-   LOAD ORDER: load AFTER app.js (attachPlayer uses fmtTime from app.js).
+   LOAD ORDER: load AFTER app.js (attachPlayer uses fmtTime from app.js) and
+   BEFORE audio.js, which wraps this element as the "track" audio source.
    Exposes the globals PLAYER, OBJ_URLS and attachPlayer(), which app.js's
    row builder and Clear handler use. See index.html. */
 
@@ -76,7 +77,9 @@ const FSH = (function () {
 PLAYER.audio.addEventListener('timeupdate', () => { if (PLAYER.ctl) PLAYER.ctl.tick(); });
 PLAYER.audio.addEventListener('play',       () => {
   if (PLAYER.ctl) PLAYER.ctl.render();
-  if (window.mapStopPreview) window.mapStopPreview();   // full playback stops any map sample
+  // Starting full playback IS choosing the track: take the focus, which pauses
+  // any map sample. The choice sticks, so later selections won't cut this off.
+  if (typeof AUDIO !== 'undefined') AUDIO.claim('track');
 });
 PLAYER.audio.addEventListener('pause',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
 PLAYER.audio.addEventListener('ended',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });

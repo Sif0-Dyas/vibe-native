@@ -1567,6 +1567,69 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .nb-close{ border-color:transparent; color:var(--dim); }
 .nb-close:hover{ color:var(--err); border-color:var(--err); box-shadow:none; }
 
+/* --- volume: one mute button + one slider, shared by both audio bars --- */
+.vol{ display:flex; align-items:center; gap:6px; flex:none; }
+.vol-mute{
+  background:none; border:none; cursor:pointer; padding:0; line-height:1;
+  font-size:13px; color:var(--text); opacity:.85; transition:opacity .15s, filter .15s;
+}
+.vol-mute:hover{ opacity:1; filter:drop-shadow(0 0 5px var(--accent-a)); }
+.vol-mute.off{ opacity:.45; }
+.vol-slider{
+  -webkit-appearance:none; appearance:none; width:74px; height:4px; border-radius:2px;
+  background:var(--panel-2); cursor:pointer; outline:none;
+}
+.vol-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none; width:11px; height:11px; border-radius:50%;
+  background:var(--accent-a); box-shadow:var(--glow-sm); cursor:pointer;
+}
+.vol-slider::-moz-range-thumb{
+  width:11px; height:11px; border:none; border-radius:50%;
+  background:var(--accent-a); box-shadow:var(--glow-sm); cursor:pointer;
+}
+.vol-slider:hover{ box-shadow:0 0 0 1px rgba(34,211,238,.3); }
+
+/* --- the sample strip: sits directly above the Now Playing bar --- */
+#samplebar{
+  display:none; align-items:center; gap:12px; flex:none;
+  padding:6px clamp(14px,3vw,24px);
+  background:linear-gradient(180deg, rgba(124,92,255,.05), var(--panel));
+  border-top:1px solid rgba(124,92,255,.26);
+}
+#samplebar.on{ display:flex; }
+.sb-dot{ width:9px; height:9px; border-radius:50%; flex:none;
+  background:var(--accent-b); color:var(--accent-b); box-shadow:0 0 8px currentColor; }
+.sb-meta{ min-width:0; width:min(260px,30vw); }
+.sb-title{ font-family:'Syne',sans-serif; font-weight:700; font-size:12px; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sb-sub{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+.sb-btn{
+  background:none; border:1px solid var(--line); color:var(--text); border-radius:50%;
+  width:26px; height:26px; flex:none; cursor:pointer; font-size:10px;
+  display:grid; place-items:center; transition:border-color .15s, box-shadow .15s, transform .05s;
+}
+.sb-btn:hover{ border-color:var(--accent-b); box-shadow:0 0 10px rgba(124,92,255,.35); }
+.sb-btn:active{ transform:scale(.94); }
+.sb-play.playing{ border-color:var(--accent-b); color:var(--accent-b); }
+.sb-seek{ flex:1; min-width:60px; height:4px; background:var(--panel-2); border-radius:2px;
+  overflow:hidden; }
+.sb-seekfill{ height:100%; width:0; background:var(--accent-b); box-shadow:0 0 8px rgba(124,92,255,.5); }
+
+/* the switch: which of the two sources you actually hear */
+/* an explicit display: would beat the UA sheet's [hidden] rule, so re-state it */
+.sb-listen{ display:flex; align-items:center; gap:5px; flex:none; }
+.sb-listen[hidden]{ display:none; }
+.sb-lsn-lbl{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim); }
+.sb-lsn{
+  background:none; border:1px solid var(--line); color:var(--dim); cursor:pointer;
+  font-family:'JetBrains Mono',monospace; font-size:9px; padding:3px 8px; border-radius:999px;
+  transition:color .15s, border-color .15s, box-shadow .15s;
+}
+.sb-lsn:hover{ color:var(--text); border-color:var(--accent-a); }
+.sb-lsn.on{ color:#03141B; background:var(--accent-a); border-color:var(--accent-a);
+  box-shadow:var(--glow-sm); }
+
 /* --- Map popup: play + add-to-playlist actions --- */
 .pop-actions{ display:flex; gap:6px; margin:4px 0 12px; }
 .pop-play, .pop-add{

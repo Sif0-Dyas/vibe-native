@@ -35,6 +35,7 @@ module.exports = [
         HASH_FILES: "writable", // player.js -> used by app.js, nowbar.js
         FSH: "writable", //        player.js -> used by app.js, nowbar.js (FS Access handles)
         attachPlayer: "writable", // player.js -> used by app.js
+        AUDIO: "writable", //      audio.js -> used by player.js, nowbar.js, map.js
         // Rows (app.js) <-> side panels (panels.js) split:
         styleInfo: "writable", //  app.js  -> used by panels.js (sibling editor dots)
         results: "writable", //    app.js  -> used by panels.js (sibling editor re-applies to rows)

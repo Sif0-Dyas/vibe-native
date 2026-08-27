@@ -2,8 +2,13 @@
    player.js) so it reflects whatever is playing — a List row or a Map track —
    without disturbing the per-row controllers.
 
-   LOAD ORDER: after app.js (needs fmtTime) and player.js (needs PLAYER); before
-   map.js, which calls the globals this file exposes:
+   The bar owns the TRACK source; the sample strip above it owns the other one.
+   Which of the two you actually hear is AUDIO's (audio.js), so this file tells
+   AUDIO whenever a track arrives or leaves -- that is what shows and hides the
+   strip's listening switch.
+
+   LOAD ORDER: after app.js (needs fmtTime), player.js (needs PLAYER) and
+   audio.js (needs AUDIO); before map.js, which calls the globals this exposes:
      window.playHash(hash, meta)  — play a server track by hash (Map / playlist)
      window.__nowNext             — optional; playlist.js sets it to auto-advance
      window.nowClearQueue         — hook playlist.js overrides to stop queue play */
@@ -25,6 +30,7 @@
 
   function renderMeta() {
     bar.classList.toggle('on', !!PLAYER.now);
+    if (typeof AUDIO !== 'undefined') AUDIO.render();   // the switch gained a side
     if (!PLAYER.now) return;
     el.title.textContent = PLAYER.now.title || 'Track';
     el.artist.textContent = PLAYER.now.artist || '';
@@ -71,6 +77,8 @@
     if (typeof window.nowClearQueue === 'function') window.nowClearQueue();
     PLAYER.now = null;
     bar.classList.remove('on');
+    // No track left to choose between, so the sample is the only thing to hear.
+    if (typeof AUDIO !== 'undefined') AUDIO.render();
   });
 
   const keepUrl = u => { if (typeof OBJ_URLS !== 'undefined') OBJ_URLS.push(u); return u; };

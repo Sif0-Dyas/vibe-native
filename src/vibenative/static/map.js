@@ -1152,7 +1152,7 @@
     if (treeCardEl) treeCardEl.hidden = true;
     treeCardNode = null;
     treeCardTrack = null;
-    stopPreview();
+    clearPreview();
   }
 
   /* Tracks under a tree node: everything in the family for a family node, or
@@ -1924,11 +1924,13 @@
 
   /* ---- select + camera fly ----------------------------------------- */
   /* ---- select-to-preview: sample-play a selected track's "drop" ----------
-     Selecting a node auto-plays a short clip from its first big energy jump (the
-     drop) — or the middle as a fallback — on a DEDICATED audio element, and
-     pauses the bottom Now Playing bar so the two never overlap. */
+     Selecting a node cues a short clip from its first big energy jump (the drop)
+     — or the middle as a fallback — on a DEDICATED audio element. Whether it
+     actually SOUNDS is AUDIO's call (audio.js): the clip and the bottom Now
+     Playing bar are the two audio sources, and the listener picks one. So this
+     code cues the clip and reports it; it never pauses the other side itself. */
   const PREVIEW_SECONDS = 22;
-  const PREV = { audio: new Audio(), token: 0, stopAt: 0, url: null };
+  const PREV = { audio: new Audio(), token: 0, stopAt: 0, url: null, start: 0, node: null };
   PREV.audio.preload = 'auto';
   PREV.audio.addEventListener('timeupdate', () => {
     if (PREV.stopAt && PREV.audio.currentTime >= PREV.stopAt) stopPreview();
@@ -1938,7 +1940,17 @@
     PREV.stopAt = 0;
     try { PREV.audio.pause(); } catch(_){ /* not started */ }
   }
-  window.mapStopPreview = stopPreview;   // let the popup's ▶ play hand off cleanly
+  /* Forget the cued clip entirely — the strip that controls it goes away. */
+  function clearPreview(){
+    stopPreview();
+    PREV.node = null;
+    if (typeof AUDIO !== 'undefined') AUDIO.sampleClear();
+  }
+  if (typeof AUDIO !== 'undefined') AUDIO.registerSample({
+    audio: PREV.audio,
+    restart: () => { if (PREV.node) beginSample(null); },   // ⟲ replay / switching back
+    release: () => { stopPreview(); },
+  });
 
   // Best spot to start a preview: first sustained high-energy point (the drop),
   // else ~40% in. Uses the DAW rms envelope from /waveform.
@@ -1963,14 +1975,27 @@
     return dur ? Math.min(dur * 0.4, cap) : 0;
   }
 
+  /* Start (or restart) the cued clip. `my` guards against a newer selection
+     landing first; pass null when the user asked for this one explicitly. */
+  function beginSample(my){
+    const go = () => {
+      if (my !== null && my !== PREV.token) return;
+      try { PREV.audio.currentTime = PREV.start; } catch(_){ /* seek after load */ }
+      PREV.stopAt = PREV.start + PREVIEW_SECONDS;
+      if (typeof AUDIO !== 'undefined') AUDIO.claim('sample');   // pauses the track
+      PREV.audio.play().catch(() => {});
+    };
+    if (PREV.audio.readyState >= 1) go();
+    else PREV.audio.addEventListener('loadedmetadata', go, { once: true });
+  }
+
   async function previewTrack(n){
     stopPreview();
     // Tree mode used to be excluded here because nothing in it was selectable.
     // The tree card's "sample" button is, so the only thing left to reject is
     // an absent track.
-    if (!n) return;
+    if (!n){ clearPreview(); return; }
     const my = PREV.token;                          // stopPreview() just bumped it
-    if (typeof PLAYER !== 'undefined'){ try { PLAYER.audio.pause(); } catch(_){ /* none */ } }
     // resolve a source: the server copy, else a persisted dropped-file handle
     let src = null;
     if (PREV.url){ URL.revokeObjectURL(PREV.url); PREV.url = null; }
@@ -1980,18 +2005,23 @@
       if (my !== PREV.token) return;                // a newer selection won
       if (f){ src = URL.createObjectURL(f); PREV.url = src; }
     }
-    if (!src) return;                               // nothing playable — stay silent
+    if (!src){ clearPreview(); return; }            // nothing playable — no strip
     const start = await dropStart(n.hash, n.duration);
     if (my !== PREV.token) return;
     PREV.audio.src = src;
-    const begin = () => {
-      if (my !== PREV.token) return;
-      try { PREV.audio.currentTime = start; } catch(_){ /* seek after load */ }
-      PREV.stopAt = start + PREVIEW_SECONDS;
-      PREV.audio.play().catch(() => {});
-    };
-    if (PREV.audio.readyState >= 1) begin();
-    else PREV.audio.addEventListener('loadedmetadata', begin, { once: true });
+    PREV.start = start;
+    PREV.node = n;
+    // Cue it: the strip appears either way, so a held sample is visible and one
+    // click away rather than silently skipped.
+    if (typeof AUDIO !== 'undefined'){
+      AUDIO.sampleLoaded({
+        title: n.artist ? stripArtist(n.title, n.artist) : n.title,
+        artist: n.artist || '', color: famCss(n.fam),
+        start, seconds: PREVIEW_SECONDS,
+      });
+      if (!AUDIO.wants('sample')) return;           // you're listening to the track
+    }
+    beginSample(my);
   }
 
   function selectNode(hash){
@@ -2107,7 +2137,8 @@
     popEl.querySelector('.pop-x').onclick = closePopup;
     const playBtn = popEl.querySelector('.pop-play');
     if (playBtn && n.a) playBtn.onclick = () => {
-      stopPreview();                                 // hand off the sample to full playback
+      // the sample stays CUED -- starting the track claims your ears (audio.js),
+      // and the sample strip's switch hands them back without re-selecting.
       if (window.playHash) window.playHash(n.hash, {
         title: n.artist ? stripArtist(n.title, n.artist) : n.title,
         artist: n.artist || '', color: famCss(n.fam),
@@ -2648,7 +2679,7 @@
       ? title.slice(artist.length+3) : title;
 
   function closePopup(){
-    stopPreview();
+    clearPreview();
     popEl.hidden = true; selHash = null; famPivot = null; focusedFam = null;
   }
 

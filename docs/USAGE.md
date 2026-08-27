@@ -151,6 +151,7 @@ Open the **◈ vibes** panel to manage them. Each vibe row has:
 The **☰ playlist** button (footer, and on the Map) opens the playlist panel — an ordered queue you build up, then play or export:
 
 - Add tracks with **add to playlist** (Map popup) / **+ playlist** (the now-playing bar), or all at once from a vibe's **playlist** button.
+- The bar itself has **▶ play/pause**, a **seek** strip, **↻ replay** (start the track over), **volume + mute**, and **✕ stop**. Volume and mute are remembered between sessions, separately from the Map's sample volume (section 8).
 - **▶ play all** plays the queue in order.
 - **★ save** stores the current queue under a name; **☰ saved** lists your saved playlists to reload or delete. Saved playlists live in the database, so they persist across restarts.
 - **⭳ .m3u** exports the queue as a standard **`.m3u`** file — the universal playlist format that opens in VLC, Rekordbox, Serato, foobar2000, and most DJ/player software, pointing at your actual audio files.
@@ -262,6 +263,10 @@ You can **orbit** (rotate), **pan** (slide), and **zoom** independently. A small
 ### Selecting a track
 
 **Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre family, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer).
+
+Selecting a track also **auditions it**: a ~22-second clip starts from the track's *drop* (its first sustained burst of energy, or 40% in if there isn't one). A **sample strip** appears above the now-playing bar with its own **▶ play/pause**, **↻ replay** (back to the drop), **■ stop**, and **volume + mute** — so auditioning can sit quietly under whatever else you're doing.
+
+**Listening to — sample / track.** When something is also playing in the now-playing bar, the strip shows a switch, and it *sticks*: choose **track** and clicking around the Map keeps cueing samples but never interrupts you (the strip says "held"); flip to **sample** and it plays that clip instead, pausing the track. Each side keeps its own volume, so a sample can be a quiet audition underneath a loud track. Starting full playback — the popup's **▶ play**, a List row, the playlist — counts as choosing **track**.
 
 ### Map controls
 
