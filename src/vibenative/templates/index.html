@@ -77,32 +77,64 @@
     <button class="tab" data-view="guide" type="button" title="How to use Vibedentify, start to finish">&#9432; Guide</button>
     <button class="tab" data-view="options" type="button" title="Settings, folders and system status">&#9881; Options</button>
   </nav>
-  <div class="lensbar">
-    <span class="lblab">identity</span>
-    <select id="g-identity" title="overall genre read (side breakdown)">
-      <option value="v2">v2 · salience</option>
-      <option value="v1">v1 · flat %</option>
-    </select>
-    <span class="lblab">segmentation</span>
-    <select id="g-seg" title="waveform genre stream">
-      <option value="raw">raw</option>
-      <option value="hysteresis" selected>hysteresis</option>
-      <option value="sibling">sibling-merge</option>
-      <option value="family">family (PulseRoots)</option>
-      <option value="hyst+sib">hyst + sibling</option>
-    </select>
-    <button id="sib-btn" class="sib-btn" type="button" title="edit sibling-merge groups">siblings &#9881;</button>
-  </div>
 </header>
 
 <!-- ONE big drop-anywhere window; the list lives inside it -->
 <main id="drop" tabindex="0" aria-label="Drop audio files anywhere in this window">
+  <div class="an-bar">
+    <span class="an-lead">Drop audio files anywhere on this window to analyse them.</span>
+    <span class="spacer"></span>
+    <div class="an-advwrap">
+      <button id="an-adv-btn" class="an-adv" type="button"
+              title="How the genre is read. Defaults suit almost everyone.">&#9881; advanced</button>
+      <div id="an-adv-panel" class="map-panel" hidden>
+        <div class="mp-head">How genres are read</div>
+        <div class="mp-hint">These change how the analysis is <b>interpreted</b>, not how it is
+          run. Nothing is re-scanned and no files are touched. If you are not sure, leave them
+          alone — the defaults are what the rest of the app uses.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-field"><span>Overall genre</span>
+          <select id="g-identity" class="map-filter">
+            <option value="v2">weight by energy (default)</option>
+            <option value="v1">plain average</option>
+          </select></label>
+        <div class="mp-hint">Whether the loudest, most characteristic parts of a track count for
+          more than the quiet ones when deciding its genre.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-field"><span>Genre over time</span>
+          <select id="g-seg" class="map-filter">
+            <option value="raw">every change (raw)</option>
+            <option value="hysteresis" selected>steady (default)</option>
+            <option value="sibling">merge near-identical genres</option>
+            <option value="family">group into families</option>
+            <option value="hyst+sib">steady + merged</option>
+          </select></label>
+        <div class="mp-hint">How the coloured genre bands along the waveform are smoothed. The
+          default ignores one-off flickers so a track does not appear to change genre every
+          second.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-row"><input type="checkbox" id="an-rowlens">
+          <span>Per-track overrides</span></label>
+        <div class="mp-hint">Adds the two selectors above to every track, so one track can be
+          read differently from the rest. Off by default: they say &ldquo;global&rdquo; until you
+          change them, which is a lot of controls saying nothing.</div>
+        <div class="mp-btns">
+          <button id="sib-btn" class="sib-btn" type="button"
+                  title="Choose which genres count as the same thing">edit merge groups</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="listhead"><span>Track</span><span>BPM / Key</span><span>Genre</span></div>
   <div id="rows">
     <div id="empty">
-      <div class="big">Drop tracks here</div>
-      <div class="hint">Drag any number of audio files anywhere in this window,<br>
-        or use <b>Browse</b> below. MP3, FLAC, WAV, M4A, OGG, AIFF &amp; more.</div>
+      <div class="big">Drop your music here</div>
+      <div class="hint">Drag in any number of audio files &mdash; or click
+        <b>Add music</b> at the bottom.</div>
+      <div class="hint2">Vibedentify reads each track&rsquo;s genre, tempo and key. Your files are
+        never modified or moved.</div>
+      <div class="hint3">MP3 &middot; FLAC &middot; WAV &middot; M4A &middot; OGG &middot; AIFF
+        &middot; and more</div>
     </div>
   </div>
 </main>
@@ -311,12 +343,27 @@
 
 <!-- bottom action bar -->
 <footer class="actionbar">
-  <label class="browse" for="picker">⊕ Browse files&hellip;</label>
-  <button id="batch-btn" type="button">⊕ batch folder</button>
-  <button id="vibe-btn" type="button">◈ vibes</button>
-  <button id="flag-btn" type="button" title="find likely-misread genres in your library">⚠ review reads</button>
-  <button id="label-btn" type="button" title="rank unlabeled tracks by similarity to a genre and confirm/reject them into training data">◎ label</button>
+  <label class="browse primary" for="picker" title="Pick audio files to analyse">⊕ Add music</label>
+  <button id="batch-btn" type="button" title="Analyse every audio file in a folder">⊕ Add a folder</button>
   <button id="pl-btn" class="pl-open" type="button" title="playlist">☰ playlist <span class="pl-badge">0</span></button>
+  <div class="an-morewrap">
+    <button id="an-more-btn" type="button" title="Less common tools">⋯ more</button>
+    <div id="an-more-panel" class="map-panel" hidden>
+      <div class="mp-head">More tools</div>
+      <button id="vibe-btn" class="an-moreitem" type="button">
+        <b>◈ Quick vibe panel</b>
+        <i>Add the tracks below to one of your vibes without leaving this tab.</i>
+      </button>
+      <button id="flag-btn" class="an-moreitem" type="button">
+        <b>⚠ Review likely misreads</b>
+        <i>Find tracks whose genre looks wrong, and fix them.</i>
+      </button>
+      <button id="label-btn" class="an-moreitem" type="button">
+        <b>◎ Teach a genre</b>
+        <i>Confirm or reject tracks to build training examples for a genre.</i>
+      </button>
+    </div>
+  </div>
   <span id="batch-status"></span>
   <span class="spacer"></span>
   <span id="count">0 tracks</span>

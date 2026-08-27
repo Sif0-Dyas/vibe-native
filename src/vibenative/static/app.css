@@ -697,7 +697,7 @@ header .sub{color:#E4E7EF; text-shadow:1px 1px 0 #000}
   border-radius:2px;
 }
 /* --- buttons: raised bevels, pressed = inset --- */
-#export, #clear, #batch-btn, #vibe-btn, .sib-btn, .browse,
+#export, #clear, #batch-btn, #vibe-btn, #an-more-btn, .sib-btn, .browse,
 .override-btn, .addvibe-btn, .tagchip, .ovr-save, .ovr-cancel,
 .vibe-row button, .vibe-create button, .sib-add, .sib-close{
   border:2px solid;
@@ -1480,7 +1480,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .playtime{ color:var(--dim); }
 
 /* --- buttons: flat pills with a cyan hover glow (was bevel + Silkscreen) --- */
-#export, #clear, #batch-btn, #vibe-btn, .sib-btn, .browse,
+#export, #clear, #batch-btn, #vibe-btn, #an-more-btn, .sib-btn, .browse,
 .override-btn, .addvibe-btn, .tagchip, .ovr-save, .ovr-cancel,
 .vibe-row button, .vibe-create button, .sib-add, .sib-close{
   border:1px solid var(--line);
@@ -1491,11 +1491,11 @@ header .sub{ color:var(--dim); text-shadow:none; }
   letter-spacing:.01em; text-transform:none;
   transition:border-color .15s, box-shadow .15s, color .15s, transform .05s;
 }
-#batch-btn:hover, #vibe-btn:hover, .browse:hover, .sib-btn:hover, .sib-add:hover,
+#batch-btn:hover, #vibe-btn:hover, #an-more-btn:hover, .browse:hover, .sib-btn:hover, .sib-add:hover,
 #clear:hover, .override-btn:hover, .addvibe-btn:hover{
   border-color:var(--accent-a); color:var(--text); box-shadow:var(--glow-sm);
 }
-#export, #clear, #batch-btn, #vibe-btn, .sib-btn, .browse, .sib-add{ padding:6px 14px; }
+#export, #clear, #batch-btn, #vibe-btn, #an-more-btn, .sib-btn, .browse, .sib-add{ padding:6px 14px; }
 #export:active, #clear:active, #batch-btn:active, #vibe-btn:active,
 .sib-btn:active, .browse:active{ transform:translateY(1px); }
 #export{ background:var(--grad); color:#03141B; font-weight:700; text-shadow:none;
@@ -2342,3 +2342,73 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
 }
 .gen-subnote{ grid-column:1/-1; }
+
+/* ============================================================================
+   Analyzer: one primary action, everything else out of the way.
+
+   Before this the tab presented, at equal weight and all at once: three expert
+   genre-reading switches pinned to the header in internal vocabulary, and seven
+   footer buttons mixing "get music in" with "audit my library" and "build a
+   training set". Nothing said which one to press first.
+   ========================================================================== */
+
+.an-bar{
+  display:flex; align-items:center; gap:10px;
+  padding:8px clamp(10px,2vw,18px);
+  border-bottom:1px solid var(--line); background:var(--panel);
+}
+.an-lead{ font-size:12px; color:var(--dim); }
+.an-advwrap, .an-morewrap{ position:relative; }
+
+/* The advanced switches. Deliberately quiet: almost nobody needs them, and the
+   ones who do know to look for a gear. */
+.an-adv{
+  font-family:'JetBrains Mono',monospace; font-size:11px;
+  background:none; border:1px solid var(--line); border-radius:var(--r-sm);
+  color:var(--dim); padding:4px 10px; cursor:pointer;
+}
+.an-adv:hover, .an-adv.on{ color:var(--text); border-color:var(--dimmer); }
+
+/* Both popovers reuse the map's panel styling so the app has one popover look.
+   Anchored to the right of their trigger, and the footer one opens upward. */
+.an-advwrap .map-panel{ right:0; left:auto; top:calc(100% + 6px); width:320px; }
+.an-morewrap .map-panel{
+  right:auto; left:0; top:auto; bottom:calc(100% + 8px); width:300px;
+}
+
+/* Items in the "more" menu carry a line of explanation. These are the tools
+   whose names ("review reads", "label") gave no clue what they did. */
+.an-moreitem{
+  display:block; width:100%; text-align:left; cursor:pointer;
+  background:none; border:0; border-radius:var(--r-sm);
+  padding:7px 8px; color:var(--text);
+}
+.an-moreitem:hover{ background:rgba(255,255,255,.05); }
+.an-moreitem b{ display:block; font-size:12px; font-weight:600; }
+.an-moreitem i{
+  display:block; font-style:normal; font-size:11px; color:var(--dim);
+  line-height:1.45; margin-top:2px;
+}
+
+/* The one thing to press first, on a tab whose whole job is getting music in. */
+.browse.primary{
+  background:var(--grad); color:#0b0e14; font-weight:600; border:0;
+}
+.browse.primary:hover{ filter:brightness(1.08); }
+
+/* Empty state: instruction, reassurance, then the small print. */
+#empty .hint2{ color:var(--dim); font-size:12px; margin-top:10px; max-width:44ch; }
+#empty .hint3{
+  color:var(--dimmer); font-family:'JetBrains Mono',monospace; font-size:10px;
+  margin-top:8px; letter-spacing:.04em;
+}
+
+/* The lens bar no longer lives in the header; it is inside the advanced
+   popover, where it lays out as fields rather than an inline strip. */
+.an-advwrap .lensbar{ display:contents; }
+
+/* Per-track lens overrides are hidden unless asked for. Two selectors on every
+   row reading "identity: global / segment: global" told a new user nothing
+   except that there was a setting somewhere they had not found. */
+.rowlens{ display:none; }
+body.rowlens-on .rowlens{ display:flex; }

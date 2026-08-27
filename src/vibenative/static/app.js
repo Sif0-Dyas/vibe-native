@@ -499,9 +499,9 @@ function finishRow(row, data, file){
 
     const controls = document.createElement('div');
     controls.className = 'wavehint';
-    controls.innerHTML = `<span class="restag" title="genre-boundary resolution">~2s</span>` +
-      `<button class="finebtn" type="button" title="re-analyze this track at ~0.5s resolution (slower)">\u2295 fine detail</button>` +
-      `<span class="smoothnote" title="single-frame genre flickers are smoothed out (~1s)">smoothed ~1s</span>`;
+    controls.innerHTML = `<span class="restag" title="Each coloured band along the waveform covers about two seconds of audio.">2s bands</span>` +
+      `<button class="finebtn" type="button" title="Re-read this track in finer slices (~0.5s). Slower, but catches short sections.">\u2295 closer look</button>` +
+      `<span class="smoothnote" title="One-off single-frame genre flickers are ignored, so the bands do not strobe.">steady view</span>`;
     const resTag = controls.querySelector('.restag');
     const fineBtn = controls.querySelector('.finebtn');
 
@@ -800,7 +800,7 @@ function finishRow(row, data, file){
       const otherSum = Math.max(0, 1 - namedSum);
       shown = named.map(s => ({style:s.style, score:s.score, other:false}));
       if (otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
-      srcLabel = 'v2 · genre identity (energy-weighted)';
+      srcLabel = 'genre · weighted by energy';
     } else if (useTimeline){
       // v1: flat % of track by frame count, over the lens-processed stream
       const all = timelinePercents(ws.segments);
@@ -1419,6 +1419,61 @@ async function runBatch(folderPath){
     batchBtn.textContent = '⊕ batch folder';
   }
 }
+
+/* The Analyzer's two popovers.
+
+   Both hold things that used to sit permanently on screen: the genre-reading
+   switches (once pinned to the header, in vocabulary that only made sense if
+   you already understood the system) and the specialist tools (once four
+   equal-weight buttons in a row with "add music", so nothing signalled which
+   was the thing to press first).
+
+   Wired the same way the map's panels are: the button toggles, clicks inside
+   do not close it, a click anywhere else does. */
+function wirePopover(btnId, panelId){
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  if (!btn || !panel) return;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    // Close any other open Analyzer popover first -- two at once overlap.
+    document.querySelectorAll('.an-advwrap .map-panel, .an-morewrap .map-panel')
+      .forEach(o => { if (o !== panel) o.hidden = true; });
+    panel.hidden = !panel.hidden;
+    btn.classList.toggle('on', !panel.hidden);
+  });
+  panel.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => {
+    panel.hidden = true;
+    btn.classList.remove('on');
+  });
+}
+wirePopover('an-adv-btn', 'an-adv-panel');
+wirePopover('an-more-btn', 'an-more-panel');
+
+/* Per-track lens overrides, off by default.
+
+   They were on every row permanently, reading "identity: global / segment:
+   global" -- two selectors per track whose whole message was "this track
+   follows the setting you have not been shown". The capability is real, so it
+   is a switch rather than a deletion, and it lives beside the global controls
+   it overrides. */
+(function () {
+  const box = document.getElementById('an-rowlens');
+  if (!box) return;
+  let on = false;
+  try { on = localStorage.getItem('vibeRowLens') === 'on'; } catch (_) { /* private mode */ }
+  const apply = () => {
+    box.checked = on;
+    document.body.classList.toggle('rowlens-on', on);
+  };
+  apply();
+  box.addEventListener('change', () => {
+    on = box.checked;
+    try { localStorage.setItem('vibeRowLens', on ? 'on' : 'off'); } catch (_) { /* private */ }
+    apply();
+  });
+})();
 
 const gId = document.getElementById('g-identity');
 const gSeg = document.getElementById('g-seg');
