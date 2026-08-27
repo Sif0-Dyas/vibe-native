@@ -239,7 +239,7 @@ The **🏷 labels** button opens the display options. The ones worth knowing:
 - **Hide all text** — every label off in one switch, when you just want to look at the shape of your library.
 - **Lines from labels to genres** — off by default. Turn it on if you want each label tied back to its cluster by a dashed line; on a dense map they add clutter, which is why they start off.
 - **Label background** — *outline only* is lighter; *solid plate* is easier to read over a crowded cluster.
-- **Glowing stars** — each track drawn as a lit sphere rather than a flat dot. This is the real difference between the 3-D and **Flat (2-D)** views.
+- **Glow** — how far each star's light spreads into the black around it. Every track is drawn as a coloured disc with a halo of its own colour, so a cluster reads as light being emitted rather than dots printed on black. Slide it up for a brighter sky, or down to **0** for plain flat discs. Dense clusters stay legible at any setting: the disc itself is solid, so neighbours overlap rather than blowing out to white.
 - **Flicker** — *off*, *subtle*, or *all stars flicker* for a live night-sky feel.
 - **Size stars by rating** — bigger star = better rating, so your best music is the most visible thing on the map. **Count artist ratings too** means a track by an artist you rated highly is boosted even if you haven't rated that particular track. Unrated tracks stay small but visible — nothing ever disappears.
 

@@ -191,9 +191,14 @@
     // labelStyle 'halo' (stroked outline) or 'pill' (solid rounded plate)
     // glow       render nodes as lit spheres with a corona instead of flat
     //            discs. Ignored in flat (2-D) mode, which is the point of it.
+    // shine      how much corona each star gets, 0 = none. UNLIKE `glow` this
+    //            applies in the flat view too: the corona is the part that
+    //            reads as light being emitted, and wanting that is separate
+    //            from wanting the shelved 3-D sphere bodies. 0 is exactly the
+    //            plain-disc field the map drew before it existed.
     // sizeByRating / useArtistRating / unratedScale -- see ratingBoost()
     hideText:false, twinkle:'subtle', leaders:false, labelStyle:'halo',
-    glow:true, sizeByRating:false, useArtistRating:true, unratedScale:0.8,
+    glow:true, shine:1.4, sizeByRating:false, useArtistRating:true, unratedScale:0.8,
     linkWidth:1 };
   let LBL = Object.assign({}, LBL_DEFAULTS);
   try { LBL = Object.assign(LBL, JSON.parse(localStorage.getItem('vibeMapLabels') || '{}') || {}); } catch(_){}
@@ -423,6 +428,28 @@
   // blob and the cluster stops showing any structure at all -- which is exactly
   // what a first pass at this did.
   const GLOW_ALPHA = 0.16;
+
+  /* The corona: the part that reads as light being EMITTED rather than a dot
+     printed on black. Additive at low alpha, because 'lighter' ACCUMULATES and
+     a dense cluster stacks hundreds of these on the same pixels -- at full
+     strength that saturates to a solid white blob and the cluster stops showing
+     any structure at all.
+
+     Skipped on the smallest, faintest stars: there it is under a pixel of
+     visible contribution but still a full blit, and on a 3000-track map that is
+     thousands of wasted draws every frame. Callers set globalAlpha to the
+     star's brightness first; the corona is a fraction OF that, so a dim star
+     glows dimly. */
+  function drawCorona(p, n, strength){
+    const prevA = ctx.globalAlpha;
+    if (!(strength > 0) || p.r <= 1.8 || prevA <= 0.12) return;
+    const gr = p.r * GLOW_SCALE;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = prevA * GLOW_ALPHA * strength;
+    ctx.drawImage(starSprite(n.hue, n.sat || 64, n.dl, 'corona'), p.sx - gr, p.sy - gr, gr * 2, gr * 2);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = prevA;
+  }
 
   /* Two sprites per colour, because they have to composite differently.
 
@@ -1383,18 +1410,7 @@
         // 3-D view from the 2-D one, which previously differed only in size and
         // transparency. Corona first (additive, faint), then the solid core on
         // top, so a crowded cluster keeps its shape instead of saturating.
-        const prevA = ctx.globalAlpha;
-        const gr = p.r * GLOW_SCALE;
-        // The corona is skipped on the smallest, faintest stars. At that size it
-        // is under a pixel of visible contribution but still a full blit, and on
-        // a 3000-track map that is thousands of wasted draws per frame.
-        if (p.r > 1.8 && prevA > 0.12){
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = prevA * GLOW_ALPHA;
-          ctx.drawImage(starSprite(n.hue, n.sat||64, n.dl, 'corona'), p.sx-gr, p.sy-gr, gr*2, gr*2);
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.globalAlpha = prevA;
-        }
+        drawCorona(p, n, LBL.shine);
         const cr = p.r * CORE_SCALE;
         if (cr > CRISP_ABOVE){
           // Only when the sprite would be magnified past its own resolution.
@@ -1406,7 +1422,13 @@
           ctx.drawImage(starSprite(n.hue, n.sat||64, n.dl, 'core'), p.sx-cr, p.sy-cr, cr*2, cr*2);
         }
       } else {
-        // Flat (2-D): a plain disc. Depth and twinkle are already in globalAlpha.
+        // Flat (2-D): a plain disc, over a corona of its own colour. The disc is
+        // what keeps a dense cluster legible -- it is opaque, so neighbours
+        // occlude instead of summing -- and the corona around it is what makes
+        // the field read as a sky rather than dots printed on black. Drawn
+        // first, so the solid body always sits on top of its own halo.
+        drawCorona(p, n, LBL.shine);
+        // Depth and twinkle are already in globalAlpha.
         ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
         ctx.fillStyle = `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ` +
                         `${clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84)}%)`;
@@ -2981,6 +3003,8 @@
       setChk('lbl-glow', glowMode());
       setChk('lbl-rate', LBL.sizeByRating);
       setChk('lbl-rate-artist', LBL.useArtistRating);
+      setVal('lbl-shine', Math.round(LBL.shine * 100));
+      setTxt('lbl-shine-v', LBL.shine.toFixed(1) + '×');
       setVal('lbl-twinkle', LBL.twinkle);
       setVal('lbl-lblstyle', LBL.labelStyle);
       setVal('lbl-lw',   Math.round(LBL.linkWidth * 100));
@@ -2999,7 +3023,7 @@
       lblBtn.classList.toggle('on',
         !LBL.showFam || !LBL.showSub || !!LBL.onlyFam || !!LBL.maxFam || !!LBL.maxSub
         || LBL.linkWidth !== 1 || LBL.hideText || LBL.sizeByRating
-        || LBL.twinkle !== 'subtle' || LBL.labelStyle !== 'halo'
+        || LBL.twinkle !== 'subtle' || LBL.labelStyle !== 'halo' || LBL.shine !== 1.4
         // Only count these while the 3-D path is live; otherwise the button
         // would read as "settings changed" on a fresh install.
         || (SPHERES && (LBL.flat || !LBL.glow)));
@@ -3030,6 +3054,7 @@
     bind('lbl-hidetext',  el => LBL.hideText  = el.checked);
     bind('lbl-leaders',   el => LBL.leaders   = el.checked);
     bind('lbl-glow',      el => LBL.glow      = el.checked);
+    bind('lbl-shine',     el => LBL.shine     = +el.value / 100);
     bind('lbl-twinkle',   el => LBL.twinkle   = el.value);
     bind('lbl-lblstyle',  el => LBL.labelStyle = el.value);
     bind('lbl-rate',      el => LBL.sizeByRating   = el.checked);

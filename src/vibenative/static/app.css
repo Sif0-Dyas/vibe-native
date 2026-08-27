@@ -1098,6 +1098,10 @@ body.view-options .lensbar{ display:none; }
 .map-panel[hidden]{ display:none; }
 .mp-head{ font-family:'Syne',sans-serif; font-weight:700; font-size:12px; color:var(--text); margin-bottom:2px; }
 .mp-row{ display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--dim); padding:1px 0; }
+/* An explicit display: beats the UA sheet's [hidden] rule, so re-state it. Without
+   this, a row map.js hides -- the two controls the shelved 3-D star switch turns
+   off -- stays on screen doing nothing. */
+.mp-row[hidden], .mp-field[hidden]{ display:none; }
 .mp-row:hover{ color:var(--text); }
 .mp-row input{ accent-color:var(--accent-a); cursor:pointer; }
 .mp-sep{ height:1px; background:var(--line); margin:3px 0; }
