@@ -339,6 +339,28 @@
      The cache key quantises the colour (hue to 6°, saturation and lightness to
      coarse steps) which caps it at a few hundred sprites for any library while
      staying visually indistinguishable from exact colours. */
+  /* Colour components, coerced to something CSS will always accept.
+
+     A NaN hue or lightness renders as the string "hsla(NaN 90% NaN% / 1)", and
+     addColorStop does not ignore that -- it throws. Thrown inside the rAF
+     callback it takes the whole render loop down and leaves nothing but the
+     black background fill, which is indistinguishable from "the map is empty".
+     No single track's shade is worth that, so every component is clamped to a
+     usable number on the way in. */
+  const numOr = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+  const hueOk = v => ((numOr(v, 0) % 360) + 360) % 360;
+  const pctOk = (v, fallback) => clamp(numOr(v, fallback), 0, 100);
+
+  let _shadeWarned = false;
+  function warnShade(where, n){
+    if (_shadeWarned) return;                 // once per session, not per frame
+    _shadeWarned = true;
+    console.warn('map: non-finite colour for a track, using a fallback shade', {
+      where, hash: n && n.hash, title: n && n.title, fam: n && n.fam,
+      style: n && n.style, hue: n && n.hue, sat: n && n.sat, dl: n && n.dl,
+    });
+  }
+
   const STAR_SPRITES = new Map();
   // 64, not 32: the context is scaled by devicePixelRatio, so a sprite drawn at
   // its nominal size is already magnified 2x on a HiDPI display before zoom is
@@ -370,7 +392,9 @@
      nearby stars genuinely brighten each other -- the part that reads as light
      being emitted -- without a crowd blowing out to white. */
   function starSprite(hue, sat, light, kind){
-    const h = Math.round(hue / 6) * 6, sa = Math.round(sat / 8) * 8, li = Math.round(light / 6) * 6;
+    const h = Math.round(hueOk(hue) / 6) * 6;
+    const sa = Math.round(pctOk(sat, 64) / 8) * 8;
+    const li = Math.round(pctOk(light, 50) / 6) * 6;
     const key = kind + '|' + h + '|' + sa + '|' + li;
     let cv = STAR_SPRITES.get(key);
     if (cv) return cv;
@@ -1220,7 +1244,17 @@
         const s = clamp(((ed.sim ?? 0.75) - 0.6) / 0.4, 0, 1);
         let op, lw;
         if (selHash){ op = hot ? 0.9 : 0.05; lw = hot ? 1.8 : 1; }
-        else { op = (0.14 + 0.34*s) * (0.55 + 0.45*Math.min(a.depth,b.depth)); lw = 0.8 + 1.4*s; }
+        else {
+          // Fade the web out as you zoom in. The links describe STRUCTURE --
+          // which is what you want when the whole library is in frame -- but
+          // once you are down among individual tracks they are just thousands
+          // of bright lines drawn over the thing you zoomed in to look at.
+          // Full strength at the fit zoom, gone by ~3x in -- past that the
+          // selection's own web (which always draws) is the useful one.
+          const zfade = clamp(1.3 - view.zoom * 0.42, 0, 1);
+          op = (0.14 + 0.34*s) * (0.55 + 0.45*Math.min(a.depth,b.depth)) * zfade;
+          lw = 0.8 + 1.4*s;
+        }
         if (op < 0.02) continue;
         ctx.lineWidth = lw * LBL.linkWidth;
         ctx.strokeStyle = hot ? `rgba(86,180,233,${op})` : `rgba(150,172,208,${op})`;
@@ -1255,6 +1289,7 @@
       }
       ctx.globalAlpha = (0.45 + 0.55*p.depth) * dim;
       const li = clamp(light + (n.dl||0), 16, 84);
+      if (!Number.isFinite(n.hue) || !Number.isFinite(li)) warnShade('node', n);
       if (LBL.glow && !LBL.flat){
         // A lit sphere, not a flat disc -- this is what actually separates the
         // 3-D view from the 2-D one, which previously differed only in size and
@@ -1276,13 +1311,15 @@
         if (cr > CRISP_ABOVE){
           // Big enough that the 64px sprite would visibly blur -- shade it
           // directly. Same stops as the sprite, so a star does not change
-          // appearance as it crosses the threshold.
+          // appearance as it crosses the threshold. Same coercion too: these
+          // strings reach addColorStop, which throws on a NaN component.
+          const hh = hueOk(n.hue), ss = pctOk(n.sat, 64), ll = pctOk(li, 50);
           const g = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, cr);
-          g.addColorStop(0.00, `hsla(${n.hue} ${Math.min(100,(n.sat||64)+26)}% ${clamp(li+34,44,96)}% / 1)`);
-          g.addColorStop(0.30, `hsla(${n.hue} ${Math.min(100,(n.sat||64)+12)}% ${clamp(li+14,26,84)}% / 1)`);
-          g.addColorStop(0.62, `hsla(${n.hue} ${n.sat||64}% ${li}% / 0.95)`);
-          g.addColorStop(0.86, `hsla(${n.hue} ${n.sat||64}% ${clamp(li-6,10,80)}% / 0.45)`);
-          g.addColorStop(1.00, `hsla(${n.hue} ${n.sat||64}% ${clamp(li-8,8,78)}% / 0)`);
+          g.addColorStop(0.00, `hsla(${hh} ${Math.min(100, ss+26)}% ${clamp(ll+34,44,96)}% / 1)`);
+          g.addColorStop(0.30, `hsla(${hh} ${Math.min(100, ss+12)}% ${clamp(ll+14,26,84)}% / 1)`);
+          g.addColorStop(0.62, `hsla(${hh} ${ss}% ${ll}% / 0.95)`);
+          g.addColorStop(0.86, `hsla(${hh} ${ss}% ${clamp(ll-6,10,80)}% / 0.45)`);
+          g.addColorStop(1.00, `hsla(${hh} ${ss}% ${clamp(ll-8,8,78)}% / 0)`);
           ctx.fillStyle = g;
           ctx.beginPath(); ctx.arc(p.sx, p.sy, cr, 0, 6.2832); ctx.fill();
         } else {
@@ -1290,7 +1327,7 @@
         }
       } else {
         ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
-        ctx.fillStyle = `hsl(${n.hue} ${n.sat||64}% ${li}%)`;
+        ctx.fillStyle = `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ${pctOk(li, 50)}%)`;
         ctx.fill();
       }
       if (compatible){                          // key + BPM compatible -> teal ring
@@ -2447,6 +2484,16 @@
     box.querySelector('.pk-roll').onclick = ev => { ev.stopPropagation(); renderPick(); };
   }
 
+  /* The artists on a /similar row. That payload carries the raw credit, but the
+     track itself is in the library and its node already holds the split, so
+     resolve through that and fall back to the raw string for anything not
+     currently loaded. */
+  function creditArtists(s){
+    const n = byHash.get(s.hash);
+    if (n) return artistsOf(n);
+    return s.artist ? [s.artist] : [];
+  }
+
   function renderSimilar(sim){
     const simEl = document.getElementById('pop-sim');
     const artEl = document.getElementById('pop-artists');
@@ -2455,7 +2502,10 @@
                       if(artEl) artEl.innerHTML='<span class="pop-bar">--</span>'; return; }
     simEl.innerHTML = sim.slice(0,8).map(s => {
       const fam = familyOf(s.style||'') || 'Other';
-      const nm = s.artist ? `${s.artist} – ${stripArtist(s.title,s.artist)}` : s.title;
+      const who = creditArtists(s);
+      const nm = who.length
+        ? `${who.join(' · ')} – ${stripArtist(s.title, s.artist || who[0])}`
+        : s.title;
       return `<div class="sim-row" data-h="${s.hash}">
         <span class="dot" style="background:${famCss(fam)}"></span>
         <span class="nm" title="${escapeHtml(s.title)}">${escapeHtml(nm)}</span>
@@ -2489,9 +2539,18 @@
         }
       });
     const seen=new Set(), artists=[];
-    for (const s of sim){ const a=(s.artist||'').trim();
-      if (a && !seen.has(a.toLowerCase())){ seen.add(a.toLowerCase()); artists.push(a); }
-      if (artists.length>=6) break; }
+    // Collect INDIVIDUAL artists, not credit strings. A collaboration used to
+    // arrive here whole, so the chip filtered on the entire credit and no
+    // single member of it was reachable.
+    outer:
+    for (const s of sim){
+      for (const a of creditArtists(s)){
+        const key = a.trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key); artists.push(a.trim());
+        if (artists.length >= 6) break outer;
+      }
+    }
     if (artEl) {
       artEl.innerHTML = artists.length
         ? artists.map(a=>`<button class="chip chip-act" data-kind="artist" data-v="${escapeHtml(a)}"
@@ -2986,23 +3045,36 @@
     if (sby) sby.value = SOLAR.by;
   }
 
-  /* The chosen playlist's track hashes. Solar cannot lay out without them, so
-     this resolves before layout() rather than filling in afterwards. */
-  async function loadSolarSet(){
-    SOLAR_SET = null; SOLAR_NAME = '';
+  /* The chosen playlist's tracks. Split in two so the network half can happen
+     before NODES is swapped and the state half inside the swap -- see loadMap. */
+  let solarPayload = null;
+
+  async function fetchSolarPayload(){
+    solarPayload = null;
     if (!SOLAR.playlist) return;
     const pl = PLAYLISTS.find(x => String(x.id) === String(SOLAR.playlist));
-    SOLAR_NAME = pl ? pl.name : '';
     try{
       // r.ok first: a 404 body is still valid JSON ({"error": ...}), so parsing
       // it blindly yielded an empty Set for a playlist that no longer exists --
       // indistinguishable from an empty one, and it suppressed the hint.
       const r = await fetch(`/playlists/${SOLAR.playlist}`);
-      if (!r.ok){ SOLAR_SET = null; return; }
+      if (!r.ok) return;
       const d = await r.json();
-      const hs = d.tracks || d.hashes || [];
-      SOLAR_SET = new Set(hs.map(x => (typeof x === 'string' ? x : x && x.hash)).filter(Boolean));
-    }catch(_){ SOLAR_SET = null; }
+      solarPayload = { name: pl ? pl.name : (d.name || ''), tracks: d.tracks || d.hashes || [] };
+    }catch(_){ solarPayload = null; }
+  }
+
+  function solarSetFrom(payload){
+    if (!payload){ SOLAR_SET = null; SOLAR_NAME = ''; return; }
+    SOLAR_NAME = payload.name || '';
+    SOLAR_SET = new Set(
+      (payload.tracks || []).map(x => (typeof x === 'string' ? x : x && x.hash)).filter(Boolean));
+  }
+
+  /* Fetch and apply in one step, for the callers that are not mid-swap. */
+  async function loadSolarSet(){
+    await fetchSolarPayload();
+    solarSetFrom(solarPayload);
   }
 
   const loadEl = document.getElementById('map-loading');
@@ -3056,21 +3128,39 @@
       const data = await fetchJsonProgress('/map', f => {
         loading(true, 'Downloading your library… ' + Math.round(f * 100) + '%', f);
       });
-      NODES = data.nodes || []; EDGES = data.edges || [];
-      if (!NODES.length){
+      /* NOTHING is published to NODES until layout() can follow immediately.
+
+         The render loop is still running through every await below, and a node
+         only gets its hue, phase and 3-D position in layout(). Assigning NODES
+         first and awaiting afterwards let frame() iterate raw, un-laid-out
+         nodes: undefined coordinates projected to NaN, an "hsla(NaN ...)" colour
+         string, and addColorStop THROWS on that -- inside requestAnimationFrame,
+         which killed the loop and left a black canvas. Staging the data in
+         locals keeps the loop drawing the previous map until the new one is
+         ready to replace it in one synchronous step. */
+      const nextNodes = data.nodes || [];
+      const nextEdges = data.edges || [];
+      if (!nextNodes.length){
+        NODES = []; EDGES = [];
         loading(false);
         countMap.textContent='0 tracks -- scan some music first';
         return;
       }
-      if (hintEl) hintEl.textContent = NODES.length.toLocaleString() + ' tracks';
+      if (hintEl) hintEl.textContent = nextNodes.length.toLocaleString() + ' tracks';
       loading(true, 'Fetching your vibes and ratings…', 1);
       await loadOverlays();
-      if (mapMode === 'solar') await loadSolarSet();
+      if (mapMode === 'solar') await fetchSolarPayload();
       // Phase 3 -- the client-side work: projection, clustering, label anchors.
-      loading(true, 'Placing ' + NODES.length.toLocaleString() + ' stars…', 1);
+      loading(true, 'Placing ' + nextNodes.length.toLocaleString() + ' stars…', 1);
       // Yield once so the phase actually paints before layout() blocks the
       // thread; without this the last message is never seen.
       await new Promise(r => setTimeout(r, 0));
+
+      // --- the swap: no await between here and layout() ---
+      NODES = nextNodes; EDGES = nextEdges;
+      byHash.clear();
+      for (const n of NODES) byHash.set(n.hash, n);
+      if (mapMode === 'solar') solarSetFrom(solarPayload);
       resize(); layout();
       loading(false);
     }catch(err){
