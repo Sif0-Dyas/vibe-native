@@ -370,6 +370,32 @@
   const CORE_SCALE = 1.45;                          // lit body vs. the old flat dot
   const GLOW_SCALE = 2.6;                           // corona reach vs. core radius
 
+  /* ==== 3-D star rendering: SHELVED ====================================
+     Set SPHERES to true to bring it back. That is the only change needed --
+     everything it drives is still here and still works.
+
+     What it turns on: stars drawn as lit spheres with a corona, dot size
+     scaled by perspective, and brightness scaled by depth. What it costs, and
+     why it is off: it did not look the way it was meant to, and the glow and
+     per-star sprite work made a large library heavy to draw.
+
+     Deliberately a constant rather than a default, because a default loses to
+     whatever is already in localStorage -- anyone who had used the map before
+     would still get spheres, and would have no idea why. The constant wins
+     over stored preferences, so this is genuinely off for everyone.
+
+     With it off, the map draws the flat view that was always available as an
+     option: plain coloured discs, one size, positioned by the same 3-D layout.
+     The layouts, labels, filters, popups, ratings, search and the tree and
+     solar views are all untouched.
+     ==================================================================== */
+  const SPHERES = false;
+
+  // Read these instead of LBL.flat / LBL.glow anywhere that draws, so the
+  // constant above overrides whatever a returning user has stored.
+  const flatMode = () => (SPHERES ? LBL.flat : true);
+  const glowMode = () => (SPHERES ? LBL.glow : false);
+
   /* Where the light comes from, as a fraction of the body's radius.
      A sphere only reads as a sphere when it is lit from somewhere: a gradient
      centred on the middle is a fuzzy dot no matter how much resolution it has.
@@ -1270,8 +1296,8 @@
       // to 1 in flat mode neutralises all of those from one place, instead of
       // special-casing every draw site. Layout still comes from the 3-D
       // positions -- only the depth *cues* go away.
-      const depth = LBL.flat ? 1 : clamp((z2+1.15)/2.3, 0, 1);
-      const rp = LBL.flat ? 1 : persp;          // flat: every dot the same size
+      const depth = flatMode() ? 1 : clamp((z2+1.15)/2.3, 0, 1);
+      const rp = flatMode() ? 1 : persp;        // flat: every dot the same size
       const r = clamp(4.2*rp*Math.sqrt(view.zoom)*ratingBoost(n), 1.2, 46);
       // Cull anything whose glow cannot reach the viewport. At high zoom most
       // of the library sits off-screen, and blitting it was pure waste.
@@ -1352,7 +1378,7 @@
       }
       ctx.globalAlpha = bright * dim;
       if (!Number.isFinite(n.hue)) warnShade('node', n);
-      if (LBL.glow && !LBL.flat){
+      if (glowMode() && !flatMode()){
         // A lit sphere, not a flat disc -- this is what actually separates the
         // 3-D view from the 2-D one, which previously differed only in size and
         // transparency. Corona first (additive, faint), then the solid core on
@@ -2918,10 +2944,10 @@
       setChk('lbl-subalways', LBL.subAlways);
       setChk('lbl-color', LBL.colorFam);
       setChk('lbl-counts', LBL.counts);
-      setChk('lbl-flat', LBL.flat);
+      setChk('lbl-flat', flatMode());
       setChk('lbl-hidetext', LBL.hideText);
       setChk('lbl-leaders', LBL.leaders);
-      setChk('lbl-glow', LBL.glow);
+      setChk('lbl-glow', glowMode());
       setChk('lbl-rate', LBL.sizeByRating);
       setChk('lbl-rate-artist', LBL.useArtistRating);
       setVal('lbl-twinkle', LBL.twinkle);
@@ -2941,9 +2967,21 @@
       setVal('lbl-only', LBL.onlyFam || '');
       lblBtn.classList.toggle('on',
         !LBL.showFam || !LBL.showSub || !!LBL.onlyFam || !!LBL.maxFam || !!LBL.maxSub
-        || LBL.flat || LBL.linkWidth !== 1 || LBL.hideText || LBL.sizeByRating
-        || LBL.twinkle !== 'subtle' || !LBL.glow || LBL.labelStyle !== 'halo');
+        || LBL.linkWidth !== 1 || LBL.hideText || LBL.sizeByRating
+        || LBL.twinkle !== 'subtle' || LBL.labelStyle !== 'halo'
+        // Only count these while the 3-D path is live; otherwise the button
+        // would read as "settings changed" on a fresh install.
+        || (SPHERES && (LBL.flat || !LBL.glow)));
     };
+    // Hide what the shelved switch now decides. Left in the DOM rather than
+    // deleted from the template so restoring SPHERES needs no HTML change.
+    if (!SPHERES){
+      for (const id of ['lbl-flat', 'lbl-glow']){
+        const el = $(id);
+        const row = el && el.closest('.mp-row');
+        if (row) row.hidden = true;
+      }
+    }
     syncLbl();
     lblBtn.addEventListener('click', e => {
       e.stopPropagation();
