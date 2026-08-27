@@ -43,21 +43,9 @@
            '<span class="gk">yours</span> ' + obs + flag + '</div>';
   }
 
-  /* A tiny waveform in the genre's own colour. Drawn from the genre name so it
-     is stable per genre rather than random noise that changes on every render --
-     it should read as that genre's mark, not decoration. */
-  function waveSvg(color, seed) {
-    var n = 26, bars = [], acc = 0, i;
-    for (i = 0; i < String(seed).length; i++) acc = (acc * 31 + String(seed).charCodeAt(i)) % 9973;
-    for (i = 0; i < n; i++) {
-      acc = (acc * 1103515245 + 12345) % 2147483648;
-      var h = 3 + (acc % 100) / 100 * 15;                  // 3..18 of a 22 box
-      bars.push('<rect x="' + (i * 2.2) + '" y="' + ((22 - h) / 2).toFixed(1) +
-                '" width="1.3" height="' + h.toFixed(1) + '" rx="0.6"/>');
-    }
-    return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
-           'style="color:' + esc(color) + '">' + bars.join('') + '</svg>';
-  }
+  /* The tile's waveform mark. Lives in app.js so the Vibes tab draws exactly
+     the same mark from the same seed -- see vibeWaveSvg there. */
+  var waveSvg = window.vibeWaveSvg;
 
   /* Where this genre sits, and what colour it gets -- the two things the built-in
      tables decide that only the person with the library can correct.
@@ -132,6 +120,11 @@
 
     var sig = k.signature || '4/4';
     var feel = k.feel || '';
+    // Nearly every electronic genre is 4/4, so the signature alone separates
+    // nothing. `feel` is what actually differs -- Dubstep and Drum n Bass are
+    // both 4/4 but one is halftime and the other a breakbeat -- so it rides on
+    // the tile next to the meter rather than hiding in the opened detail.
+    var isArch = (k.tier === 'archgenre');
 
     // Tile = always visible. Detail = revealed on select, and the tile then
     // spans the full grid row so the detail has real width instead of being
@@ -143,13 +136,19 @@
           waveSvg(k.color, k.keystone) + '</span>' +
         '<span class="gen-titles">' +
           '<span class="gen-name">' + esc(k.keystone) + '</span>' +
-          '<span class="gen-level">' + esc(k.tier || 'keystone') + '</span>' +
+          '<span class="gen-level' + (isArch ? ' is-arch' : '') + '" title="' +
+            (isArch ? 'A top-level genre — nothing sits above it in the family tree'
+                    : 'A main genre that sits under a broader archgenre') + '">' +
+            esc(k.tier || 'keystone') + '</span>' +
         '</span>' +
         '<span class="gen-tilemeta">' +
           '<span class="gen-bpmbig">' + (avg ? Math.round(avg) : '—') + '<i>bpm</i></span>' +
-          '<span class="gen-sig">' + esc(sig) + '</span>' +
         '</span>' +
         '<span class="gen-tilefoot">' +
+          '<span class="gen-sig" title="Time signature — how the beats are counted. ' +
+            'Almost all dance music is 4/4.">' + esc(sig) + '</span>' +
+          (feel ? '<span class="gen-feelchip" title="The rhythm this genre is built on">' +
+                    esc(feel) + '</span>' : '') +
           '<span class="vib-state ' +
             (tr.state === 'ready' ? 'ok' : tr.state === 'thin' ? 'warn' : 'bad') + '">' +
             esc(tr.state) + '</span>' +
@@ -272,63 +271,149 @@
     }).catch(function () { box.innerHTML = '<div class="opt-note">could not load</div>'; });
   }
 
+  /* Plain-language opener. This is the first thing a new user reads on the tab,
+     so it explains the words the rest of the page uses before using them. */
+  function howCard() {
+    return '<div class="opt-card gen-how"><h3>How this works</h3>' +
+      '<div class="opt-note">' +
+      'Vibedentify listens to each track and works out what <b>genre</b> it is. ' +
+      'Genres are arranged in a tree, from broadest to most specific:' +
+      '<div class="gen-tree-key">' +
+        '<span><b>Archgenre</b><i>the widest bucket &mdash; e.g. <em>Bass Music</em></i></span>' +
+        '<span><b>Genre</b><i>what a track actually <em>is</em> &mdash; e.g. <em>Dubstep</em></i></span>' +
+        '<span><b>Subgenre</b><i>the fine detail &mdash; e.g. <em>Riddim</em></i></span>' +
+      '</div>' +
+      'Some genres are big enough to be an archgenre <em>and</em> a genre at the same ' +
+      'time &mdash; House and Trance, for instance. Those are marked ' +
+      '<span class="gen-level is-arch">archgenre</span> on their card.<br><br>' +
+      '<b>Each card below is one genre.</b> Click it to open it: what the genre is, how ' +
+      'fast it normally runs against how fast <em>your</em> copies actually measure, your ' +
+      'best tracks in it, and controls to move or recolour it. A card&rsquo;s border blinks ' +
+      'in time with that genre&rsquo;s typical tempo.<br><br>' +
+      '<b>Why a track can have two genres.</b> A track gets a second genre when the ' +
+      'runner-up scores at least 35% &mdash; real records do sit between two sounds. Where ' +
+      'the blend has a known name it is used (Dubstep + Drum n Bass = Drumstep); otherwise ' +
+      'the two names are joined with a slash.<br><br>' +
+      '<b>Why some genres share a colour.</b> Only eight can carry a clearly distinct ' +
+      'colour &mdash; past that the eye stops telling them apart reliably. The rest use a ' +
+      'neutral tone, and you read them from their position and label instead. Anything ' +
+      'that is not electronic music collapses into <b>Other</b>, since this is built for ' +
+      'an electronic library.' +
+      '</div></div>';
+  }
+
+  /* Total genres -- the whole library counted in one place: how many genres you
+     have, how many tracks sit in each, and what slice of the collection that is.
+     Counted at the keystone tier, because that is the level a person means when
+     they say "genre". */
+  function statsCard(families) {
+    var rows = [];
+    families.forEach(function (f) {
+      (f.keystones || []).forEach(function (k) {
+        rows.push({ name: k.keystone, count: k.count, color: k.color || '#888888',
+                    tier: k.tier });
+      });
+    });
+    var total = rows.reduce(function (a, r) { return a + r.count; }, 0);
+    rows.sort(function (a, b) { return b.count - a.count; });
+    var top = rows.length ? rows[0] : null;
+    var max = top ? top.count : 1;
+
+    var list = rows.map(function (r) {
+      var pct = total ? (r.count / total) * 100 : 0;
+      // The bar is scaled against the BIGGEST genre, not against 100%, or in a
+      // library with one dominant genre every other row renders as a sliver.
+      var w = max ? (r.count / max) * 100 : 0;
+      return '<div class="gen-stat-row" title="' + esc(r.name) + ' \u2014 ' + r.count +
+          ' track' + (r.count === 1 ? '' : 's') + ', ' + pct.toFixed(1) + '% of your library">' +
+        '<span class="gen-stat-name"><i class="gen-stat-dot" style="background:' +
+          esc(r.color) + '"></i>' + esc(r.name) +
+          (r.tier === 'archgenre' ? '<span class="gen-level is-arch">arch</span>' : '') +
+        '</span>' +
+        '<span class="gen-stat-bar"><span style="width:' + w.toFixed(1) + '%;background:' +
+          esc(r.color) + '"></span></span>' +
+        '<span class="gen-stat-n">' + r.count + '</span>' +
+        '<span class="gen-stat-pct">' + pct.toFixed(1) + '%</span>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="opt-card"><h3>Total genres</h3>' +
+      '<div class="gen-bigstats">' +
+        '<div class="gen-bigstat"><b>' + rows.length + '</b><i>genres in your library</i></div>' +
+        '<div class="gen-bigstat"><b>' + total + '</b><i>tracks analysed</i></div>' +
+        '<div class="gen-bigstat"><b>' + families.length + '</b><i>archgenre groups</i></div>' +
+        (top ? '<div class="gen-bigstat"><b>' + esc(top.name) + '</b><i>your biggest genre, ' +
+          (total ? Math.round(top.count / total * 100) : 0) + '% of the library</i></div>' : '') +
+      '</div>' +
+      (list ? '<div class="gen-stats">' + list + '</div>'
+            : '<div class="opt-note">Nothing analysed yet. Drop some music into the ' +
+              '<b>Analyzer</b> tab and this fills in.</div>') +
+      '<div class="opt-note">Percentages are of every analysed track. A track that reads ' +
+      'as two genres counts under whichever one it matches most strongly, so these add up ' +
+      'to 100%.</div>' +
+    '</div>';
+  }
+
   function render(families) {
-    var total = families.reduce(function (a, f) { return a + f.count; }, 0);
     body.innerHTML =
-      '<div class="opt-card"><h3>Library actions</h3>' +
-        '<div class="opt-row"><span class="k">Re-label</span>' +
-          '<span class="v" id="gen-rl-stat">—</span></div>' +
-        '<div class="opt-note">Re-runs the classifier over stored embeddings, so tracks ' +
-        'analysed before you trained a genre get corrected without a re-scan. Preview ' +
-        'first — it snapshots before applying, and can be reverted.</div>' +
+      // Order: explain it, then summarise it, then show it, then let them change
+      // it. Actions and appearance sit at the bottom because they are the rarest
+      // thing anyone opens this tab to do.
+      howCard() +
+      statsCard(families) +
+      '<h2 class="gen-sechd">Genres<span>every genre found in your library, grouped by ' +
+        'archgenre</span></h2>' +
+      families.map(function (f) {
+        var name = f.archgenre || f.family;
+        var solo = f.standalone && f.keystones.length === 1;
+        // The heading used to be dropped for a standalone archgenre because it
+        // repeats the single card beneath it. But that heading is the ONLY place
+        // the archgenre tier is stated, so House and Trance read as ordinary
+        // genres. Keep it, and say plainly why the name appears twice.
+        return '<div class="opt-card gen-fam">' +
+          '<h3>' + esc(name) + ' <span class="gen-n">' + f.count +
+            ' \u00b7 ' + Math.round(f.share * 100) + '% \u00b7 archgenre' +
+            (solo ? ' &amp; genre' : '') + '</span></h3>' +
+          (solo ? '<div class="opt-note gen-solonote">' + esc(name) + ' is broad enough to be ' +
+            'a top-level archgenre <em>and</em> a genre in its own right, so it appears at ' +
+            'both levels.</div>' : '') +
+          '<div class="gen-keys">' + f.keystones.map(keystoneCard).join('') + '</div>' +
+        '</div>';
+      }).join('') +
+      '<h2 class="gen-sechd">Library actions &amp; taxonomy edits' +
+        '<span>re-run the classifier, and keep your own corrections</span></h2>' +
+      '<div class="opt-card"><h3>Re-label your library</h3>' +
+        '<div class="opt-row"><span class="k">Status</span>' +
+          '<span class="v" id="gen-rl-stat">\u2014</span></div>' +
+        '<div class="opt-note">When you teach Vibedentify a genre (the <b>train</b> button on ' +
+        'any genre card), tracks you analysed <i>before</i> that still carry their old genre. ' +
+        'Re-labelling re-reads them using what it has learned since. It does not re-scan and ' +
+        'it never touches your audio files.<br><br>' +
+        '<b>Always press preview first.</b> It reports how many tracks would change without ' +
+        'changing anything. Applying takes a snapshot first, and <b>undo</b> puts everything ' +
+        'back.</div>' +
         '<div class="opt-actions">' +
-          '<button id="gen-rl-preview">preview</button>' +
-          '<button id="gen-rl-apply" disabled>apply</button>' +
-          '<button id="gen-rl-revert">revert</button>' +
+          '<button id="gen-rl-preview">1 \u00b7 preview</button>' +
+          '<button id="gen-rl-apply" disabled>2 \u00b7 apply</button>' +
+          '<button id="gen-rl-revert">undo</button>' +
           '<button id="gen-snap">snapshot now</button>' +
         '</div>' +
         '<div class="opt-note" id="gen-msg"></div>' +
       '</div>' +
-      paletteCard() +
       // Where the edits live. Worth stating plainly: this file is the reason a
       // placement survives nuking the database, and it can be edited by hand or
       // copied to another machine -- neither of which is discoverable otherwise.
       '<div class="opt-card"><h3>Your taxonomy edits</h3>' +
-        '<div class="opt-note">Placement and colour changes are saved to ' +
-        '<code>' + esc(OVERLAY_PATH || 'taxonomy.json') + '</code> — a plain JSON file ' +
-        'outside the database, so they survive a full re-scan. It holds only what you ' +
-        'changed; everything else keeps following the built-in tables. Safe to edit by ' +
-        'hand or copy to another machine.</div>' +
-        '<div class="opt-actions"><button id="gen-tax-reset">reset all edits</button></div>' +
+        '<div class="opt-note">Moved a genre under a different archgenre, or given it your own ' +
+        'colour? Those changes are yours, and they live in a plain text file at ' +
+        '<code>' + esc(OVERLAY_PATH || 'taxonomy.json') + '</code> &mdash; <i>outside</i> the ' +
+        'database, so re-scanning your whole collection will not wipe them. It stores only what ' +
+        'you changed; everything else follows the built-in tables. Safe to open in a text ' +
+        'editor, back up, or copy to another computer.</div>' +
+        '<div class="opt-actions"><button id="gen-tax-reset">reset all my edits</button></div>' +
         '<div class="opt-note" id="gen-tax-msg"></div>' +
       '</div>' +
-      families.map(function (f) {
-        var name = f.archgenre || f.family;
-        // A standalone archgenre IS its keystone (House, Techno...), so the
-        // heading would just repeat the card title underneath it.
-        var solo = f.standalone && f.keystones.length === 1;
-        return '<div class="opt-card gen-fam">' +
-          (solo ? '' : '<h3>' + esc(name) + ' <span class="gen-n">' + f.count +
-            ' · ' + Math.round(f.share * 100) + '% · archgenre</span></h3>') +
-          '<div class="gen-keys">' + f.keystones.map(keystoneCard).join('') + '</div>' +
-        '</div>';
-      }).join('') +
-      '<div class="opt-card"><h3>How this works</h3>' +
-        '<div class="opt-note">' +
-        '<b>Family → keystone → subgenre.</b> A subgenre of house is still house, so the ' +
-        'keystone is what a track <i>is</i> and the subgenres are detail. Families group ' +
-        'keystones for large-scale sorting; everything non-electronic collapses into ' +
-        '<b>Other</b>, because this is a tool for an electronic library.<br><br>' +
-        'A track gets <b>two keystones</b> when the runner-up holds at least 35% — measured ' +
-        'against this library, where the median track is 84% a single keystone. Where the ' +
-        'blend has an established name it is used (Dubstep + Drum n Bass = Drumstep); ' +
-        'otherwise the two are joined with a slash rather than inventing one.<br><br>' +
-        'Only <b>eight</b> keystones can carry a distinct colour — that is a hard limit of ' +
-        'categorical colour, not an oversight. One slot is reserved per electronic family ' +
-        'so a small family is never left colourless; the rest use the neutral and read from ' +
-        'position and label instead.' +
-        '</div>' +
-      '</div>';
+      paletteCard();
     wireActions();
     // one console per keystone card, built on demand -- each is several queries
     // Select a tile to expand it. One at a time: several open cards each
@@ -404,7 +489,6 @@
       // Clicking inside the row must not toggle the card shut underneath it.
       box.onclick = function (e) { e.stopPropagation(); };
     });
-    void total;
   }
 
   function msg(text, bad) {

@@ -1,6 +1,11 @@
 :root{
   --bg:#0D0F14; --panel:#141820; --panel-2:#1A1F2B; --line:#242C3A;
-  --text:#DDE3EE; --dim:#6B7690; --dimmer:#3D4560;
+  --text:#DDE3EE; --dim:#949DB3; --dimmer:#7E88A0;
+  /* Contrast floor: --dim and --dimmer carry 9-12px secondary text on --bg /
+     --panel. The old #6B7690 / #3D4560 measured 3.6:1 and 1.7:1 against the
+     panel -- under the 4.5:1 readable minimum, and the dimmer tier was
+     effectively invisible. These read 6.1:1 and 4.6:1 while keeping the
+     three-step hierarchy (text > dim > dimmer) intact. */
   --dnb:#E69F00; --trance:#56B4E9; --dub:#CC79A7; --other:#009E73; --err:#E5564F;
   --accent-a:#56B4E9; --accent-b:#9B6FD4;
   --grad:linear-gradient(90deg,var(--accent-b),var(--accent-a));
@@ -1895,8 +1900,15 @@ body.view-vibes .lensbar{ display:none; }
   color:var(--text); line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .gen-level{
-  font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--dimmer);
+  font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim);
   border:1px solid var(--line); border-radius:8px; padding:0 6px; display:inline-block; margin-top:3px;
+}
+/* An archgenre is a top-of-tree genre, and that is worth seeing without opening
+   the card -- House and Trance ARE archgenres but, being the only keystone in
+   their group, they never got the section heading that Bass Music gets. */
+.gen-level.is-arch{
+  color:var(--accent-a); border-color:color-mix(in srgb, var(--accent-a) 45%, transparent);
+  background:color-mix(in srgb, var(--accent-a) 12%, transparent); font-weight:600;
 }
 .gen-bpmbig{
   flex:0 0 auto; font-family:'JetBrains Mono',monospace; font-size:19px;
@@ -1936,14 +1948,22 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    detail gets real width instead of being squeezed into a column. */
 .gen-keys{
   display:grid; gap:10px;
-  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  /* 250px, not 190: at 190 the title column was left ~70px after the waveform
+     and the BPM block, so "Drum n Bass" and "Experimental" always ellipsised.
+     The genre name is the one thing a collapsed tile exists to tell you. */
+  grid-template-columns:repeat(auto-fill,minmax(265px,1fr));
   align-items:start;
 }
 .gen-key{ padding:0; overflow:hidden; }
 .gen-key.open{ grid-column:1/-1; }
 .gen-tile{
   display:grid; width:100%; cursor:pointer; text-align:left; gap:6px 9px;
-  grid-template-columns:auto 1fr auto;
+  /* minmax(90px,1fr) on the title, not a bare 1fr: a bare 1fr is free to
+     collapse below its content, and the BPM column next to it would squeeze
+     the name down to a few characters -- which is how "House" ended up
+     rendering as "Hous/e". 90px is the floor at which a short genre name
+     fits on one line at 14px Syne. */
+  grid-template-columns:auto minmax(90px,1fr) auto;
   grid-template-areas:"wave title meta" "foot foot foot";
   background:none; border:none; padding:10px 11px; color:inherit; align-items:center;
 }
@@ -1952,15 +1972,21 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
 .gen-wavebox{ grid-area:wave; }
 .gen-titles{ grid-area:title; min-width:0; display:block; }
 .gen-name{
-  display:block; font-family:'Syne',sans-serif; font-weight:800; font-size:14px;
-  color:var(--text); line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  /* 13px, not 14: Syne at 800 is wide, and "Experimental" / "Breakbeat" have
+     no natural break point -- at 14px they overflowed the title column and
+     broke mid-word, which is worse than a slightly smaller heading. */
+  display:block; font-family:'Syne',sans-serif; font-weight:800; font-size:13px;
+  color:var(--text); line-height:1.2;
+  /* Wrap rather than truncate. A clipped genre name is useless, and two lines
+     of it costs one row of grid height. */
+  white-space:normal; overflow-wrap:anywhere;
 }
 .gen-tilemeta{ grid-area:meta; display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
 .gen-sig{
   font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dimmer);
   border:1px solid var(--line); border-radius:4px; padding:0 4px;
 }
-.gen-tilefoot{ grid-area:foot; display:flex; align-items:center; gap:6px; }
+.gen-tilefoot{ grid-area:foot; display:flex; align-items:center; gap:6px; min-width:0; }
 .gen-tilefoot .gen-count{
   margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim);
 }
@@ -1979,10 +2005,201 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
 .gen-key.open .gen-actions,
 .gen-key.open .gen-panel{ grid-column:1/-1; }
 
-/* A clearer beat: the border colour AND a soft ring, so it reads at a glance
-   without being a strobe. */
-@keyframes genPulse{
-  0%   { border-color:var(--line); box-shadow:0 0 0 0 transparent; }
-  12%  { border-color:var(--gen-col); box-shadow:0 0 9px -1px var(--gen-col); }
-  100% { border-color:var(--line); box-shadow:0 0 0 0 transparent; }
+/* The beat. Two earlier passes at this were too faint to notice: a 1px border
+   tinted for 12% of a ~0.47s cycle is about 55ms of low-contrast change, which
+   reads as nothing. The border is now 2px on a pulsing card (reserved at rest so
+   nothing reflows), the flash holds through 30% before decaying, and the ring
+   carries real spread. --gen-col is the genre's own palette colour, set inline
+   per card, and --gen-beat is 60/BPM so each card breathes at its own tempo. */
+.gen-key.pulsing{
+  border-width:2px;
+  will-change:border-color, box-shadow;
 }
+@keyframes genPulse{
+  0%   { border-color:var(--gen-col); box-shadow:0 0 14px 1px var(--gen-col),
+                                                 inset 0 0 10px -4px var(--gen-col); }
+  30%  { border-color:var(--gen-col); box-shadow:0 0 10px 0 var(--gen-col),
+                                                 inset 0 0 8px -5px var(--gen-col); }
+  100% { border-color:color-mix(in srgb, var(--gen-col) 30%, var(--line));
+         box-shadow:0 0 0 0 transparent, inset 0 0 0 0 transparent; }
+}
+
+/* Reduced motion: no animation, but the card still carries its genre colour.
+   The previous rule dropped to `animation:none` and left the border at the
+   default grey, so the beat did not merely stop -- the colour vanished with it.
+   NOTE: Windows' "Show animations in Windows" setting (Settings > Accessibility
+   > Visual effects) turns this branch on system-wide, which is the most likely
+   reason a pulse looks entirely absent. */
+@media (prefers-reduced-motion: reduce){
+  .gen-key.pulsing{
+    animation:none;
+    border-color:color-mix(in srgb, var(--gen-col) 55%, var(--line));
+  }
+}
+
+/* ============================================================================
+   Genres tab, reorganised: explain -> summarise -> show -> configure.
+   ========================================================================== */
+
+/* Section rule between the four bands of the tab. Cards alone gave no sense of
+   where one concern ended and the next began. */
+.gen-sechd{
+  font-family:'Syne',sans-serif; font-size:17px; font-weight:800; color:var(--text);
+  margin:26px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--line);
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+}
+.gen-sechd span{
+  font-family:'DM Sans',sans-serif; font-size:12px; font-weight:400; color:var(--dim);
+}
+
+/* The three-tier glossary in "How this works". Defining archgenre / genre /
+   subgenre before the page uses those words is the whole job of this block. */
+.gen-tree-key{
+  display:grid; gap:8px; margin:10px 0 14px;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+}
+.gen-tree-key span{
+  display:block; padding:8px 10px; border-radius:var(--r-sm);
+  background:var(--panel-2); border-left:3px solid var(--accent-a);
+}
+.gen-tree-key b{
+  display:block; font-family:'Syne',sans-serif; font-size:12.5px; color:var(--text);
+  margin-bottom:2px;
+}
+.gen-tree-key i{ font-style:normal; font-size:11.5px; color:var(--dim); line-height:1.5; }
+.gen-tree-key em{ font-style:normal; color:var(--text); }
+
+/* Headline counters: the four numbers worth reading before any detail. */
+.gen-bigstats{
+  display:grid; gap:10px; margin-bottom:14px;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+}
+.gen-bigstat{
+  background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:10px 12px;
+}
+.gen-bigstat b{
+  display:block; font-family:'Syne',sans-serif; font-size:23px; font-weight:800;
+  color:var(--text); line-height:1.1; overflow-wrap:anywhere;
+}
+.gen-bigstat i{
+  display:block; font-style:normal; font-size:11px; color:var(--dim);
+  margin-top:3px; line-height:1.45;
+}
+
+/* One row per genre: colour, name, proportional bar, count, share. */
+.gen-stats{ display:flex; flex-direction:column; gap:3px; }
+.gen-stat-row{
+  display:grid; align-items:center; gap:10px;
+  grid-template-columns:minmax(120px,1.5fr) minmax(60px,3fr) 52px 52px;
+  padding:3px 0;
+}
+.gen-stat-name{
+  display:flex; align-items:center; gap:6px; min-width:0;
+  font-size:12.5px; color:var(--text); overflow-wrap:anywhere;
+}
+.gen-stat-dot{ width:9px; height:9px; border-radius:2px; flex:0 0 auto; }
+.gen-stat-name .gen-level{ margin-top:0; font-size:8px; padding:0 4px; flex:0 0 auto; }
+.gen-stat-bar{
+  height:9px; border-radius:5px; background:rgba(255,255,255,.05); overflow:hidden;
+}
+.gen-stat-bar > span{ display:block; height:100%; border-radius:5px; opacity:.82; }
+.gen-stat-n,
+.gen-stat-pct{
+  font-family:'JetBrains Mono',monospace; font-size:11.5px; text-align:right;
+}
+.gen-stat-n{ color:var(--text); }
+.gen-stat-pct{ color:var(--dim); }
+
+@media (max-width:640px){
+  /* Drop the bar first: the number and the share still carry the whole story. */
+  .gen-stat-row{ grid-template-columns:1fr 46px 50px; }
+  .gen-stat-bar{ display:none; }
+}
+
+/* A standalone archgenre now keeps its heading, so it needs one line saying why
+   the same name appears immediately below it. */
+.gen-solonote{ margin:-4px 0 10px; }
+
+/* Rhythm, next to the time signature. Almost every genre here is 4/4, so the
+   feel is the part that actually distinguishes them. */
+/* Lives in the foot row, which spans the whole tile. It sat in the meta column
+   next to the BPM at first and stole the width the genre name needed. */
+.gen-feelchip{
+  font-family:'DM Sans',sans-serif; font-size:9.5px; color:var(--dim);
+  line-height:1.3; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* ============================================================================
+   Vibes tab. Reuses the Genres tile classes wholesale (.gen-keys / .gen-key /
+   .gen-tile) so the two tabs read as one product; only what is genuinely
+   different about a vibe is styled here.
+   ========================================================================== */
+
+/* A vibe has no palette entry, so its colour is derived from its name and set
+   inline as --gen-col. Tint the left edge with it: enough to tell two vibes
+   apart in a grid, without the beat animation a genre card carries. */
+.vib-key{ border-left:3px solid var(--gen-col, var(--line)); }
+
+/* The two halves of an open vibe card: notes on the left, its tracks on the
+   right. Both are grid children of .gen-key.open .gen-detail, which already
+   lays out auto-fit columns, so they sit side by side on a wide window and
+   stack on a narrow one without a media query. */
+.vib-notewrap,
+.vib-sidewrap{ min-width:0; }
+.vib-sidewrap .vib-members{ margin-top:0; }
+.vib-sidewrap .gen-top{ max-height:340px; overflow-y:auto; }
+
+.vib-note{ width:100%; }
+.vib-row{ margin-top:7px; }
+/* The button leads and the status follows it, so the old margin-right:auto on
+   .vib-msg pushed against nothing. Let the status take the slack instead. */
+.vib-msg{ margin-right:0; margin-left:2px; }
+.vib-act-msg{ margin:0 0 0 auto; font-size:10px; }
+
+/* The export link sits in .opt-actions here rather than .gen-actions, and only
+   the latter had a rule for it -- so it rendered as a bare blue anchor. */
+.opt-actions a.gen-exp{
+  display:inline-flex; align-items:center; text-decoration:none;
+  font-family:'JetBrains Mono',monospace; font-size:11px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  color:var(--text); padding:5px 10px; cursor:pointer;
+}
+.opt-actions a.gen-exp:hover{ color:var(--accent-a); border-color:var(--accent-a); }
+
+/* A vibe tile's headline number is a track count, not a tempo, so it needs no
+   monospace tabular alignment against a column of other tempos -- but it should
+   still match the genre tile's weight. Inherits .gen-bpmbig; only the unit
+   label is wider here ("tracks" vs "bpm"). */
+.vib-key .gen-bpmbig i{ letter-spacing:.06em; }
+
+/* ============================================================================
+   Map: universe / solar controls, and the artist rating block.
+   ========================================================================== */
+
+/* Controls that belong to exactly one map mode. [hidden] alone loses to the
+   display rules on .map-filter, so state it explicitly. */
+.mode-only[hidden]{ display:none !important; }
+
+/* The artist rating sits directly under the track rating and must not read as
+   a second go at the same control -- it applies to everything by that artist.
+   Distinguished by an accent edge rather than a different layout, so the two
+   stay visibly the same KIND of thing. */
+.pop-rate-artist{
+  border-left:2px solid var(--accent-b);
+  padding-left:8px; margin-left:1px;
+}
+.pop-ratehint{
+  font-size:9.5px; color:var(--dim); margin:3px 0 2px 11px; line-height:1.4;
+}
+
+/* The new-vibe field inherited .opt-edit's flex:1 from the settings column,
+   where the container is 720px. On the Vibes tab the container is the full
+   window, so the input stretched to ~1400px and threw its button against the
+   far edge. A name field does not need more room than a name. */
+#vibes-view .opt-edit{ max-width:520px; }
+
+/* Mode-only selects must not push the toolbar onto a second line. They carry
+   short option text now; this caps them regardless of the longest option. */
+.mode-only.map-filter{ max-width:132px; }

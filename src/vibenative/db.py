@@ -170,6 +170,30 @@ def _migration_5(c):
         c.execute("ALTER TABLE vibes ADD COLUMN description TEXT DEFAULT ''")
 
 
+def _migration_6(c):
+    """v6 -- per-ARTIST ratings, alongside the per-track ones from v4.
+
+    A track rating and an artist rating answer different questions: "is this
+    record good" versus "is this producer worth my time". Neither implies the
+    other -- a favourite artist still puts out a weak track -- so they are
+    separate rows rather than one derived from the average of the other.
+
+    Keyed on a NORMALISED artist name (casefolded, whitespace collapsed) because
+    tags are not consistent: "Skrillex", "skrillex" and "SKRILLEX " are one
+    artist and must not become three ratings. ``display`` keeps the spelling the
+    user actually saw when they rated, so the UI can show it back to them
+    unchanged.
+
+    Deliberately NOT a foreign key to tracks: an artist is a string on a track,
+    not a row anywhere, and a rating should survive every track by that artist
+    being removed and re-added under a different filename.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS artist_ratings(
+        artist_key TEXT PRIMARY KEY, display TEXT DEFAULT '',
+        stars INTEGER DEFAULT 0, grade TEXT DEFAULT '',
+        note TEXT DEFAULT '', updated REAL)""")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -177,6 +201,7 @@ MIGRATIONS = [
     (3, _migration_3),
     (4, _migration_4),
     (5, _migration_5),
+    (6, _migration_6),
 ]
 
 

@@ -13,6 +13,30 @@
    The WebView renderer can crash on its own (e.g. OOM during a big batch),
    taking its console with it — so POST milestones + uncaught errors to the
    backend, where they persist in the log file. */
+/* The little waveform mark that fronts a tile on the Genres and Vibes tabs.
+
+   Drawn deterministically FROM THE NAME rather than from random noise, so it is
+   that genre's mark -- stable across reloads and identical on every machine --
+   instead of decoration that reshuffles on each render.
+
+   Shared rather than copied into both tabs: the two tabs are supposed to look
+   like one product, and a duplicated drawing primitive is exactly what drifts
+   apart the next time either side is touched. */
+function vibeWaveSvg(color, seed){
+  var n = 26, bars = [], acc = 0, i;
+  for (i = 0; i < String(seed).length; i++) acc = (acc * 31 + String(seed).charCodeAt(i)) % 9973;
+  for (i = 0; i < n; i++){
+    acc = (acc * 1103515245 + 12345) % 2147483648;
+    var h = 3 + (acc % 100) / 100 * 15;                    // 3..18 of a 22 box
+    bars.push('<rect x="' + (i * 2.2) + '" y="' + ((22 - h) / 2).toFixed(1) +
+              '" width="1.3" height="' + h.toFixed(1) + '" rx="0.6"/>');
+  }
+  var safe = String(color == null ? '' : color).replace(/[&<>"]/g, '');
+  return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
+         'style="color:' + safe + '">' + bars.join('') + '</svg>';
+}
+window.vibeWaveSvg = vibeWaveSvg;
+
 function clientLog(msg, level){
   try {
     fetch('/clientlog', {

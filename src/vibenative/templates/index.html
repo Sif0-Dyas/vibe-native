@@ -69,13 +69,13 @@
     <span class="sub">Scan and Sort!</span>
   </div>
   <nav class="tabs" id="tabs">
-    <button class="tab active" data-view="list" type="button">&#8801; List</button>
-    <button class="tab" data-view="library" type="button" title="browse every analyzed track in your library">&#8803; Library</button>
-    <button class="tab" data-view="map" type="button">&#10038; Map</button>
-    <button class="tab" data-view="genres" type="button" title="the genre taxonomy: families, keystones, BPM and your top tracks">&#9673; Genres</button>
-    <button class="tab" data-view="vibes" type="button" title="your own categories: what each vibe means, and its tracks">&#9672; Vibes</button>
-    <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
-    <button class="tab" data-view="options" type="button" title="settings & status">&#9881; Options</button>
+    <button class="tab active" data-view="library" type="button" title="Your whole collection: every track that has been analysed, searchable and sortable">&#8803; Library</button>
+    <button class="tab" data-view="list" type="button" title="Drop in new music to analyse it — this is where tracks enter your library">&#8801; Analyzer</button>
+    <button class="tab" data-view="map" type="button" title="See your whole library as a star map, grouped by how the music actually sounds">&#10038; Map</button>
+    <button class="tab" data-view="genres" type="button" title="Every genre found in your library: what it is, how fast it runs, and your best tracks in it">&#9673; Genres</button>
+    <button class="tab" data-view="vibes" type="button" title="Your own custom categories — moods and sets you invent yourself">&#9672; Vibes</button>
+    <button class="tab" data-view="guide" type="button" title="How to use Vibedentify, start to finish">&#9432; Guide</button>
+    <button class="tab" data-view="options" type="button" title="Settings, folders and system status">&#9881; Options</button>
   </nav>
   <div class="lensbar">
     <span class="lblab">identity</span>
@@ -160,9 +160,23 @@
     </div>
     <div class="map-mode" id="map-mode" title="layout: genre regions vs. pure sonic similarity">
       <button class="mm active" data-mode="regions" type="button">&#9678; regions</button>
-      <button class="mm" data-mode="galaxy" type="button">&#10022; galaxy</button>
-      <button class="mm" data-mode="tree" type="button">&#8866; tree</button>
+      <button class="mm" data-mode="universe" type="button" title="Every track as a star, grouped into galaxies">&#10022; universe</button>
+      <button class="mm" data-mode="solar" type="button" title="One playlist as a solar system">&#9737; solar</button>
+      <button class="mm" data-mode="tree" type="button" title="A flat family tree of your genres">&#8866; tree</button>
     </div>
+    <select id="uni-by" class="map-filter mode-only" data-for="universe"
+            title="What each galaxy in the Universe represents">
+      <option value="arch">by genre</option>
+      <option value="vibe">by vibe</option>
+    </select>
+    <select id="solar-pl" class="map-filter mode-only" data-for="solar"
+            title="Which playlist to show as a solar system"></select>
+    <select id="solar-by" class="map-filter mode-only" data-for="solar"
+            title="What decides how far out a track orbits">
+      <option value="similarity">rings: fit</option>
+      <option value="bpm">rings: tempo</option>
+      <option value="genre">rings: genre</option>
+    </select>
     <button id="map-harmonic" class="map-toggle" type="button" title="harmonic mixing: with a track selected, highlight key + BPM compatible tracks">&#127911;</button>
     <button id="map-edges" class="map-toggle on" type="button" title="show / hide the connection lines">&#8776;</button>
     <select id="map-filter" class="map-filter" title="show only one genre (or just the flagged reads)">
@@ -198,12 +212,31 @@
       </div>
       <button id="map-lbl-btn" class="map-toggle" type="button" title="label options (hide, colour, spacing, transparency)">&#127991;</button>
       <div id="map-lbl-panel" class="map-panel" hidden>
-        <div class="mp-head">Labels</div>
+        <div class="mp-head">Text</div>
+        <label class="mp-row"><input type="checkbox" id="lbl-hidetext"><span>Hide all text</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-fam" checked><span>Genre labels</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-sub" checked><span>Subgenre labels</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-subalways"><span>Always show subgenres</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-color"><span>Colour-match genres</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-counts"><span>Show track counts</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-leaders"><span>Lines from labels to genres</span></label>
+        <label class="mp-field"><span>Label background</span>
+          <select id="lbl-lblstyle" class="map-filter">
+            <option value="halo">outline only</option>
+            <option value="pill">solid plate</option>
+          </select></label>
+        <div class="mp-sep"></div>
+        <div class="mp-head">Stars</div>
+        <label class="mp-row"><input type="checkbox" id="lbl-glow" checked><span>Glowing stars (3-D)</span></label>
+        <label class="mp-field"><span>Flicker</span>
+          <select id="lbl-twinkle" class="map-filter">
+            <option value="off">off &mdash; steady</option>
+            <option value="subtle">subtle</option>
+            <option value="flicker">all stars flicker</option>
+          </select></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-rate"><span>Size stars by rating</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-rate-artist" checked><span>&nbsp;&nbsp;&mdash; count artist ratings too</span></label>
+        <div class="mp-hint">Unrated tracks stay small but visible, so nothing disappears.</div>
         <div class="mp-sep"></div>
         <label class="mp-row"><input type="checkbox" id="lbl-flat"><span>Flat (2-D) view</span></label>
         <label class="mp-field"><span>Line thickness <i id="lbl-lw-v">1.0&times;</i></span>

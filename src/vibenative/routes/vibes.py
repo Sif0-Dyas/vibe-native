@@ -229,6 +229,34 @@ def vibes_members(vid):
     )
 
 
+@bp.get("/vibes/membership")
+def vibes_membership():
+    """Every vibe with the hashes of its member tracks, in one request.
+
+    The map's Universe view can cluster by vibe, which means it needs the whole
+    membership table before it can lay out a single frame. Walking
+    ``/vibes/<id>/members`` per vibe would be one request per vibe on every map
+    open; this is one query total.
+
+    Returns hashes only -- no titles, no weights. The map already holds every
+    track it draws and looks them up by hash, so anything more would be payload
+    it throws away.
+    """
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute(
+            "SELECT v.id, v.name, vt.hash FROM vibes v "
+            "LEFT JOIN vibe_tracks vt ON vt.vibe_id = v.id ORDER BY v.name"
+        ).fetchall()
+    out, order = {}, []
+    for vid, name, h in rows:
+        if vid not in out:
+            out[vid] = {"id": vid, "name": name, "hashes": []}
+            order.append(vid)
+        if h:
+            out[vid]["hashes"].append(h)
+    return jsonify([out[v] for v in order])
+
+
 @bp.get("/vibes/match/<h>")
 def vibes_match(h):
     """Similarity of one track against every vibe's centroid."""

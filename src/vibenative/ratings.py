@@ -1,4 +1,5 @@
-"""Per-track ratings, and the Rekordbox collection XML they export into.
+"""Per-track and per-artist ratings, and the Rekordbox collection XML they
+export into.
 
 A rating is three things the analysis can't know: how good the track is (stars),
 a letter grade, and a free note. They live in their own table rather than in the
@@ -87,6 +88,127 @@ def put(hash_, stars=None, grade=None, note=None):
             (hash_, stars, grade, note, time.time()),
         )
     return {"hash": hash_, "stars": stars, "grade": grade, "note": note}
+
+
+# ---------------------------------------------------------------------------
+# Artist ratings
+#
+# Same three fields as a track rating, hung off the artist name instead of a
+# content hash. Kept in this module rather than a new one because everything
+# here -- the 0-5 clamp, the grade list, the note cap, the Rekordbox star
+# ladder -- applies identically, and splitting it would mean two definitions of
+# "what a rating is" drifting apart.
+# ---------------------------------------------------------------------------
+
+
+def artist_key(name):
+    """Normalised lookup key for an artist name.
+
+    Casefolded and whitespace-collapsed, because artist tags are not written
+    consistently: "Skrillex", "skrillex" and "SKRILLEX " are one artist and must
+    not end up as three separate ratings. Returns "" for anything blank, which
+    callers treat as "no artist to rate".
+    """
+    return " ".join(str(name or "").split()).casefold()
+
+
+def artist_get(name):
+    """One artist's rating, or the empty rating if they have none."""
+    key = artist_key(name)
+    if not key:
+        return {"artist": "", "key": "", "stars": 0, "grade": "", "note": ""}
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute(
+            "SELECT display, stars, grade, note FROM artist_ratings WHERE artist_key=?", (key,)
+        ).fetchone()
+    if not row:
+        return {"artist": str(name).strip(), "key": key, "stars": 0, "grade": "", "note": ""}
+    return {
+        "artist": row[0] or str(name).strip(),
+        "key": key,
+        "stars": row[1] or 0,
+        "grade": row[2] or "",
+        "note": row[3] or "",
+    }
+
+
+def artist_get_many(names):
+    """{artist_key: rating} for many artists in one query.
+
+    The map view sizes every star by its artist's rating, so a per-artist lookup
+    would be one query per track. Chunked against SQLite's 999-variable limit,
+    exactly as :func:`get_many` is.
+    """
+    keys = []
+    seen = set()
+    for n in names:
+        k = artist_key(n)
+        if k and k not in seen:
+            seen.add(k)
+            keys.append(k)
+    if not keys:
+        return {}
+    out = {}
+    with _db_lock, closing(db()) as conn, conn as c:
+        for i in range(0, len(keys), 500):
+            chunk = keys[i : i + 500]
+            q = ",".join("?" * len(chunk))
+            for k, display, stars, grade, note in c.execute(
+                f"SELECT artist_key, display, stars, grade, note FROM artist_ratings "  # nosec B608
+                f"WHERE artist_key IN ({q})",
+                chunk,
+            ):
+                out[k] = {
+                    "artist": display or k,
+                    "key": k,
+                    "stars": stars or 0,
+                    "grade": grade or "",
+                    "note": note or "",
+                }
+    return out
+
+
+def artist_put(name, stars=None, grade=None, note=None):
+    """Create or update an artist's rating. Only the fields passed are changed,
+    so setting stars from the map does not wipe a note written elsewhere."""
+    key = artist_key(name)
+    if not key:
+        raise ValueError("artist name required")
+    cur = artist_get(name)
+    stars = _clamp_stars(cur["stars"] if stars is None else stars)
+    grade = (cur["grade"] if grade is None else str(grade)).strip().upper()[:4]
+    note = (cur["note"] if note is None else str(note)).strip()[:MAX_NOTE]
+    display = str(name).strip() or cur["artist"]
+    with _db_lock, closing(db()) as conn, conn as c:
+        c.execute(
+            "INSERT INTO artist_ratings(artist_key, display, stars, grade, note, updated) "
+            "VALUES(?,?,?,?,?,?) "
+            "ON CONFLICT(artist_key) DO UPDATE SET display=excluded.display, "
+            "stars=excluded.stars, grade=excluded.grade, note=excluded.note, "
+            "updated=excluded.updated",
+            (key, display, stars, grade, note, time.time()),
+        )
+    return {"artist": display, "key": key, "stars": stars, "grade": grade, "note": note}
+
+
+def artist_all():
+    """Every rated artist, best first. Backs the map's artist-rating overlay in
+    one request rather than one per visible star."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute(
+            "SELECT artist_key, display, stars, grade, note FROM artist_ratings "
+            "ORDER BY stars DESC, display COLLATE NOCASE"
+        ).fetchall()
+    return [
+        {
+            "key": r[0],
+            "artist": r[1] or r[0],
+            "stars": r[2] or 0,
+            "grade": r[3] or "",
+            "note": r[4] or "",
+        }
+        for r in rows
+    ]
 
 
 def comment_for(rating):
