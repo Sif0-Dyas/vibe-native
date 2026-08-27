@@ -28,7 +28,10 @@
 
   function bpmCell(b) {
     if (!b) return '';
-    var can = b.canonical ? b.canonical[0] + '–' + b.canonical[1] : '—';
+    // No canonical range means there is nothing conventional to compare against
+    // -- true for every subgenre, and for the non-electronic keystones where
+    // tempo is not how the genre is defined. Say nothing rather than "typical —".
+    var can = b.canonical ? b.canonical[0] + '–' + b.canonical[1] : null;
     var o = b.observed;
     var obs = o ? o.p10 + '–' + o.p90 + ' <i>(med ' + o.median + ')</i>' : '—';
     // The flag is the point of showing both: a ~2x gap means the tempo was
@@ -39,7 +42,8 @@
         ' the conventional range — an octave misread, not an unusual genre">' +
         b.octave_flag + '-time</span>'
       : '';
-    return '<div class="gen-bpm"><span class="gk">typical</span> ' + esc(can) +
+    return '<div class="gen-bpm">' +
+           (can ? '<span class="gk">typical</span> ' + esc(can) : '') +
            '<span class="gk">yours</span> ' + obs + flag + '</div>';
   }
 
@@ -117,7 +121,7 @@
     // the main reason to look at this tab, and hiding it behind a click made
     // whole archgenres read as childless.
     var TILE_SUBS = 5;
-    var tileSubs = kids.length
+    var tileSubs = (k.tier === 'archgenre') ? '' : kids.length
       ? '<span class="gen-subrow">' + kids.slice(0, TILE_SUBS).map(chip).join('') +
         (kids.length > TILE_SUBS
           ? '<span class="gen-submore">+' + (kids.length - TILE_SUBS) + ' more</span>' : '') +
@@ -196,6 +200,48 @@
           '<button class="gen-reset-top" data-g="' + esc(k.keystone) + '">reset</button>' +
         '</div>' +
         '<div class="gen-panel" hidden></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function subgenreCard(sg, parent) {
+    var o = (sg.bpm && sg.bpm.observed) || null;
+    var avg = o ? o.median : null;
+    var beat = avg ? (60 / avg).toFixed(3) + 's' : null;
+    var col = sg.color || parent.color || '#888888';
+    var pulse = beat ? ' style="--gen-beat:' + beat + ';--gen-col:' + esc(col) + '"' : '';
+    var top = (sg.top || []).map(function (t) {
+      return '<li>' + esc(t.title) + (t.bpm ? ' <i>' + Math.round(t.bpm) + '</i>' : '') + '</li>';
+    }).join('');
+    return '<div class="gen-key gen-subcard' + (beat ? ' pulsing' : '') + '"' + pulse +
+        ' data-g="' + esc(sg.style) + '">' +
+      '<button class="gen-tile" type="button">' +
+        '<span class="gen-wavebox" style="border-color:' + esc(col) + '55">' +
+          waveSvg(col, sg.style) + '</span>' +
+        '<span class="gen-titles">' +
+          '<span class="gen-name">' + esc(sg.style) + '</span>' +
+          '<span class="gen-level" title="A subgenre of ' + esc(parent.keystone) +
+            '">subgenre</span>' +
+        '</span>' +
+        '<span class="gen-tilemeta">' +
+          '<span class="gen-bpmbig">' + (avg ? Math.round(avg) : '—') + '<i>bpm</i></span>' +
+        '</span>' +
+        '<span class="gen-tilefoot">' +
+          '<span class="gen-sub-parent">in ' + esc(parent.keystone) + '</span>' +
+          '<span class="gen-count">' + sg.count + '</span>' +
+        '</span>' +
+      '</button>' +
+      '<div class="gen-detail" hidden>' +
+        '<div class="gen-block">' +
+          bpmCell(sg.bpm) +
+        '</div>' +
+        (top ? '<div class="gen-block">' +
+                 '<div class="gen-toph">top tracks</div>' +
+                 '<ol class="gen-top">' + top + '</ol>' +
+               '</div>' : '') +
+        '<div class="opt-note gen-subnote">A subgenre of <b>' + esc(parent.keystone) +
+          '</b>. Placement, colour and training are set on ' + esc(parent.keystone) +
+          '’s own card — everything under it follows.</div>' +
       '</div>' +
     '</div>';
   }
@@ -347,7 +393,7 @@
       // The bar is scaled against the BIGGEST genre, not against 100%, or in a
       // library with one dominant genre every other row renders as a sliver.
       var w = max ? (r.count / max) * 100 : 0;
-      return '<div class="gen-stat-row" title="' + esc(r.name) + ' \u2014 ' + r.count +
+      return '<div class="gen-stat-row" title="' + esc(r.name) + ' — ' + r.count +
           ' track' + (r.count === 1 ? '' : 's') + ', ' + pct.toFixed(1) + '% of your library">' +
         '<span class="gen-stat-name"><i class="gen-stat-dot" style="background:' +
           esc(r.color) + '"></i>' + esc(r.name) +
@@ -400,14 +446,25 @@
           (solo ? '<div class="opt-note gen-solonote">' + esc(name) + ' is broad enough to be ' +
             'a top-level archgenre <em>and</em> a genre in its own right, so it appears at ' +
             'both levels.</div>' : '') +
-          '<div class="gen-keys">' + f.keystones.map(keystoneCard).join('') + '</div>' +
+          '<div class="gen-keys">' +
+            f.keystones.map(keystoneCard).join('') +
+            // A standalone archgenre IS its only keystone, so the genres it
+            // contains are that keystone's subgenres. Promote them to cards so
+            // this section lists what it holds, exactly as a multi-keystone
+            // archgenre like Bass already does.
+            (solo ? (f.keystones[0].subgenres || [])
+                      .filter(function (sg) { return sg.style !== f.keystones[0].keystone; })
+                      .map(function (sg) { return subgenreCard(sg, f.keystones[0]); })
+                      .join('')
+                  : '') +
+          '</div>' +
         '</div>';
       }).join('') +
       '<h2 class="gen-sechd">Library actions &amp; taxonomy edits' +
         '<span>re-run the classifier, and keep your own corrections</span></h2>' +
       '<div class="opt-card"><h3>Re-label your library</h3>' +
         '<div class="opt-row"><span class="k">Status</span>' +
-          '<span class="v" id="gen-rl-stat">\u2014</span></div>' +
+          '<span class="v" id="gen-rl-stat">—</span></div>' +
         '<div class="opt-note">When you teach Vibedentify a genre (the <b>train</b> button on ' +
         'any genre card), tracks you analysed <i>before</i> that still carry their old genre. ' +
         'Re-labelling re-reads them using what it has learned since. It does not re-scan and ' +

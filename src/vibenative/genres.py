@@ -220,7 +220,15 @@ def summarise(top_n=5, mode="dark"):
         if not cls:
             continue
         primary = cls["keystones"][0]
-        b = buckets.setdefault(primary, {"bpm": [], "subgenres": {}, "tracks": [], "count": 0})
+        b = buckets.setdefault(
+            primary,
+            {"bpm": [], "subgenres": {}, "tracks": [], "count": 0,
+             # Per-subgenre tempo and tracks. A standalone archgenre (House,
+             # Techno, Trance) has exactly one keystone -- itself -- so its
+             # subgenres are the only genres it has to show, and a bare count is
+             # not enough to build a card from.
+             "sub_bpm": {}, "sub_tracks": {}},
+        )
         b["count"] += 1
         bpm = p.get("bpm")
         if bpm:
@@ -242,7 +250,22 @@ def summarise(top_n=5, mode="dark"):
         # this keystone is its dominant subgenre.
         for s in cls["subgenres"]:
             if s.get("keystone") == primary and s.get("style"):
-                b["subgenres"][s["style"]] = b["subgenres"].get(s["style"], 0) + 1
+                style = s["style"]
+                b["subgenres"][style] = b["subgenres"].get(style, 0) + 1
+                if bpm:
+                    try:
+                        b["sub_bpm"].setdefault(style, []).append(float(bpm))
+                    except (TypeError, ValueError):
+                        pass
+                b["sub_tracks"].setdefault(style, []).append(
+                    {
+                        "hash": h,
+                        "title": title or (filename or h[:8]),
+                        "share": cls["shares"].get(primary, 0.0),
+                        "confidence": round(float(s.get("score") or 0), 4),
+                        "bpm": bpm,
+                    }
+                )
                 break
         lead = cls["subgenres"][0]["score"] if cls["subgenres"] else 0.0
         b["tracks"].append(
@@ -286,13 +309,41 @@ def summarise(top_n=5, mode="dark"):
                     "octave_flag": _octave_flag(obs.get("median") if obs else None, canonical),
                 },
                 "subgenres": [
-                    {"style": s, "count": n}
+                    _subgenre_profile(s, n, b, name, mode, top_n)
                     for s, n in sorted(b["subgenres"].items(), key=lambda kv: -kv[1])
                 ],
                 "top": b["tracks"][:top_n],
             }
         )
     return out
+
+
+def _subgenre_profile(style, count, bucket, keystone, mode, top_n):
+    """One subgenre, carrying enough to render as a card rather than a chip.
+
+    Deliberately thinner than a keystone profile. A subgenre has no entry in
+    PROFILES, so there is no blurb, no canonical tempo and no conventional
+    feel to state -- inventing them would be worse than leaving them out. What
+    it does have is real: how many of your tracks are it, what tempo they
+    actually run at, and which are the most representative.
+
+    Colour comes from the parent keystone. The palette is solved for keystones
+    only, and giving a subgenre its own hue would either collide with a
+    neighbouring keystone or imply a distinction the palette never made.
+    """
+    tracks = sorted(
+        bucket["sub_tracks"].get(style, []),
+        key=lambda t: (-t["share"], -t["confidence"]),
+    )
+    return {
+        "style": style,
+        "count": count,
+        "keystone": keystone,
+        "color": P.keystone_color(keystone, mode),
+        "bpm": {"canonical": None, "observed": _bpm_stats(bucket["sub_bpm"].get(style, [])),
+                "octave_flag": None},
+        "top": tracks[:top_n],
+    }
 
 
 def _bpm_stats(values):

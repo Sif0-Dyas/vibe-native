@@ -2329,3 +2329,16 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    right with its chips on the far left. */
 .gen-block{ min-width:0; }
 .gen-block .gen-toph{ margin-top:0; }
+
+/* Subgenre cards. Shown inside a standalone archgenre's section, where the
+   archgenre's only keystone is itself and its subgenres ARE the genres it
+   holds. Visually subordinate to a keystone card -- lighter surface, no solid
+   fill -- so the tier is legible without reading the chip. */
+.gen-subcard{ background:rgba(255,255,255,.012); }
+.gen-subcard .gen-name{ font-size:12px; }
+.gen-subcard .gen-bpmbig{ font-size:16px; }
+.gen-sub-parent{
+  font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dimmer);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
+}
+.gen-subnote{ grid-column:1/-1; }
