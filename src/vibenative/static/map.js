@@ -369,12 +369,28 @@
   const SPRITE_R = 64;                              // sprite half-size in px
   const CORE_SCALE = 1.45;                          // lit body vs. the old flat dot
   const GLOW_SCALE = 2.6;                           // corona reach vs. core radius
+
+  /* Where the light comes from, as a fraction of the body's radius.
+     A sphere only reads as a sphere when it is lit from somewhere: a gradient
+     centred on the middle is a fuzzy dot no matter how much resolution it has.
+     Offsetting the highlight up and to the left gives the shading a direction,
+     and keeping that direction the same for every star makes the field look
+     like one scene rather than a thousand unrelated blobs. */
+  const LIGHT_X = -0.38, LIGHT_Y = -0.38;
   // Above this on-screen core radius the sprite is being magnified past its own
   // resolution and goes soft, so those few stars are drawn with a real gradient
   // instead. The threshold is in CSS pixels and deliberately low: at any given
   // moment only a handful of stars are this big, so the per-frame gradient cost
   // is negligible, while every small star still comes from the cache.
-  const CRISP_ABOVE = 9;
+  // On-screen core radius past which the sprite is magnified beyond its own
+  // resolution and the exact path is worth its cost. The sprite is SPRITE_R
+  // (64px) of source, so 1:1 at DPR 2 lands around 32; 26 keeps a margin.
+  //
+  // Set this low (3.2) at one point and the map ground to under a frame per
+  // second: at high zoom that is thousands of createRadialGradient calls every
+  // frame. The sprite is a clipped, hard-edged sphere itself now, so there is
+  // nothing to gain from the exact path until magnification actually softens it.
+  const CRISP_ABOVE = 26;
   // How much of the corona is added per star. Deliberately small: the corona is
   // drawn with 'lighter', which ACCUMULATES, and a dense cluster stacks hundreds
   // of them on the same pixels. At full strength that saturates to a solid white
@@ -391,33 +407,78 @@
      `corona` is the halo, drawn additively at low alpha so that a handful of
      nearby stars genuinely brighten each other -- the part that reads as light
      being emitted -- without a crowd blowing out to white. */
-  function starSprite(hue, sat, light, kind){
+  /* Colour stops for a lit sphere, from the highlight out to the dark limb.
+
+     The silhouette stop is FULLY OPAQUE. That is the whole difference between
+     an orb and a blur: the previous body faded from alpha 0.95 to 0 across the
+     outer 38% of its radius, so its edge was soft by construction and no amount
+     of sprite resolution could sharpen it. Here the edge is defined by the arc
+     path instead, which the canvas antialiases at exactly the drawn size --
+     crisp at 2px and at 200. */
+  function sphereStops(grd, h, sa, li){
+    grd.addColorStop(0.00, `hsla(${h} ${Math.max(0, sa - 30)}% ${clamp(li + 46, 62, 99)}% / 1)`);
+    grd.addColorStop(0.14, `hsla(${h} ${Math.min(100, sa + 6)}% ${clamp(li + 28, 46, 92)}% / 1)`);
+    grd.addColorStop(0.42, `hsla(${h} ${Math.min(100, sa + 14)}% ${clamp(li + 6, 26, 78)}% / 1)`);
+    grd.addColorStop(0.74, `hsla(${h} ${sa}% ${clamp(li - 10, 12, 64)}% / 1)`);
+    // A touch of light back on the dark limb -- bounce light. Without it the
+    // terminator runs to black and the ball reads as a crescent.
+    grd.addColorStop(0.93, `hsla(${h} ${sa}% ${clamp(li - 20, 7, 52)}% / 1)`);
+    grd.addColorStop(1.00, `hsla(${h} ${Math.min(100, sa + 8)}% ${clamp(li - 8, 10, 60)}% / 1)`);
+  }
+
+  /* One lit sphere, drawn at its exact on-screen size. */
+  function drawSphere(cx, cy, r, h, sa, li){
+    const g = ctx.createRadialGradient(
+      cx + r * LIGHT_X, cy + r * LIGHT_Y, r * 0.03,   // highlight
+      cx, cy, r);                                      // body
+    sphereStops(g, h, sa, li);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 6.2832);
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+
+  // Canonical body lightness a sprite is baked at. Per-star brightness is
+  // applied as alpha at draw time, so this is only the midpoint it varies around.
+  const SPRITE_LIGHT = 56;
+
+  function starSprite(hue, sat, dl, kind){
     const h = Math.round(hueOk(hue) / 6) * 6;
     const sa = Math.round(pctOk(sat, 64) / 8) * 8;
-    const li = Math.round(pctOk(light, 50) / 6) * 6;
+    // dl is the subgenre's lightness offset -- stable for the whole layout, so
+    // it is safe in the key. Depth and twinkle deliberately are NOT.
+    const li = Math.round(clamp(SPRITE_LIGHT + (Number.isFinite(dl) ? dl : 0), 20, 84) / 6) * 6;
     const key = kind + '|' + h + '|' + sa + '|' + li;
     let cv = STAR_SPRITES.get(key);
     if (cv) return cv;
+    // Backstop. The key is bounded by the palette and the subgenre list, so this
+    // should never fire -- but an unbounded canvas cache is how the renderer
+    // froze once already, and a cleared cache costs a few milliseconds to refill.
+    if (STAR_SPRITES.size > 400) STAR_SPRITES.clear();
     cv = document.createElement('canvas');
     cv.width = cv.height = SPRITE_R * 2;
     const g = cv.getContext('2d');
-    const grd = g.createRadialGradient(SPRITE_R, SPRITE_R, 0, SPRITE_R, SPRITE_R, SPRITE_R);
     if (kind === 'core'){
-      // Opaque out to ~55% of the sprite, then a short soft edge. The soft edge
-      // is what makes it read as a sphere instead of a flat disc; making it any
-      // longer just looks out of focus.
-      grd.addColorStop(0.00, `hsla(${h} ${Math.min(100, sa + 26)}% ${clamp(li + 34, 44, 96)}% / 1)`);
-      grd.addColorStop(0.30, `hsla(${h} ${Math.min(100, sa + 12)}% ${clamp(li + 14, 26, 84)}% / 1)`);
-      grd.addColorStop(0.62, `hsla(${h} ${sa}% ${li}% / 0.95)`);
-      grd.addColorStop(0.86, `hsla(${h} ${sa}% ${clamp(li - 6, 10, 80)}% / 0.45)`);
-      grd.addColorStop(1.00, `hsla(${h} ${sa}% ${clamp(li - 8, 8, 78)}% / 0)`);
+      // The same lit sphere as drawSphere, baked once. Clipped to the circle so
+      // the sprite carries a hard edge (one pixel of antialiasing, not a 38%
+      // fade), which is what keeps a blitted star looking solid.
+      const R = SPRITE_R - 1;
+      const grd = g.createRadialGradient(
+        SPRITE_R + R * LIGHT_X, SPRITE_R + R * LIGHT_Y, R * 0.03,
+        SPRITE_R, SPRITE_R, R);
+      sphereStops(grd, h, sa, li);
+      g.beginPath();
+      g.arc(SPRITE_R, SPRITE_R, R, 0, 6.2832);
+      g.fillStyle = grd;
+      g.fill();
     } else {
+      const grd = g.createRadialGradient(SPRITE_R, SPRITE_R, 0, SPRITE_R, SPRITE_R, SPRITE_R);
       grd.addColorStop(0.00, `hsla(${h} ${Math.min(100, sa + 14)}% ${clamp(li + 20, 34, 90)}% / 0.85)`);
       grd.addColorStop(0.35, `hsla(${h} ${sa}% ${li}% / 0.34)`);
       grd.addColorStop(1.00, `hsla(${h} ${sa}% ${li}% / 0)`);
+      g.fillStyle = grd;
+      g.fillRect(0, 0, SPRITE_R * 2, SPRITE_R * 2);
     }
-    g.fillStyle = grd;
-    g.fillRect(0, 0, SPRITE_R * 2, SPRITE_R * 2);
     STAR_SPRITES.set(key, cv);
     return cv;
   }
@@ -1281,15 +1342,16 @@
         : LBL.twinkle === 'flicker'
           ? 0.70 + 0.30*Math.sin(t*6.1 + n.ph*5.3) + 0.16*Math.sin(t*2.3 + n.ph*11.7)
           : 0.9 + 0.1*Math.sin(t*1.6 + n.ph);
-      const light = (26 + 44*p.depth) * tw;
+      // Brightness, as alpha. This used to be baked into the sprite's lightness,
+      // which is what made the cache key churn every frame.
+      const bright = clamp(((26 + 44*p.depth) * tw) / 70, 0.16, 1);
       let compatible = false, dim = 1;
       if (harmonicOn && h !== selHash){         // harmonic mixing: mute non-matches
         compatible = keyCompatible(selNode.camelot, n.camelot) && bpmCompatible(selNode.bpm, n.bpm);
         dim = compatible ? 1 : 0.1;
       }
-      ctx.globalAlpha = (0.45 + 0.55*p.depth) * dim;
-      const li = clamp(light + (n.dl||0), 16, 84);
-      if (!Number.isFinite(n.hue) || !Number.isFinite(li)) warnShade('node', n);
+      ctx.globalAlpha = bright * dim;
+      if (!Number.isFinite(n.hue)) warnShade('node', n);
       if (LBL.glow && !LBL.flat){
         // A lit sphere, not a flat disc -- this is what actually separates the
         // 3-D view from the 2-D one, which previously differed only in size and
@@ -1303,31 +1365,25 @@
         if (p.r > 1.8 && prevA > 0.12){
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = prevA * GLOW_ALPHA;
-          ctx.drawImage(starSprite(n.hue, n.sat||64, li, 'corona'), p.sx-gr, p.sy-gr, gr*2, gr*2);
+          ctx.drawImage(starSprite(n.hue, n.sat||64, n.dl, 'corona'), p.sx-gr, p.sy-gr, gr*2, gr*2);
           ctx.globalCompositeOperation = 'source-over';
           ctx.globalAlpha = prevA;
         }
         const cr = p.r * CORE_SCALE;
         if (cr > CRISP_ABOVE){
-          // Big enough that the 64px sprite would visibly blur -- shade it
-          // directly. Same stops as the sprite, so a star does not change
-          // appearance as it crosses the threshold. Same coercion too: these
-          // strings reach addColorStop, which throws on a NaN component.
-          const hh = hueOk(n.hue), ss = pctOk(n.sat, 64), ll = pctOk(li, 50);
-          const g = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, cr);
-          g.addColorStop(0.00, `hsla(${hh} ${Math.min(100, ss+26)}% ${clamp(ll+34,44,96)}% / 1)`);
-          g.addColorStop(0.30, `hsla(${hh} ${Math.min(100, ss+12)}% ${clamp(ll+14,26,84)}% / 1)`);
-          g.addColorStop(0.62, `hsla(${hh} ${ss}% ${ll}% / 0.95)`);
-          g.addColorStop(0.86, `hsla(${hh} ${ss}% ${clamp(ll-6,10,80)}% / 0.45)`);
-          g.addColorStop(1.00, `hsla(${hh} ${ss}% ${clamp(ll-8,8,78)}% / 0)`);
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(p.sx, p.sy, cr, 0, 6.2832); ctx.fill();
+          // Only when the sprite would be magnified past its own resolution.
+          // Setting this threshold low is what dropped the map to a crawl once:
+          // it is a fresh gradient object per star per frame.
+          drawSphere(p.sx, p.sy, cr, hueOk(n.hue), pctOk(n.sat, 64),
+                     clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84));
         } else {
-          ctx.drawImage(starSprite(n.hue, n.sat||64, li, 'core'), p.sx-cr, p.sy-cr, cr*2, cr*2);
+          ctx.drawImage(starSprite(n.hue, n.sat||64, n.dl, 'core'), p.sx-cr, p.sy-cr, cr*2, cr*2);
         }
       } else {
+        // Flat (2-D): a plain disc. Depth and twinkle are already in globalAlpha.
         ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
-        ctx.fillStyle = `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ${pctOk(li, 50)}%)`;
+        ctx.fillStyle = `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ` +
+                        `${clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84)}%)`;
         ctx.fill();
       }
       if (compatible){                          // key + BPM compatible -> teal ring
@@ -1692,10 +1748,10 @@
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.55;
-      ctx.drawImage(starSprite(44, 92, 62, 'corona'), c0.sx-sr*2.4, c0.sy-sr*2.4, sr*4.8, sr*4.8);
+      ctx.drawImage(starSprite(44, 92, 8, 'corona'), c0.sx-sr*2.4, c0.sy-sr*2.4, sr*4.8, sr*4.8);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(starSprite(46, 95, 66, 'core'), c0.sx-sr, c0.sy-sr, sr*2, sr*2);
+      drawSphere(c0.sx, c0.sy, sr, 46, 95, 74);
       ctx.restore();
     }
     if (LBL.hideText) return;
