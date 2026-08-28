@@ -47,6 +47,15 @@
      with nothing selected the camera looks at it and orbits it. Rebuilt by
      layout(), because it is a property of the arrangement. See gravity(). */
   const BARY = { x:0, y:0, z:0 };
+  /* Where YOU have flown the camera, as an offset from that resting pivot, in
+     world units. Panning used to be a screen-space slide (view.panx/pany): the
+     picture moved but the orbit centre did not, so the next drag swung the view
+     straight back around the thing you had just pushed aside -- in Solar, the
+     sun. Panning now moves the pivot itself (see panBy), so the camera stays
+     where you park it and rotates about that point. Cleared by the framing
+     gestures -- fitView, focusFamily/focusStyle, selectNode -- which all mean
+     "take me there". */
+  const panOff = { x:0, y:0, z:0 };
   let famPivot = null;                 // a clicked genre's centroid to orbit around
   let focusedFam = null;               // a clicked genre -> force ITS subgenre labels on
   let spinSpeed = 0.0006, running = false, rafId = null, filterFam = null;   // 10% of the 0.006 max
@@ -1350,16 +1359,22 @@
     }
     if (spinSpeed > 0 && !anim && !dragging && mapMode !== 'solar') rot.y += spinSpeed;
     // Orbit centre (eased): a clicked genre's centroid, else the selected track,
-    // else the cloud's centre of mass. So clicking a genre orbits AROUND that
-    // cluster, and letting go of everything falls back to orbiting the busiest
-    // part of the map rather than an arbitrary origin that may hold nothing.
+    // else the cloud's centre of mass -- plus wherever you have panned from
+    // there. So clicking a genre orbits AROUND that cluster, letting go of
+    // everything falls back to orbiting the busiest part of the map rather than
+    // an arbitrary origin that may hold nothing, and a pan re-aims the camera
+    // instead of just sliding the picture.
     const sel = selHash ? byHash.get(selHash) : null;
-    const tx = famPivot ? famPivot.x : (sel ? sel.x3 : BARY.x);
-    const ty = famPivot ? famPivot.y : (sel ? sel.y3 : BARY.y);
-    const tz = famPivot ? famPivot.z : (sel ? sel.z3 : BARY.z);
-    pivot.x += (tx - pivot.x) * 0.12;
-    pivot.y += (ty - pivot.y) * 0.12;
-    pivot.z += (tz - pivot.z) * 0.12;
+    const tx = (famPivot ? famPivot.x : (sel ? sel.x3 : BARY.x)) + panOff.x;
+    const ty = (famPivot ? famPivot.y : (sel ? sel.y3 : BARY.y)) + panOff.y;
+    const tz = (famPivot ? famPivot.z : (sel ? sel.z3 : BARY.z)) + panOff.z;
+    // Eased, so a new selection glides -- but 1:1 while a drag is in progress:
+    // panning moves this target, and easing a pan makes the map rubber-band
+    // behind the cursor instead of sticking to it.
+    const ease = dragging ? 1 : 0.12;
+    pivot.x += (tx - pivot.x) * ease;
+    pivot.y += (ty - pivot.y) * ease;
+    pivot.z += (tz - pivot.z) * ease;
     const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
     const DISP = Math.min(W,H)*0.40*view.zoom;
     const cxp = W/2 + view.panx, cyp = H/2 + view.pany;
@@ -1910,6 +1925,28 @@
   function startLoop(){ if(!running){ running=true; rafId=requestAnimationFrame(frame); } }
   function stopLoop(){ running=false; if(rafId) cancelAnimationFrame(rafId); rafId=null; }
 
+  /* Move the camera sideways by (dx, dy) SCREEN pixels -- the picture follows
+     the drag, exactly as a screen-space pan looked.
+
+     In the 3-D modes this walks the orbit centre through the world instead, so
+     what you fly away from stays flown away from. The two vectors are the
+     projection's own basis read backwards: a world step along `right` moves a
+     point right on screen, one along `down` moves it down (both fall out of the
+     rot.x / rot.y rotation in frame()). Dividing by DISP converts pixels to
+     world units at the pivot's depth -- exact for the plane you are orbiting,
+     and off only by perspective for things nearer or further, which is the same
+     approximation the old screen pan made for everything.
+
+     Tree is 2-D and has no pivot to move, so it keeps the screen-space pan. */
+  function panBy(dx, dy){
+    if (mapMode === 'tree'){ view.panx += dx; view.pany += dy; return; }
+    const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
+    const s = -1 / (Math.min(W,H) * 0.40 * view.zoom);      // = -1/DISP, see frame()
+    panOff.x += (dx*cy + dy*sy*sx) * s;                     // right=(cy,0,sy)
+    panOff.y += (dy*cx) * s;                                // down =(sy*sx, cx, -cy*sx)
+    panOff.z += (dx*sy - dy*cy*sx) * s;
+  }
+
   /* ---- interaction: orbit / pan / zoom / click --------------------- */
   // left-drag orbits; right / middle / Shift+left-drag pans (translate); wheel
   // zooms toward the cursor. Panning lets you fly through the 3-D scene.
@@ -1925,7 +1962,7 @@
     if (dragging){
       const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
       if (Math.abs(dx)+Math.abs(dy) > 2) moved=true;
-      if (mapMode === 'tree' || panning){ view.panx += dx; view.pany += dy; }
+      if (mapMode === 'tree' || panning){ panBy(dx, dy); }
       else { rot.y += dx*0.006; rot.x = clamp(rot.x + dy*0.006, -1.3, 1.3); }
       return;
     }
@@ -2007,10 +2044,15 @@
     const mx = e.clientX - r.left, my = e.clientY - r.top;
     const nz = clamp(view.zoom * (e.deltaY<0 ? 1.14 : 1/1.14), 0.3, 60);
     const f = nz / view.zoom;                          // actual factor after clamp
-    // keep the point under the cursor fixed -> zoom into wherever you're looking
-    view.panx = mx - (mx - (W/2 + view.panx)) * f - W/2;
-    view.pany = my - (my - (H/2 + view.pany)) * f - H/2;
+    // Keep the point under the cursor fixed -> zoom into wherever you're
+    // looking. Zooming about the view centre would carry that point out to
+    // o*f, so the camera slides back by o*(1-f) to leave it where it was.
+    // Through panBy, so the zoom re-aims the camera rather than sliding the
+    // picture off its own orbit centre -- and AFTER the new zoom is in, because
+    // panBy sizes a pixel by it.
+    const ox = mx - (W/2 + view.panx), oy = my - (H/2 + view.pany);
     view.zoom = nz;
+    panBy(ox * (1 - f), oy * (1 - f));
   }, { passive:false });
 
   /* ---- select + camera fly ----------------------------------------- */
@@ -2118,6 +2160,7 @@
   function selectNode(hash){
     const n = byHash.get(hash); if (!n) return;
     selHash = hash; famPivot = null; focusedFam = null;   // orbit this track, not a genre
+    panOff.x = panOff.y = panOff.z = 0;   // picking a track means "centre it", not "keep my pan"
     if (mapMode !== 'tree'){
       // the pivot eases to this track (frame loop), so it becomes the orbit
       // centre. keep the rotation, just zoom in a bit and recentre the view.
@@ -2819,6 +2862,7 @@
      skipped the solar branch. */
   function fitView(){
     view.panx=0; view.pany=0; rot.x=-0.15; anim=null;
+    panOff.x = panOff.y = panOff.z = 0;      // "view reset" also un-flies the camera
     if (mapMode === 'tree'){ fitTree(); return; }
     // Snap rather than ease. Framing the map is a cut, not a move: easing here
     // would open the view off-centre and slide it into place, which reads as the
@@ -2841,6 +2885,7 @@
     const c = CENTROIDS[fam]; if (!c) return;
     closePopup();                     // drop any track selection...
     famPivot = c;                     // ...then orbit around this cluster's centre
+    panOff.x = panOff.y = panOff.z = 0;   // flying somewhere cancels a free-flown camera
     focusedFam = fam;                 // ...and force this genre's subgenre labels on
     const ry = Math.atan2(-c.x, c.z), rx = Math.atan2(c.y, Math.hypot(c.x, c.z));
     anim = { f:{rx:rot.x,ry:rot.y,z:view.zoom,px:view.panx,py:view.pany},
@@ -2855,6 +2900,7 @@
     const cen = { x:x/c, y:y/c, z:z/c };
     closePopup();
     famPivot = cen;                   // orbit around the subgenre sub-cluster
+    panOff.x = panOff.y = panOff.z = 0;   // ...and stops looking past it
     focusedFam = fam;                 // keep the family's subgenre labels visible
     const ry = Math.atan2(-cen.x, cen.z), rx = Math.atan2(cen.y, Math.hypot(cen.x, cen.z));
     anim = { f:{rx:rot.x,ry:rot.y,z:view.zoom,px:view.panx,py:view.pany},
@@ -3160,10 +3206,10 @@
       case '-': case '_': case 's': view.zoom = clamp(view.zoom/1.15, 0.3, 60); anim=null; break;
       case 'a': rot.y -= ROT; break;                 // orbit left
       case 'd': rot.y += ROT; break;                 // orbit right
-      case 'arrowleft':  view.panx += PAN; break;    // arrows pan the view
-      case 'arrowright': view.panx -= PAN; break;
-      case 'arrowup':    view.pany += PAN; break;
-      case 'arrowdown':  view.pany -= PAN; break;
+      case 'arrowleft':  panBy( PAN, 0); break;      // arrows fly the camera
+      case 'arrowright': panBy(-PAN, 0); break;
+      case 'arrowup':    panBy(0,  PAN); break;
+      case 'arrowdown':  panBy(0, -PAN); break;
       case ' ': toggleSpin(); break;
       case 'f': applyFilter(null); break;
       case 'escape': closePopup(); break;

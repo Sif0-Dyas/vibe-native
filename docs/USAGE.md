@@ -260,6 +260,7 @@ You can **orbit** (rotate), **pan** (slide), and **zoom** independently. A small
 - **Keyboard:** **W / S** zoom in / out · **A / D** orbit left / right · **arrow keys** pan · `+` / `-` also zoom · `space` play/pause the spin · `f` fit · `esc` close a popup.
 - The map gently **auto-spins**; the **⏸ / ▶ button** (next to the speed slider) or `space` pauses it, and the **↻ slider** sets the speed.
 - **What it orbits around.** With nothing selected the camera settles on your library's **centre of mass** — the densest part of the cloud, found by walking uphill into the crowd rather than averaging every position (an average lands in the empty space *between* two clusters). That point is the centre of the frame and the axis the map spins around, so the busiest music is what you are looking at by default. Click a genre and it orbits that cluster instead; click a track and it orbits the track; close the popup and it eases back to the centre of mass.
+- **Panning re-aims the camera** — it doesn't just slide the picture. Whatever you drag to the middle becomes the new point the view rotates around, and it *stays* there through the next orbit and zoom. That's what lets you get out from under a fixed centre: in **☼ solar**, push the sun off to one side and spin around a particular ring instead of always circling the star. **⊙ view reset** (or `f`) puts the camera back on the resting centre.
 
 ### Selecting a track
 
