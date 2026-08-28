@@ -140,6 +140,13 @@
     URL.revokeObjectURL(a.href);
   }
 
+  /* The set of saved playlists just changed. The Map's Solar picker and its
+     playlist filter are built from that list and the map does NOT reload while
+     this panel slides over it, so without this a playlist saved here stayed
+     invisible over there until the Map tab was left and re-entered. */
+  const playlistsChanged = () =>
+    document.dispatchEvent(new CustomEvent('vibe:playlists-changed'));
+
   // ---- named saved playlists (DB-backed, durable) ----
   const savedList = document.getElementById('pl-saved-list');
   const saveBtn = document.getElementById('pl-save');
@@ -155,6 +162,7 @@
         body: JSON.stringify({ name, tracks: PL.tracks })
       });
       if (!r.ok) { const j = await r.json(); alert(j.error || 'save failed'); return; }
+      playlistsChanged();
       if (savedList && !savedList.hidden) renderSaved();
     } catch (_) { alert('save failed'); }
   });
@@ -196,7 +204,10 @@
 
   async function delSaved(id, el) {
     if (!window.confirm('Delete this saved playlist?')) return;
-    try { await fetch('/playlists/' + id + '/delete', { method: 'POST' }); el.remove(); } catch (_) { /* ignore */ }
+    try {
+      await fetch('/playlists/' + id + '/delete', { method: 'POST' });
+      el.remove(); playlistsChanged();
+    } catch (_) { /* ignore */ }
     if (!savedList.querySelector('.pl-saved-item')) {
       savedList.innerHTML = '<div class="pl-saved-empty">no saved playlists yet</div>';
     }

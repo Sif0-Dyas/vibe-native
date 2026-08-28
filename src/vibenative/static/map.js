@@ -3004,13 +3004,9 @@
           syncFilt();
         };
       }
-      try {
-        const pls = await (await fetch('/playlists')).json();
-        const list = Array.isArray(pls) ? pls : (pls.playlists || []);
-        const psel = $f('flt-pl');
-        if (psel) psel.innerHTML = `<option value="">any playlist</option>`
-          + list.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-      } catch(_) { /* playlists are optional */ }
+      // The playlist facet is filled from the same list Solar's picker uses --
+      // one fetch, one shape, and both stay in step when one changes.
+      await refreshPlaylists();
       syncFilt();
     }
     window.mapFilterPopulate = populate;
@@ -3191,7 +3187,7 @@
     modeEl.querySelectorAll('.mm').forEach(m => m.classList.toggle('active', m===b));
     closePopup(); closeTreeCard(); suggestEl.hidden = true;
     syncModeControls();
-    if (mapMode === 'solar') await loadSolarSet();
+    if (mapMode === 'solar'){ await refreshPlaylists(); await loadSolarSet(); }
     if (NODES.length){ layout(); resetView(); }
   });
 
@@ -3254,20 +3250,71 @@
     }
 
     PLAYLISTS = Array.isArray(pls) ? pls : (pls && pls.playlists) || [];
-    const sel = document.getElementById('solar-pl');
-    if (sel){
-      sel.innerHTML = PLAYLISTS.length
-        ? PLAYLISTS.map(pl => `<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join('')
-        : '<option value="">no saved playlists yet</option>';
-      if (SOLAR.playlist && PLAYLISTS.some(pl => String(pl.id) === String(SOLAR.playlist)))
-        sel.value = SOLAR.playlist;
-      else if (PLAYLISTS.length){ SOLAR.playlist = String(PLAYLISTS[0].id); sel.value = SOLAR.playlist; }
-    }
+    fillPlaylistPickers();
     const uby = document.getElementById('uni-by');
     if (uby) uby.value = UNI.by;
     const sby = document.getElementById('solar-by');
     if (sby) sby.value = SOLAR.by;
   }
+
+  /* Both playlist choosers -- Solar's sun and the filter panel's playlist facet
+     -- rebuilt from PLAYLISTS, each keeping what it had selected.
+
+     Rebuilt only when the LIST actually changed. Refreshing is cheap to ask for
+     (see refreshPlaylists) and the guard means asking at the wrong moment --
+     while the user has the dropdown open -- cannot yank the options out from
+     under them. */
+  function fillPlaylistPickers(){
+    const sig = PLAYLISTS.map(pl => pl.id + ':' + pl.name).join('|');
+    const opts = PLAYLISTS.map(pl =>
+      `<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join('');
+    const was = SOLAR.playlist;
+
+    const sel = document.getElementById('solar-pl');
+    if (sel && sel.dataset.sig !== sig){
+      sel.dataset.sig = sig;
+      sel.innerHTML = opts || '<option value="">no saved playlists yet</option>';
+      if (SOLAR.playlist && PLAYLISTS.some(pl => String(pl.id) === String(SOLAR.playlist)))
+        sel.value = SOLAR.playlist;
+      else if (PLAYLISTS.length){ SOLAR.playlist = String(PLAYLISTS[0].id); sel.value = SOLAR.playlist; }
+    }
+
+    const flt = document.getElementById('flt-pl');
+    if (flt && flt.dataset.sig !== sig){
+      flt.dataset.sig = sig;
+      const keep = FILT.playlist;
+      flt.innerHTML = '<option value="">any playlist</option>' + opts;
+      // A filter pointing at a playlist that has since been deleted falls back
+      // to "any" rather than silently filtering against a list nothing matches.
+      flt.value = (keep && PLAYLISTS.some(pl => String(pl.id) === String(keep))) ? keep : '';
+    }
+    return SOLAR.playlist !== was;      // the sun had to change: caller relays out
+  }
+
+  /* Re-read /playlists and refill the choosers.
+
+     The list was built once, when the Map tab loaded. But playlists are saved
+     and deleted from the Playlist panel, which slides over the map without
+     reloading it -- so a playlist saved with the map open did not appear in
+     Solar's picker until you left the tab and came back. With one playlist
+     saved beforehand, that reads as "the app only lets me pick this one". */
+  async function refreshPlaylists(){
+    try{
+      const r = await fetch('/playlists');
+      if (!r.ok) return;
+      const pls = await r.json();
+      PLAYLISTS = Array.isArray(pls) ? pls : (pls && pls.playlists) || [];
+      // Deleting the playlist Solar was drawing picks a different sun. Redraw,
+      // rather than leaving a system on screen that no longer exists.
+      if (fillPlaylistPickers() && mapMode === 'solar' && NODES.length){
+        saveSolar();
+        await loadSolarSet();
+        layout(); resetView();
+      }
+    }catch(_){ /* keep the list we have */ }
+  }
+  // playlist.js fires this after every save and delete.
+  document.addEventListener('vibe:playlists-changed', refreshPlaylists);
 
   /* The chosen playlist's tracks. Split in two so the network half can happen
      before NODES is swapped and the state half inside the swap -- see loadMap. */
