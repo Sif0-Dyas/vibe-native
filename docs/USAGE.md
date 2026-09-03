@@ -60,7 +60,9 @@ Click **⊕ batch folder** and give it the path to a folder of music. It scans t
 
 > **Use this when** you want to bring in a whole library or crate at once — it's noticeably faster than dropping files one by one, and you can walk away while it runs.
 
-**Either way, nothing is ever analyzed twice.** If a track has been analyzed before — this session or months ago — the result comes back instantly instead of being recomputed. So re-scanning a folder only spends time on what's new, and re-dropping a file you already have just skips it.
+**Either way, nothing is ever analyzed twice.** If a track has been analyzed before — this session or months ago — the result comes back instantly instead of being recomputed. So re-scanning a folder only spends time on what's new.
+
+A track you drop in that's **already in your library still appears on the list**, marked `· cached`, with every row control a freshly analyzed one gets. That's how you reach **adjust**, **override**, **omit** or **lookup** for a track you already know about without going hunting for it in the Library. Drop the same file twice and the list scrolls to the row it's already on rather than adding a second one. (**⊕ batch folder** still only lists what's *new* — a whole-library re-scan would otherwise put thousands of rows on screen.)
 
 ---
 
@@ -73,6 +75,17 @@ Each analyzed row shows three things:
 - **Genre** — the breakdown: the dominant genre(s) and their share of the track, tagged with the broad **family** they belong to (House, Trance, Bass Music, …). If a read looks shaky, you may also see a **⚠ "sounds like …"** hint suggesting a better fit (see section 6).
 
 Every analyzed track also has a built-in **preview player** — play and scrub it right from its waveform.
+
+---
+
+**Vibes and tags** share one wrapping strip at the bottom of the genre column rather than a line each, so a track in two vibes with three tags doesn't push everything below it down the row.
+
+**The waveform.** Each row draws a rough shape immediately and then replaces it
+with a detailed one a moment later. Tracks that were dragged in and analysed
+without ever being linked to a music folder used to be stuck on the rough version
+forever — the app had no copy of the audio to draw the detailed one from. Dropping
+such a track in now sends the audio along with it, once, so it draws at full
+detail from then on.
 
 ---
 
@@ -129,9 +142,14 @@ Per-track actions live on each row (and many are repeated in the Map popup); lib
 
 ### Per-track fixes
 
+- **⚖ adjust** — nudge how much of each genre a track is, instead of replacing the read. An override answers *"what is this?"* with one word and throws away everything the model got right; a track reading Techno 66% / House 17% / Tech Trance 16% is *mostly* right. This bends it: **＋** and **−** on each genre move it from *not at all* through *as read* to *very*, and the percentages re-settle around it. You can also **type a genre it missed** to add one, or **✕** a genre to take it off the track entirely — which is a different statement from pushing it all the way down (*"not at all"* leaves it in the read at a trace; **✕** removes it). Anything you remove is listed under **removed**, and clicking it there puts it back. The same panel is on the Map popup, on the same track — adjust it in either place and both agree.
 - **✎ override** — set the genre yourself (say your own *Riddim* or *Tearout*). Your choice **sticks everywhere and survives reloads** — it becomes the track's genre on the Analyzer, the Library, the Map, and exports, and re-adding the file later keeps your label instead of the model's. (It also copies the track into `~/genre_training/<genre>/` — those folders are the training set for a **custom genre head**: once you've labelled enough tracks, the scripts in `training/` can train a model that adds your own genres as a **custom** row in each read. See *Training custom genres* in the README.) The same override is on the **Map popup** and behaves identically. To undo one, **omit** the track and re-scan it.
 - **✕ omit** — remove a track's analysis (for a bogus read you don't want cluttering things). It disappears from the Analyzer, the Library, and the Map, and the database entry is deleted. **Your audio file is untouched** — re-scanning brings it back fresh.
 - **Tags** — attach your own labels ("high energy", "opener", "peak time") to tracks for your own organization.
+- **Hovering a chip previews it.** Point at a genre, artist or tag chip in the
+  Map popup and every track it would show you flashes white and fades, over and
+  over, so a scattered handful of matches is findable among three thousand stars
+  without clicking anything.
 - **⚠ review reads** *(footer)* — a one-click sweep for likely mistakes. The app flags reads it's unsure about — specifically, a low-confidence label whose closest-sounding neighbors strongly disagree (the classic "a bass track got called K-pop" case). The panel lists every flagged track with its suggested fix, plus buttons to jump to it on the Map or omit it. It only ever **flags and suggests** — it never changes a genre on its own.
 - **Clear list** empties the on-screen Analyzer list (without deleting any analysis); **Export .txt** dumps the current list (genre, BPM, key, duration) to a text file.
 
@@ -232,6 +250,76 @@ Switch between them with the buttons at the top. They answer different questions
 
 Regions, universe and solar are the explorable 3-D views (drag to orbit, click a genre to fly in); tree is a flat 2-D diagram of the structure.
 
+### ⊙⋮ Galaxies (Universe view)
+
+In **✧ universe** each genre is its own galaxy, and the sky is built the way a
+sky is built rather than laid out on a grid.
+
+- **Size is mass.** A galaxy's width grows with the square root of its track
+  count, so your 1,360-track House galaxy really is the biggest thing out there
+  and a 40-track genre is a legible speck rather than the same blob at a
+  different address.
+- **They face different ways, and they turn.** Each galaxy gets its own stable
+  tilt and its own rate and direction of spin, seeded from its name, so it looks
+  observed rather than drawn. Its disc is wound into trailing arms — the outside
+  lags the inside, which is what makes a rotating disc a spiral. The orbit-speed
+  slider sets how fast everything moves and pausing it stops them; the camera
+  holds still here, because spinning it as well would give you two unrelated
+  motions and no way to tell which is which.
+- **Made of systems.** A genre is not a smooth thing — House is Progressive
+  House and Bassline and Electro House and Tech House, and those are real
+  divisions with their own sound. Each one is its own cluster inside the galaxy,
+  in its own orbit around the middle, with its tracks turning inside it: a moon
+  goes round faster than its planet goes round the sun. Where a system sits comes
+  from its members' sound, so subgenres that genuinely resemble each other are
+  neighbours. Always one tier below whatever a galaxy is, so family galaxies are
+  made of genres and genre galaxies are made of subgenres.
+- **Bright in the middle, and full of gas.** Stars concentrate toward the centre
+  of each system and thin out toward its edge, and each system carries a cloud of
+  lit gas in its own colour. Stars alone draw a galaxy as points with nothing
+  between them; the gas is the thing every photograph of one has that a scatter
+  plot does not. It follows the **Glow** slider under **🏷** — turn that to 0 and
+  the gas goes with it.
+- **Only the links inside a galaxy are drawn.** A similarity line between two
+  galaxies is true, but strung across the gap that is meant to separate them it
+  is the one thing that stops the sky reading as a sky. Inside a galaxy the same
+  lines trace its structure. Selecting a track still shows its own web across the
+  whole map, because "what else sounds like this" is a question about elsewhere.
+- **Gravity places them.** Nothing is assigned a slot. Galaxies repel by mass, so
+  the big ones claim room, and attract along the similarity links your library
+  already has — so genres whose tracks are genuinely each other's nearest
+  neighbours drift together. That is where the swirl comes from: a genre that
+  bridges two others gets pulled between them and all three end up in one
+  another's tide, with the outer stars streaming toward the neighbour. None of
+  that is hardcoded — take the bridge tracks out and the pull goes with them.
+
+Two controls behind **⊙⋮**:
+
+- **Separation** — how much empty space sits between galaxies. It widens the
+  gaps, not the galaxies: scaling both would just be zoom, which is why the old
+  version of this control appeared to do nothing.
+- **Gravity** — how hard related genres pull on each other. At 0 they spread out
+  evenly and ignore each other; turn it up and the related ones clump and swirl.
+
+Galaxy names are sized by how big the galaxy is, and only the biggest sixteen
+are shown at once — naming seventy galaxies at the same time means naming none of
+them, because no single one can be read. The rest are a hover or a zoom away, and
+**Max genre labels** under **🏷** overrides the cap if you want them all.
+
+The **galaxy =** picker chooses what a galaxy *is*: **genre** (the default, one
+per keystone — Dubstep and Drum n Bass are different places), **family** (the old
+behaviour: Bass, Dance, Chill as single galaxies) or **vibe** (your own
+categories).
+
+### ⏱ Recently viewed
+
+Every star you open is remembered — the last 24, newest first — behind the **⏱**
+button in the map toolbar. Click any of them to go straight back to that star.
+It survives closing the app, drops tracks you have since omitted, and **clear
+history** empties it. The list is kept in your browser, not in your library:
+which tracks you happened to look at is a trail through an evening's listening,
+not a fact about the music.
+
 ### Making the map readable
 
 The **🏷 labels** button opens the display options. The ones worth knowing:
@@ -256,21 +344,81 @@ They're deliberately separate: a favourite artist still puts out the odd weak tr
 
 You can **orbit** (rotate), **pan** (slide), and **zoom** independently. A small **nav legend in the top-left corner** always lists the controls (click its header to collapse it):
 
+The **⌨ nav** legend and the **◤ genres** legend both start **closed**. They sit
+on top of the map, and what you came to the map for is behind them — reference
+material is useful when you go looking for it and in the way when you don't.
+Open either one and it stays open until you close it again.
+
+The camera also backs off as the map gets bigger, so the perspective stays the
+same whatever the layout is measuring. It used to sit at a fixed distance, which
+meant a large sky had part of itself at or past the lens — stars magnified wildly
+and vanished as you orbited.
+
+You can also now zoom out much further than before — the floor was close enough
+to the fit view that there was no way to stand back from the map, which a sky of
+mass-sized galaxies needs.
+
 - **Mouse:** left-drag orbits · right-drag / middle-drag / **Shift + left-drag** pans · scroll zooms into wherever you point.
 - **Keyboard:** **W / S** zoom in / out · **A / D** orbit left / right · **arrow keys** pan · `+` / `-` also zoom · `space` play/pause the spin · `f` fit · `esc` close a popup.
 - The map gently **auto-spins**; the **⏸ / ▶ button** (next to the speed slider) or `space` pauses it, and the **↻ slider** sets the speed.
 - **What it orbits around.** With nothing selected the camera settles on your library's **centre of mass** — the densest part of the cloud, found by walking uphill into the crowd rather than averaging every position (an average lands in the empty space *between* two clusters). That point is the centre of the frame and the axis the map spins around, so the busiest music is what you are looking at by default. Click a genre and it orbits that cluster instead; click a track and it orbits the track; close the popup and it eases back to the centre of mass.
 - **Panning re-aims the camera** — it doesn't just slide the picture. Whatever you drag to the middle becomes the new point the view rotates around, and it *stays* there through the next orbit and zoom. That's what lets you get out from under a fixed centre: in **☼ solar**, push the sun off to one side and spin around a particular ring instead of always circling the star. **⊙ view reset** (or `f`) puts the camera back on the resting centre.
 
+### Showing only the genres you want
+
+The **☰ filter** panel lists every genre in your library with a tick-box and a
+track count. Untick one and it comes off the map. **all** / **none** do the
+obvious thing, and **electronic** ticks everything the genre taxonomy could
+actually place (Dance, Bass, Chill, Experimental), which leaves out the metal,
+punk and hip hop that land in *Other* in a mostly-electronic library.
+
+Like every filter here it only hides. The layout is worked out from your whole
+library, so the stars that remain keep their positions.
+
+### Only tracks with audio
+
+Under **☰ filter** there's **Only tracks with audio**. It hides stars whose audio file was never found — usually tracks dragged in and analyzed without ever being linked to a folder. They can't be previewed or exported, so they're stars you can look at but not use.
+
+**It only hides them.** Where every star sits is worked out from your whole library, so the ones left keep their exact positions and their neighbours still mean what they meant — same map, fewer dots. To bring them back for real, repair their paths under **⚙ Options → Music file paths**.
+
 ### Selecting a track
 
-**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre family, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer).
+**Click the title in the now-playing bar** to go back to whatever you're listening to: the map cuts straight to that track's star and opens its panel. Playback isn't interrupted — you arrive at the star still hearing the track rather than being cut off by a preview of it. **The sample strip's title works the same way**, so an audition you like is one click from the star it came from; if that clip is still playing, going back to it doesn't restart it.
+
+Arriving this way is a *cut*, not a flight: the map opens already centered on the star rather than framing your whole library and zooming in. Clicking a dot on a map you are already looking at still glides, because there the movement is what tells you which star you picked.
+
+**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre family, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **⚖ adjust** / **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer, on the same track).
 
 Selecting a track also **auditions it**: a ~22-second clip starts from the track's *drop* (its first sustained burst of energy, or 40% in if there isn't one). A **sample strip** appears above the now-playing bar with its own **▶ play/pause**, **↻ replay** (back to the drop), **■ stop**, and **volume + mute** — so auditioning can sit quietly under whatever else you're doing.
 
 **Listening to — sample / track.** When something is also playing in the now-playing bar, the strip shows a switch, and it *sticks*: choose **track** and clicking around the Map keeps cueing samples but never interrupts you (the strip says "held"); flip to **sample** and it plays that clip instead, pausing the track. Each side keeps its own volume, so a sample can be a quiet audition underneath a loud track. Starting full playback — the popup's **▶ play**, a List row, the playlist — counts as choosing **track**.
 
+### Why the map opens instantly (and the ↻ rebuild button)
+
+Building the map means reading every track in your library, working out what each
+one is, and placing every star. That used to happen from scratch every single time
+you opened the Map tab — which is why coming back to it, or jumping to the playing
+track, sat on *building your map* for several seconds to arrive at the map you had
+just left.
+
+Now it is built once and kept, on both sides: the app remembers the built map for
+as long as it is open, and the result is also stored next to your library file, so
+**reopening the app doesn't rebuild it either**. Anything that changes your library
+— analysing new music, an override, an adjustment, an omit, a tag, a palette
+change, editing the taxonomy — invalidates it automatically, so the map you see is
+never out of date with the library it came from.
+
+**↻ rebuild** forces a fresh build anyway. You shouldn't need it, but it's there
+if something ever looks out of step.
+
 ### Map controls
+
+The toolbar is grouped: **layout** (which of the five views, plus whatever that
+view needs), **what is shown** (the genre picker, harmonic, the connection lines,
+and the filter / recently-viewed / text panels), **motion** (pause and speed),
+and **actions** (playlist, rebuild, view reset), with the track count sitting
+with the actions at the far end. On a narrow window the bar wraps a whole group
+at a time rather than squashing what is in it.
 
 - **Search** — jump to any track, artist, or genre.
 - **Click a genre or subgenre name** — on the map, or in the legend — to fly to that cluster and orbit around it (subgenres zoom in a little tighter than their overarching genre).
@@ -302,7 +450,7 @@ The **⚙ Options** tab is a quick status-and-settings dashboard. Each item show
 - **Engine** — whether **GPU acceleration** (DirectML) is active and whether **ffmpeg** (used to decode audio) was found. If ffmpeg shows ⚠ *missing*, some formats won't decode — see the README's setup notes.
 - **Database** — where your library file lives on disk. Everything you build — analyses, tags, vibes, saved playlists — lives in this one file. Point the **`GENRE_DB`** environment variable at another path to move or share it.
 - **Manage** — shortcuts to Browse library, Vibes, Playlists, and this Guide.
-- **Appearance** — the app is dark-themed for now; a light mode is planned for a future update.
+- **Appearance** — **Key notation** picks how keys are written: **Camelot** (`8A`), **musical** (`A min`), or **both**. Camelot is what you mix by, the musical name is what you read; both together is fine on one row and noise across a whole library. It applies to the Analyzer, the Map and the exported list (the Library tab keeps its own Key and Camelot columns, chosen under **columns**). The app is dark-themed for now; a light mode is planned for a future update.
 
 ---
 
