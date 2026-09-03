@@ -86,6 +86,7 @@ def analyze_route():
                 cached["hash"] = h
                 cached["cached"] = True
                 cached["segment_overrides"] = _segment_overrides(h)
+                cached["adjusted"] = _adjusted(cached)
                 return jsonify(cached)
 
             title = read_title(p) or Path(f.filename).stem
@@ -293,6 +294,16 @@ def _segment_overrides(h):
     return [{"id": r[0], "start_s": r[1], "end_s": r[2], "genre": r[3]} for r in rows]
 
 
+def _adjusted(payload):
+    """The track's blend after its manual weight adjustments, or None if it has
+    none. Sent with every cached payload so a track nudged on the map reads the
+    same the moment it lands in the Analyzer -- the alternative was a second
+    round-trip per row just to find out most rows had nothing to say."""
+    from ..weights import read_with_steps
+
+    return read_with_steps(payload)
+
+
 @bp.get("/track/<h>")
 def track_route(h):
     """Return a cached track's full analysis payload by content hash — the same shape
@@ -304,6 +315,7 @@ def track_route(h):
     cached["hash"] = h
     cached["cached"] = True
     cached["segment_overrides"] = _segment_overrides(h)
+    cached["adjusted"] = _adjusted(cached)
     return jsonify(cached)
 
 
@@ -367,6 +379,48 @@ def waveform_route(h):
         samples = load_samples_for_waveform(Path(filepath))  # decode stays outside the DB lock
     except Exception:
         log.exception("waveform decode failed for %s", h)
+        return jsonify({"error": "could not decode this track's audio"}), 500
+    data = waveform_minmax(samples)
+    waveform_cache_put(h, data)
+    return jsonify(data)
+
+
+@bp.post("/waveform/<h>")
+def waveform_upload_route(h):
+    """Build a track's detailed waveform from an uploaded copy of its audio.
+
+    The GET above can only serve tracks it can reach: one with a cached waveform,
+    or one with a server-side file to decode. A track dragged in and analysed
+    without ever being linked to a folder has neither, so it was stuck drawing
+    the coarse envelope forever -- there was no path by which it could ever get
+    the detailed one, however many times you re-added it.
+
+    The browser is holding the audio in those exact cases, so it sends it here.
+    The upload is used for the waveform and thrown away -- no path is recorded
+    (a temp file is not where the track lives) and the analysis is not touched.
+    The result is cached permanently, so this happens once per track.
+    """
+    cached = waveform_cache_get(h)
+    if cached:
+        return jsonify(cached)                    # raced another tab; nothing to do
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
+    # Only for tracks already in the library: this must not become a way to have
+    # the server decode arbitrary uploads under an arbitrary key.
+    if not row:
+        return jsonify({"error": "track not in database"}), 404
+    try:
+        with saved_upload(request.files.get("file")) as up:
+            # The hash has to match, or a mistake (or a crafted request) would
+            # file one track's waveform under another's name and the row would
+            # draw someone else's audio.
+            if file_hash(up) != h:
+                return jsonify({"error": "this audio is not that track"}), 400
+            samples = load_samples_for_waveform(up)
+    except UploadError as e:
+        return jsonify({"error": str(e)}), e.status
+    except Exception:
+        log.exception("waveform upload decode failed for %s", h)
         return jsonify({"error": "could not decode this track's audio"}), 500
     data = waveform_minmax(samples)
     waveform_cache_put(h, data)
@@ -492,6 +546,7 @@ def batch_route():
                 cached = dict(cached)
                 cached.update({"ok": True, "hash": h, "cached": True, "filepath": str(path)})
                 cached["segment_overrides"] = _segment_overrides(h)
+                cached["adjusted"] = _adjusted(cached)
                 # backfill a server-side path for older drop-analyzed rows (which
                 # stored none) so audio preview / DAW waveform / section overrides
                 # light up for the whole library on a re-scan -- no re-analysis.
