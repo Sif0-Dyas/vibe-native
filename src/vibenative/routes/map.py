@@ -1,5 +1,6 @@
 """Map routes: the 3-D genre map, misread audit, the index page, and the guide."""
 
+import hashlib
 import json
 from contextlib import closing
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 from flask import Response, jsonify, render_template, request
 
 from .. import insight
+from ..config import log
 from ..db import (
     _db_lock,
     db,
@@ -121,6 +123,116 @@ def audit_route():
     return jsonify(insight.audit())
 
 
+# ----------------------------------------------------------------------------
+# /map response cache.
+#
+# Building the map means parsing every track's payload and classifying it, which
+# on a 3,300-track library is around seven seconds -- and it ran on every single
+# request, so opening the app, or switching to the Map tab, or jumping to the
+# playing track, all sat waiting for the same answer to be recomputed. Most of
+# that time is spent parsing per-frame genre predictions the map never looks at:
+# `frames` alone is ~85% of a stored payload and `frames` + `segments` +
+# `waveform` are ~97% of it.
+#
+# So the built response is kept, keyed by a digest of everything it is derived
+# from. Reading the payloads back out of SQLite and hashing them costs about a
+# quarter of a second, against seven to rebuild -- and because the key IS the
+# input, the cache cannot serve a stale map: change anything the map depends on
+# and the digest changes with it. It lives on disk beside the database rather
+# than in memory, because the complaint was about opening the app, and a
+# process-lifetime cache is empty exactly then.
+# ----------------------------------------------------------------------------
+CACHE_KEEP = 4  # recent builds to keep on disk (one per mode, plus a little slack)
+
+
+def _map_cache_dir():
+    from ..db import DB_PATH
+
+    return Path(DB_PATH).parent / "vibe-mapcache"
+
+
+def _map_fingerprint(rows, tags_by_hash, mode):
+    """A digest of every input the map is built from.
+
+    The track rows (including the payloads and embeddings), the tags, the render
+    mode, the taxonomy overlay -- which is also where the palette choice and
+    per-genre colours live, so one stamp covers all three -- and the app version,
+    so upgrading the code cannot serve a map built by the old one.
+    """
+    from .. import __version__
+    from ..db import DB_PATH
+    from ..taxonomy import path as taxonomy_path
+
+    h = hashlib.blake2b(digest_size=16)
+    h.update(__version__.encode("utf-8"))
+    h.update(mode.encode("utf-8"))
+    h.update(str(DB_PATH).encode("utf-8", "replace"))
+    try:
+        st = taxonomy_path().stat()
+        h.update(f"{st.st_mtime_ns}:{st.st_size}".encode())
+    except OSError:
+        h.update(b"no-overlay")
+    for hh, title, filename, filepath, payload, blob in rows:
+        h.update((hh or "").encode("utf-8"))
+        h.update(b"\x00")
+        h.update((title or "").encode("utf-8", "replace"))
+        h.update(b"\x00")
+        h.update((filename or "").encode("utf-8", "replace"))
+        h.update(b"\x00")
+        h.update((filepath or "").encode("utf-8", "replace"))
+        h.update(b"\x00")
+        h.update(payload.encode("utf-8") if isinstance(payload, str) else json.dumps(payload).encode())
+        h.update(b"\x00")
+        if blob is not None:
+            h.update(blob)
+        h.update(b"\x1e")
+    for hh in sorted(tags_by_hash):
+        h.update(hh.encode("utf-8"))
+        h.update(("\x00".join(sorted(tags_by_hash[hh]))).encode("utf-8", "replace"))
+        h.update(b"\x1e")
+    return h.hexdigest()
+
+
+def _map_cache_read(fp):
+    """The stored response for this fingerprint, or None.
+
+    Never raises: a cache that can't be read is a cache miss, not a broken map.
+    The expected byte length is part of the filename and is checked here -- the
+    rename in the writer means this process cannot leave a half-written entry
+    behind, but a file truncated by something else (a full disk, a crash mid-copy,
+    a sync client) would otherwise be served as though it were a whole map.
+    """
+    try:
+        for f in _map_cache_dir().glob(f"{fp}-*.json"):
+            try:
+                expected = int(f.stem.rsplit("-", 1)[1])
+            except (IndexError, ValueError):
+                continue
+            body = f.read_bytes()
+            if len(body) == expected:
+                return body
+            f.unlink(missing_ok=True)      # truncated: not a map, and never will be
+    except OSError:
+        return None
+    return None
+
+
+def _map_cache_write(fp, body):
+    """Store a built response, then drop the older ones. Written under a temp
+    name and renamed, so a reader can only ever see the finished file."""
+    try:
+        d = _map_cache_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = d / f"{fp}-{len(body)}.json.part"
+        tmp.write_bytes(body)
+        tmp.replace(d / f"{fp}-{len(body)}.json")
+        keep = sorted(d.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+        for stale in keep[CACHE_KEEP:]:
+            stale.unlink(missing_ok=True)
+    except OSError:
+        log.debug("map cache write failed", exc_info=True)
+
+
 @bp.get("/map")
 def map_route():
     import numpy as np
@@ -132,6 +244,12 @@ def map_route():
             "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
         ).fetchall()
         tags_by_hash = _tags_by_hash(c)
+    fp = _map_fingerprint(rows, tags_by_hash, mode)
+    hit = _map_cache_read(fp)
+    if hit is not None:
+        resp = Response(hit, mimetype="application/json")
+        resp.headers["X-Map-Cache"] = "hit"
+        return resp
     nodes, embs, emb_idx = [], [], []
     # Every payload is parsed exactly once here and the parsed form is carried
     # to the audit at the end. _map_node takes a dict as happily as a string.
@@ -222,7 +340,10 @@ def map_route():
         fl = flags.get(n["hash"])
         n["flag"] = bool(fl)
         n["suggest"] = fl["suggested_style"] if fl else None
-    return jsonify({"nodes": nodes, "edges": edges})
+    resp = jsonify({"nodes": nodes, "edges": edges})
+    _map_cache_write(fp, resp.get_data())
+    resp.headers["X-Map-Cache"] = "miss"
+    return resp
 
 
 @bp.get("/")
