@@ -552,7 +552,11 @@ def weights_get(h):
         {
             "hash": h,
             "steps": p.get("weights") or {},
+            # Unfiltered on purpose: `base` is what the model said, so the UI can
+            # name a removed genre in order to offer it back. Hiding the dropped
+            # ones here would make a removal the one edit you can't undo.
             "base": base[:8],
+            "drops": p.get("drops") or [],
             "adjusted": W.read_with_steps(p) or base[:8],
             "max_step": W.MAX_STEP,
             "words": {str(k): v for k, v in W.STEP_WORDS.items()},
@@ -564,9 +568,13 @@ def weights_get(h):
 def weights_put(h):
     """Set a track's per-genre adjustments.
 
-    Body: ``{"steps": {"House": 3, "Tech Trance": -3}}``. A step of 0 is removed
-    rather than stored, so "no opinion" and "explicitly neutral" stay the same
-    thing and the payload doesn't accumulate dead entries.
+    Body: ``{"steps": {"House": 3, "Tech Trance": -3}, "drops": ["Hands Up"]}``.
+    A step of 0 is removed rather than stored, so "no opinion" and "explicitly
+    neutral" stay the same thing and the payload doesn't accumulate dead entries.
+
+    Either key may be omitted, and an omitted key is left as it was -- removing a
+    genre must not silently discard the steps you set on the others, and vice
+    versa. Send ``{}`` for a key to clear that one.
 
     Only the adjustments are written; the analysed read underneath is untouched,
     so clearing them restores exactly what the model said.
@@ -574,14 +582,22 @@ def weights_put(h):
     from .. import weights as W
 
     data = request.get_json(silent=True) or {}
-    raw = data.get("steps")
-    if not isinstance(raw, dict):
+    raw, raw_drops = data.get("steps"), data.get("drops")
+    if raw is None and raw_drops is None:
+        return jsonify({"error": "steps object or drops list required"}), 400
+    if raw is not None and not isinstance(raw, dict):
         return jsonify({"error": "steps object required"}), 400
+    if raw_drops is not None and not isinstance(raw_drops, list):
+        return jsonify({"error": "drops list required"}), 400
     steps = {}
-    for style, v in raw.items():
+    for style, v in (raw or {}).items():
         s = W.clamp_step(v)
         if s and str(style).strip():
             steps[str(style).strip()] = s
+    drops = W.clean_drops(raw_drops)
+    # A genre can't be both raised and removed; the removal is the later, more
+    # explicit statement, so it takes the name and the step goes with it.
+    steps = {k: v for k, v in steps.items() if k not in drops}
 
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
@@ -591,9 +607,31 @@ def weights_put(h):
             p = json.loads(row[0]) if row[0] else {}
         except ValueError:
             p = {}
-        if steps:
-            p["weights"] = steps
-        else:
-            p.pop("weights", None)
+        if raw is not None:
+            if steps:
+                p["weights"] = steps
+            else:
+                p.pop("weights", None)
+        if raw_drops is not None:
+            if drops:
+                p["drops"] = drops
+                # Also clear any step already stored for a genre being removed.
+                # apply() ignores it either way, but a stored "very House" on a
+                # removed House would come back the moment House was restored --
+                # a judgement the user made before deciding it wasn't there at all.
+                kept = {k: v for k, v in (p.get("weights") or {}).items() if k not in drops}
+                if kept:
+                    p["weights"] = kept
+                else:
+                    p.pop("weights", None)
+            else:
+                p.pop("drops", None)
         c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
-    return jsonify({"hash": h, "steps": steps, "adjusted": W.read_with_steps(p) or []})
+    return jsonify(
+        {
+            "hash": h,
+            "steps": p.get("weights") or {},
+            "drops": p.get("drops") or [],
+            "adjusted": W.read_with_steps(p) or [],
+        }
+    )

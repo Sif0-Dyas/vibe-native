@@ -263,3 +263,132 @@ def test_the_map_shows_the_adjusted_genre(client):
     client.post(f"/weights/{h}", json={"steps": {"House": 3}})
     node = next(n for n in client.get("/map").get_json()["nodes"] if n["hash"] == h)
     assert node["style"] == "House"
+
+
+# --- removing a genre outright -------------------------------------------------
+# A drop is not a stronger -3. "Not at all" says the track is barely this and
+# leaves it in the read; a drop says the genre isn't on the track. These check
+# that the two stay distinguishable, and that a removal is always undoable.
+def test_dropping_takes_a_genre_off_the_read():
+    out = by_style(W.apply(REAL, {}, ["Tech Trance"]))
+    assert "Tech Trance" not in out
+    assert set(out) == {"Techno", "House", "Electro House"}
+
+
+def test_a_drop_is_not_the_same_as_the_lowest_step():
+    """-3 suppresses; a drop removes. If they were the same press there would be
+    no reason for both to exist."""
+    pushed_down = by_style(W.apply(REAL, {"Tech Trance": -3}))
+    dropped = by_style(W.apply(REAL, {}, ["Tech Trance"]))
+    assert 0 < pushed_down["Tech Trance"] < 0.05
+    assert "Tech Trance" not in dropped
+
+
+def test_the_freed_share_is_redistributed_not_left_as_a_hole():
+    before = by_style(W.apply(REAL, {}))
+    after = by_style(W.apply(REAL, {}, ["Tech Trance"]))
+    assert sum(after.values()) == pytest.approx(1.0, abs=0.005)
+    assert after["Techno"] > before["Techno"]
+
+
+def test_dropping_preserves_the_order_of_what_is_left():
+    out = [e["style"] for e in W.apply(REAL, {}, ["House"])]
+    assert out == ["Techno", "Tech Trance", "Electro House"]
+
+
+def test_a_drop_and_a_step_on_the_same_genre_cannot_both_hold():
+    """"More of this" and "none of this" are not both what you meant; the removal
+    is the more explicit statement, so it takes the name."""
+    out = by_style(W.apply(REAL, {"House": 3}, ["House"]))
+    assert "House" not in out
+
+
+def test_dropping_everything_leaves_the_track_with_an_identity():
+    """A track with no read at all is not something a per-genre remove should be
+    able to say -- and the empty result falls back to the unedited read, so the
+    last press would look like it undid every press before it."""
+    out = W.apply(REAL, {}, ["Techno", "House", "Tech Trance", "Electro House"])
+    assert out and out[0]["style"] == "Techno"
+
+
+def test_drops_are_cleaned_the_way_they_are_stored():
+    assert W.clean_drops([" House ", "House", "", None, "Techno"]) == ["House", "Techno"]
+
+
+def test_dropping_a_genre_the_model_never_read_is_harmless():
+    assert W.apply(REAL, {}, ["Polka"]) == W.apply(REAL, {})
+
+
+def test_read_with_steps_applies_a_drop_with_no_steps_at_all():
+    """A track whose only edit is a removal still has an edited read."""
+    out = W.read_with_steps({"salience": REAL, "drops": ["Tech Trance"]})
+    assert out is not None
+    assert "Tech Trance" not in by_style(out)
+
+
+def test_a_dropped_top_read_changes_what_the_track_is():
+    from vibenative.routes._shared import _dominant_style
+
+    p = {"salience": REAL}
+    assert _dominant_style(p)[0] == "Techno"
+    assert _dominant_style(dict(p, drops=["Techno"]))[0] == "House"
+
+
+# --- the HTTP surface ----------------------------------------------------------
+def test_post_stores_drops_and_returns_the_new_blend(client):
+    h = seed({"salience": REAL})
+    body = client.post(f"/weights/{h}", json={"drops": ["Techno"]}).get_json()
+    assert body["drops"] == ["Techno"]
+    assert body["adjusted"][0]["style"] == "House"
+    assert client.get(f"/weights/{h}").get_json()["drops"] == ["Techno"]
+
+
+def test_the_removed_genre_is_still_named_in_base_so_it_can_come_back(client):
+    """Hiding it from `base` too would make a removal the one edit with no way
+    back -- the panel needs the name to offer it."""
+    h = seed({"salience": REAL})
+    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
+    assert "Techno" in [e["style"] for e in client.get(f"/weights/{h}").get_json()["base"]]
+
+
+def test_restoring_a_drop_restores_the_model_read(client):
+    h = seed({"salience": REAL})
+    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
+    client.post(f"/weights/{h}", json={"drops": []})
+    body = client.get(f"/weights/{h}").get_json()
+    assert body["drops"] == []
+    assert body["adjusted"] == REAL
+
+
+def test_each_kind_of_edit_survives_the_other_being_sent(client):
+    """Removing a genre must not silently discard the steps set on the others,
+    which is what a whole-payload write would have done."""
+    h = seed({"salience": REAL})
+    client.post(f"/weights/{h}", json={"steps": {"House": 2}})
+    client.post(f"/weights/{h}", json={"drops": ["Tech Trance"]})
+    body = client.get(f"/weights/{h}").get_json()
+    assert body["steps"] == {"House": 2}
+    assert body["drops"] == ["Tech Trance"]
+
+
+def test_dropping_a_genre_clears_the_step_already_stored_on_it(client):
+    """Otherwise the old judgement comes back the moment it is restored -- one
+    the user made before deciding the genre wasn't on the track at all."""
+    h = seed({"salience": REAL})
+    client.post(f"/weights/{h}", json={"steps": {"House": 3}})
+    client.post(f"/weights/{h}", json={"drops": ["House"]})
+    assert client.get(f"/weights/{h}").get_json()["steps"] == {}
+
+
+def test_drops_only_requests_are_accepted_but_empty_ones_are_not(client):
+    h = seed({"salience": REAL})
+    assert client.post(f"/weights/{h}", json={"drops": ["House"]}).status_code == 200
+    assert client.post(f"/weights/{h}", json={"drops": "House"}).status_code == 400
+    assert client.post(f"/weights/{h}", json={}).status_code == 400
+
+
+def test_the_map_shows_a_track_with_its_top_genre_removed(client):
+    h = seed({"salience": REAL})
+    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
+    node = next(n for n in client.get("/map").get_json()["nodes"] if n["hash"] == h)
+    assert node["style"] == "House"
