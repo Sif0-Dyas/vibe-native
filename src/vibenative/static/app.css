@@ -733,6 +733,19 @@ header .sub{color:#E4E7EF; text-shadow:1px 1px 0 #000}
   border-bottom-color:var(--bev-dk); border-right-color:var(--bev-dk);
   border-radius:2px;
 }
+/* Vibes and tags in one wrapping strip rather than a band each. In a 300px
+   column two stacked flex rows spent five lines saying what fits in two, and
+   everything below them was pushed down the row for it. As items of one flow
+   they fill a line before starting another; each still wraps internally, so a
+   long list breaks where it has to instead of where the container did. */
+.rowchips{
+  margin-top:7px; display:flex; flex-wrap:wrap; align-items:center; gap:3px 9px;
+}
+.rowchips > .vibematches,
+.rowchips > .tagchips{ margin-top:0; min-width:0; }
+.rowchips > .vibematches:empty,
+.rowchips > .tagchips:empty{ display:none; }
+
 /* --- tag chips --- */
 .tagchips{
   margin-top:7px; display:flex; flex-wrap:wrap; gap:4px; align-items:center;
@@ -993,6 +1006,19 @@ body.view-options .lensbar{ display:none; }
 .opt-row .k{ color:var(--dim); }
 .opt-row .v{ color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px;
   text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%; }
+/* A three-way choice where a dropdown would hide two thirds of it: the options
+   are short, mutually exclusive, and worth seeing side by side. */
+.opt-seg{ display:inline-flex; border:1px solid var(--line); border-radius:7px;
+  overflow:hidden; }
+.opt-seg button{
+  background:none; border:none; border-right:1px solid var(--line); cursor:pointer;
+  color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:11px;
+  padding:5px 11px; transition:color .12s, background .12s;
+}
+.opt-seg button:last-child{ border-right:none; }
+.opt-seg button:hover{ color:var(--text); background:rgba(255,255,255,.04); }
+.opt-seg button.on{ color:var(--accent-a); background:rgba(86,180,233,.14); }
+
 .opt-badge{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px;
   font-family:'JetBrains Mono',monospace; }
 .opt-badge.ok{ background:rgba(0,158,115,.15); color:var(--other); }
@@ -1030,12 +1056,48 @@ body.view-options .lensbar{ display:none; }
 .guide-body hr{ border:none; border-top:1px solid var(--line); margin:24px 0; }
 
 /* ---- top bar: search ---- */
+/* The map toolbar.
+
+   It had grown to a dozen sibling controls in one row, all with the same 12px
+   gap between them, so nothing read as belonging to anything: a mode picker, two
+   unrelated toggles, three panel buttons and a speed slider all looked like one
+   undifferentiated run of icons. Worse, the row could not wrap, so on a narrower
+   window flex simply squashed whatever would shrink -- which meant the three
+   panel buttons folded into a vertical stack and the track count broke across
+   four lines, leaving the bar visibly ragged.
+
+   So: related controls are grouped, groups are separated by a rule rather than
+   by guessing from spacing, and the bar wraps to a second line as a whole
+   instead of crushing its contents. Nothing here shrinks except the search box,
+   which is the only control with slack to give. */
 .map-top{
-  display:flex; align-items:center; gap:12px;
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px 15px;
   padding:9px clamp(14px,3vw,28px); border-bottom:1px solid var(--line);
   background:var(--panel);
 }
-.map-search-wrap{ position:relative; flex:0 1 420px; }
+/* Grouping is done with proximity and a faint plate, not with dividers. A rule
+   between groups is the obvious answer and the wrong one here: the bar wraps, so
+   any given divider lands mid-row on one window width and at the start of a line
+   on another, where it separates nothing from nothing. Distance carries it
+   instead -- 5px inside a group against 15px between them -- with just enough
+   background to show where one ends. */
+.mt-group{
+  display:flex; align-items:center; gap:5px; flex:none;
+  background:rgba(255,255,255,.03); border-radius:9px; padding:3px 7px;
+}
+/* The count is a readout, not a control: it never shrinks and never wraps. */
+.map-top .map-hint{ flex:none; white-space:nowrap; }
+/* The readout and the actions are one unit at the far end, held there by an
+   auto margin rather than by a spacer element. A spacer only pushes while it
+   shares a line with what it is pushing: once the bar wrapped, the spacer stayed
+   up on the previous row and the actions began the next one hard against the
+   left edge, adrift from everything. An auto margin travels with them. */
+.mt-tail{
+  display:flex; align-items:center; gap:11px; flex:none; margin-left:auto;
+}
+/* Everything in the bar holds its size; only the search box gives ground. */
+.map-top > button, .map-top > select, .map-top > label{ flex:none; }
+.map-search-wrap{ position:relative; flex:1 1 200px; min-width:160px; max-width:320px; }
 #map-search{
   width:100%; background:var(--panel-2); border:1px solid var(--line);
   border-radius:7px; color:var(--text); padding:8px 12px;
@@ -1087,14 +1149,29 @@ body.view-options .lensbar{ display:none; }
 .map-toggle:hover{ color:var(--text); border-color:var(--dimmer); }
 .map-toggle.on{ color:var(--text); border-color:var(--accent-a); background:var(--bg); }
 /* label-options popover */
-.map-lblwrap{ position:relative; }
+/* Holds the three panel buttons and their popovers. A flex row that refuses to
+   shrink: squashed, its buttons wrapped into a vertical stack and dragged the
+   whole toolbar taller. */
+.map-lblwrap{ position:relative; display:flex; align-items:center; gap:5px; flex:none; }
+/* A toolbar panel is as tall as it needs to be, up to what the window has left.
+   These grew with the genre list and the galaxy controls until the long ones ran
+   off the bottom of a short window -- with the end of the panel, and whatever
+   button was at the end of it, simply unreachable. Capped against the viewport
+   rather than a fixed number, so shrinking the window re-fits them instead of
+   pushing the bottom out of reach; anything that no longer fits scrolls inside
+   the panel. The 170px is the header and toolbar the panel hangs below. */
 .map-panel{
   position:absolute; top:calc(100% + 6px); right:0; z-index:30; width:210px;
   display:flex; flex-direction:column; gap:5px; padding:10px 11px;
+  max-height:calc(100vh - 170px); overflow-y:auto; overscroll-behavior:contain;
   background:var(--panel); border:1px solid var(--line); border-radius:9px;
   box-shadow:0 14px 34px rgba(0,0,0,.5);
   font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text);
 }
+/* A flex column will happily squash its children to make itself fit. The genre
+   list has its own scroller, so let it shrink; nothing else should. */
+.map-panel > *{ flex:none; }
+.map-panel > .flt-genres{ flex:0 1 auto; }
 .map-panel[hidden]{ display:none; }
 .mp-head{ font-family:'Syne',sans-serif; font-weight:700; font-size:12px; color:var(--text); margin-bottom:2px; }
 .mp-row{ display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--dim); padding:1px 0; }
@@ -1200,7 +1277,9 @@ body.view-options .lensbar{ display:none; }
 .leg-more{ font-size:9px; color:#7a8496; align-self:center; }
 
 /* ---- navigation key legend (top-left) ---- */
+/* Same rule for the on-canvas overlays: never taller than the window. */
 #map-keys{
+  max-height:calc(100vh - 190px); overflow-y:auto;
   position:absolute; top:12px; left:12px; z-index:13;
   background:rgba(13,15,20,.78); border:1px solid var(--line); border-radius:8px;
   backdrop-filter:blur(3px); overflow:hidden; max-width:190px;
@@ -1349,7 +1428,7 @@ body.view-options .lensbar{ display:none; }
   display:flex; flex-direction:column; gap:7px; }
 .pop-adj[hidden]{ display:none; }
 .adj-rows{ display:flex; flex-direction:column; gap:4px; }
-.adj-row{ display:grid; grid-template-columns:auto auto 1fr 30px; gap:5px;
+.adj-row{ display:grid; grid-template-columns:auto auto 1fr 30px auto; gap:5px;
   align-items:center; font-size:11px; }
 .adj-step{
   width:19px; height:19px; padding:0; line-height:1; cursor:pointer;
@@ -1390,6 +1469,107 @@ body.view-options .lensbar{ display:none; }
 }
 .adj-add:hover{ border-color:var(--accent-a); color:var(--accent-a); }
 .adj-close:hover{ border-color:var(--dimmer); }
+
+/* Remove a genre outright. Deliberately quiet until hovered -- it sits beside
+   the -/+ pair on every row, and a destructive-looking button repeated down the
+   panel reads as a warning about the whole thing rather than one option on one
+   row. It only turns red under the cursor, where it means you. */
+.adj-drop{
+  width:19px; height:19px; padding:0; line-height:1; cursor:pointer;
+  background:none; border:1px solid transparent; border-radius:5px;
+  color:var(--dimmer); font-family:'JetBrains Mono',monospace; font-size:10px;
+}
+.adj-drop:hover{ color:var(--err); border-color:var(--err); background:rgba(229,86,79,.10); }
+
+/* What you removed, named. Nothing here vanishes silently: the strip is the
+   only way back, and it answers "why is this track missing a genre" later. */
+.adj-dropped{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-top:3px;
+  padding-top:6px; border-top:1px dashed var(--line); }
+.adj-dropped .ovr-h{ width:100%; }
+.adj-restore{
+  display:inline-flex; align-items:center; gap:4px; cursor:pointer;
+  font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 7px;
+  border-radius:11px; background:none; border:1px dashed var(--line);
+  color:var(--dim); text-decoration:line-through;
+}
+.adj-restore:hover{ border-style:solid; border-color:var(--accent-a);
+  color:var(--accent-a); text-decoration:none; }
+
+/* The same panel inside an Analyzer row. The map's copy sits in a 320px popup;
+   the genre column here is far wider, so cap it -- across a full-width row the
+   +/- button and the bar it moves end up at opposite sides of the screen. */
+.row-adj{ max-width:440px; margin-top:10px; }
+.row-adj .adj-meter{ padding:4px 7px; }
+.adj-btn{ vertical-align:middle; }
+
+/* The genre cell is a rendered body plus a fixed strip of controls; the body is
+   what re-renders. No box of its own -- it is a seam, not a section. */
+.genre-body{ min-width:0; }
+
+/* A track you drop that was already analysed runs nothing, so nothing on screen
+   moves to say it landed. This says it, then gets out of the way. */
+@keyframes justfound{
+  0%   { background:rgba(86,180,233,.20); box-shadow:inset 3px 0 0 var(--accent-a); }
+  100% { background:transparent;          box-shadow:inset 3px 0 0 transparent; }
+}
+.row.justfound{ animation:justfound 1.4s ease-out 1; }
+@media (prefers-reduced-motion: reduce){
+  /* No decay, but the row still has to be findable: the marker holds for the
+     couple of seconds the class is on, since the point was "this one, here".
+     NOTE: Windows' "Show animations" setting turns this branch on system-wide. */
+  .row.justfound{ animation:none; box-shadow:inset 3px 0 0 var(--accent-a); }
+}
+
+/* The genre list in the filter panel: one scrollable column of tick-boxes, so a
+   library with seventy genres in it is a list you scroll rather than a panel
+   taller than the window. */
+.flt-genres{
+  display:flex; flex-direction:column; gap:0; max-height:190px; overflow-y:auto;
+  border:1px solid var(--line); border-radius:6px; padding:3px 4px;
+}
+.flt-gen{
+  display:flex; align-items:center; gap:6px; cursor:pointer; padding:2px 3px;
+  color:var(--dim); border-radius:4px;
+}
+.flt-gen:hover{ color:var(--text); background:rgba(255,255,255,.04); }
+.flt-gen input{ accent-color:var(--accent-a); cursor:pointer; flex:none; }
+.flt-gen span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.flt-gen i{ font-style:normal; font-size:9.5px; color:var(--dimmer); flex:none; }
+.flt-genbtns{ display:flex; gap:4px; }
+.flt-genbtns button{
+  flex:1; background:none; border:1px solid var(--line); border-radius:5px;
+  color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:10px;
+  padding:3px 0; cursor:pointer;
+}
+.flt-genbtns button:hover{ color:var(--accent-a); border-color:var(--accent-a); }
+
+/* Recently viewed stars. A list of places you have been, so it is laid out to
+   be scanned rather than read: the genre's own colour on the left to find one by
+   sight, the title carrying the line, everything else quiet underneath it. */
+.recent-list{
+  display:flex; flex-direction:column; gap:1px; max-height:280px; overflow-y:auto;
+  margin:2px 0 4px;
+}
+.recent-item{
+  display:flex; align-items:center; gap:7px; width:100%; text-align:left;
+  background:none; border:1px solid transparent; border-radius:6px;
+  padding:4px 6px; cursor:pointer; color:var(--text);
+  font-family:'JetBrains Mono',monospace; font-size:11px; min-width:0;
+}
+.recent-item:hover{ border-color:var(--accent-a); background:rgba(86,180,233,.10); }
+.recent-dot{
+  width:8px; height:8px; border-radius:50%; flex:none;
+  box-shadow:0 0 6px -1px currentColor;
+}
+.recent-txt{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+.recent-txt b{
+  font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.recent-txt i{
+  font-style:normal; font-size:9.5px; color:var(--dim);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.mp-reset:disabled{ opacity:.35; cursor:default; }
 
 /* likely-misread flag */
 .pop-flag{
@@ -1551,6 +1731,19 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .nb-meta{ min-width:0; width:min(260px,30vw); }
 .nb-title{ font-family:'Syne',sans-serif; font-weight:700; font-size:13px; color:var(--text);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* The title is the way back to the star. Underlined only on hover: a permanent
+   link underline in a bar that is always on screen turns the name of what you
+   are listening to into chrome. */
+.sb-title.sb-goto{ cursor:pointer; }
+.sb-title.sb-goto:hover{ color:var(--accent-b); text-decoration:underline;
+  text-underline-offset:2px; }
+.sb-title.sb-goto:focus-visible{ outline:1px solid var(--accent-b); outline-offset:2px;
+  border-radius:3px; }
+.nb-title.nb-goto{ cursor:pointer; }
+.nb-title.nb-goto:hover{ color:var(--accent-a); text-decoration:underline;
+  text-underline-offset:2px; }
+.nb-title.nb-goto:focus-visible{ outline:1px solid var(--accent-a); outline-offset:2px;
+  border-radius:3px; }
 .nb-artist{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
 .nb-btn{

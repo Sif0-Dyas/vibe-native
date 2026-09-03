@@ -104,11 +104,14 @@ async function renderTags(row, hash){
     ]);
     const mineIds = new Set(mine.map(t => t.id));
 
+    // finishRow lays out a `.rowchips` strip with a holder already in it, so the
+    // chips land beside the vibes instead of on their own line. Falling back to
+    // the cell keeps this working for any row built without one.
     let holder = row.querySelector('.tagchips');
     if (!holder){
       holder = document.createElement('div');
       holder.className = 'tagchips';
-      row.children[2].appendChild(holder);
+      (row.querySelector('.rowchips') || row.children[2]).appendChild(holder);
     }
     holder.innerHTML = '';
 
@@ -489,11 +492,13 @@ async function renderVibePanel(){
 /* per-row: show which vibes this track matches + add-to-vibe button */
 async function renderVibeMatches(row, hash){
   try {
-    const prev = row.children[2].querySelector('.vibematches');
-    if (prev) prev.remove();            // avoid stacking holders on refresh
+    // Refilled in place rather than removed and re-appended: the holder's
+    // position in the `.rowchips` strip is set by finishRow, and rebuilding it
+    // dropped the vibes below the tags every time a thumb was pressed.
     const r = await fetch(`/vibes/match/${hash}`);
-    const holder = document.createElement('div');
+    const holder = row.querySelector('.vibematches') || document.createElement('div');
     holder.className = 'vibematches';
+    holder.innerHTML = '';
     async function feedback(vid, weight){
       // per-song 👍/👎: sets THIS track's weight inside that vibe (Rocchio),
       // then re-ranks -- 👍 pulls the vibe toward the song, 👎 pushes it away.
@@ -571,7 +576,7 @@ async function renderVibeMatches(row, hash){
     });
     holder.appendChild(addBtn);
     row._vibeholder = holder;
-    row.children[2].appendChild(holder);
+    if (!holder.isConnected) (row.querySelector('.rowchips') || row.children[2]).appendChild(holder);
   } catch(e){ /* vibe UI is best-effort; never break the row */ }
 }
 

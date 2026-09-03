@@ -69,6 +69,17 @@
         '<div class="opt-note" id="fp-msg"></div>' +
       '</div>' +
       '<div class="opt-card"><h3>Appearance</h3>' +
+        '<div class="opt-row"><span class="k">Key notation</span>' +
+          '<span class="v"><span class="opt-seg" id="keyview">' +
+            '<button data-k="both">both</button>' +
+            '<button data-k="camelot">Camelot</button>' +
+            '<button data-k="musical">musical</button>' +
+          '</span></span></div>' +
+        '<div class="opt-note"><b>Camelot</b> (8A) is what you mix by; <b>musical</b> ' +
+        '(A min) is what you read. Both were always shown together &mdash; fine on one ' +
+        'row, noise across a library. Applies to the Analyzer, the map and the exported ' +
+        'list. The Library tab keeps its own Key and Camelot columns, which you pick ' +
+        'under <b>columns</b>.</div>' +
         '<div class="opt-note">Light mode is planned for a future update; the app is ' +
         'dark-themed for now.</div>' +
       '</div>';
@@ -81,6 +92,23 @@
     });
     wireDbEdit();
     wireFilePaths();
+    wireKeyView();
+  }
+
+  /* Key notation. app.js owns the setting and the re-render, so this is only the
+     control: mark the live one, hand over the new one. */
+  function wireKeyView() {
+    var seg = document.getElementById('keyview');
+    if (!seg || typeof KEYVIEW === 'undefined') return;
+    var mark = function () {
+      seg.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('on', b.dataset.k === KEYVIEW.mode);
+      });
+    };
+    seg.querySelectorAll('button').forEach(function (b) {
+      b.onclick = function () { setKeyView(b.dataset.k); mark(); };
+    });
+    mark();
   }
 
   /* Music file paths: audit on open, then dry-run "check" before any write.

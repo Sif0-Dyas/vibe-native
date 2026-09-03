@@ -72,8 +72,11 @@
      still appears until you actually narrow the range -- an outlier shouldn't be
      silently hidden by a control you never touched.
   --------------------------------------------------------------------------- */
+  // `hidden` is the set of genre names taken off the map by the genre list. A
+  // set of exclusions rather than a list of inclusions, so a genre that appears
+  // in the library later is visible by default rather than silently absent.
   const FILT_EMPTY = { artist:'', key:'', style:'', tags:[], playlist:null,
-                       bpm:[null,null], len:[null,null] };
+                       playable:false, hidden:[], bpm:[null,null], len:[null,null] };
   let FILT = JSON.parse(JSON.stringify(FILT_EMPTY));
   let playlistHashes = null;        // Set of hashes for the chosen playlist, or null
   // Hovered chip -> its tracks twinkle as a preview of what clicking would show.
@@ -111,6 +114,7 @@
 
   const filtActive = () =>
     !!(FILT.artist || FILT.key || FILT.style || FILT.tags.length || FILT.playlist
+       || FILT.playable || FILT.hidden.length
        || FILT.bpm[0] != null || FILT.bpm[1] != null
        || FILT.len[0] != null || FILT.len[1] != null);
 
@@ -140,6 +144,18 @@
     // tags are AND: picking two means "has both", which is how you narrow down
     if (FILT.tags.length && !FILT.tags.every(t => (n.tags || []).includes(t))) return false;
     if (playlistHashes && !playlistHashes.has(n.hash)) return false;
+    // `n.a` is "the server can find this track's audio". A track analysed from a
+    // drag-and-drop was never linked to a folder, so it can't be previewed or
+    // exported -- a star you can look at but not use. Note this filter, like
+    // every other one here, is applied when DRAWING: layout() has already placed
+    // every node from the whole library, so hiding these does not move the
+    // survivors or change whose neighbours are whose. What you see is the same
+    // map with fewer dots on it, not a different map.
+    if (FILT.playable && !n.a) return false;
+    // Unticked in the genre list. Matched against the keystone, which is the
+    // level the list is written at -- so hiding "Dubstep" hides Brostep with it
+    // rather than leaving its subgenres behind.
+    if (FILT.hidden.length && FILT.hidden.includes(genreKeyOf(n))) return false;
     if (!inRange(n.bpm, FILT.bpm)) return false;
     if (!inRange(n.duration, FILT.len)) return false;
     return true;
@@ -147,7 +163,60 @@
   const tipEl = document.getElementById('map-tip');
   let anim = null;                         // camera tween
   const proj = new Map();                  // hash -> {sx,sy,z,r} for this frame
-  const CAM = 2.7;                         // camera distance (world units)
+  /* How far the camera stands off what it is looking at, in world units.
+
+     This was a constant, 2.7, which quietly assumed every layout fits inside a
+     ball of that radius. Perspective is CAM/(CAM - z), so a point at z = 2.7 is
+     AT the lens: it divides by zero, and everything approaching it swings across
+     the screen and then vanishes at the near-plane cull. The old Universe
+     already poked past it (its cloud reached about 3.4), and sizing galaxies by
+     mass pushed the sky out to about 10 -- so most of it was at or through the
+     camera, and orbiting warped it wildly.
+
+     So the camera backs off with the scene instead. At 1.7x the cloud radius the
+     near edge magnifies about 2.4x and the far edge about 0.63x -- a fixed 3.9:1
+     ratio, so a map looks the same whatever it is measuring, and no layout can
+     put itself inside the lens again. The 2.7 floor keeps small scenes on the
+     framing they have always had. */
+  /* How far in "picking a track" takes you.
+
+     This was the flat number 1.9, which is a zoom level, not a distance -- so it
+     only meant "close" for a cloud of the size the map happened to have when it
+     was written. On a sky sized by mass, fitting the whole library is around
+     0.10, and slamming to 1.9 is twenty times further in than the view you
+     started from: you arrive somewhere with nothing around you.
+
+     Six times the fit zoom is about one galaxy filling the frame, which is what
+     "look at this track" should mean at any scale -- and on the old cloud it
+     lands within a hair of the 1.9 it replaces. */
+  const closeZoom = () => clamp(0.95 / (FITR || 1) * 6, 0.3, 6);
+
+  const CAM_STANDOFF = 1.7;
+  let CAM = 2.7;                           // camera distance (world units)
+  /* Two radii, because they answer different questions.
+
+     MAXR is the real one: the furthest star there is. The camera has to clear
+     THAT or the straggler it missed ends up inside the lens.
+
+     FITR is what the view frames, and it deliberately ignores the last few
+     percent. A handful of one-track genres sitting out on the rim would
+     otherwise set the zoom for the whole library, and the answer to "show me my
+     music" would be a small knot in the middle of an empty frame with four dots
+     around the edge. Framing the bulk puts the library on screen and lets the
+     stragglers fall outside it, which is what they are. */
+  let FITR = 1;
+  function setSceneRadius(all){
+    if (!all.length){ MAXR = FITR = 1; CAM = 2.7; return; }
+    all.sort((a, b) => a - b);
+    MAXR = Math.max(0.5, all[all.length - 1]);
+    // The 90th percentile, not the 97th. Framing at 97 put the edge of the
+    // frame where almost nothing is: the outer tenth of a library is a thin
+    // scatter, so it set the zoom while the part you can actually see sat in a
+    // knot in the middle. At 90 the frame lands on the body of the map and the
+    // scatter falls outside it, which is what "fit" should mean.
+    FITR = Math.max(0.5, all[Math.floor(all.length * 0.90)] || MAXR);
+    CAM = Math.max(2.7, MAXR * CAM_STANDOFF);
+  }
 
   /* -- deterministic RNG so a track's spot is stable across reloads -- */
   function rng(seed){
@@ -170,8 +239,36 @@
   // user-customisable per-family base hue (persisted); falls back to the hash hue
   let FAM_HUE = {};
   try { FAM_HUE = JSON.parse(localStorage.getItem('vibeFamHue') || '{}') || {}; } catch(_){ FAM_HUE = {}; }
-  let legendCollapsed = false;
-  try { legendCollapsed = localStorage.getItem('vibeLegend') === 'off'; } catch(_){ /* private mode */ }
+  /* Both on-canvas overlays start closed. They are the first thing the map shows
+     you, and what you came to the map for is behind them -- a legend and a list
+     of key bindings are reference material, useful when you go looking for them
+     and in the way when you don't. An explicit "on" is remembered, so opening
+     one keeps it open; never having touched it means closed. */
+  let legendCollapsed = true;
+  try { legendCollapsed = localStorage.getItem('vibeLegend') !== 'on'; } catch(_){ /* private mode */ }
+
+  /* Stars you have looked at, newest first. Kept per browser rather than in the
+     library: which tracks you happened to open is a trail through this session's
+     thinking, not a fact about the music. Titles are stored alongside the hash so
+     the list can name what it is offering before the map has finished loading. */
+  const RECENT_MAX = 24;
+  let RECENT = [];
+  try { RECENT = JSON.parse(localStorage.getItem('vibeRecentStars') || '[]') || []; } catch(_){ RECENT = []; }
+  if (!Array.isArray(RECENT)) RECENT = [];
+  const saveRecent = () => {
+    try { localStorage.setItem('vibeRecentStars', JSON.stringify(RECENT)); } catch(_){ /* private mode */ }
+  };
+  function pushRecent(n){
+    if (!n || !n.hash) return;
+    // Re-opening a track moves it to the front rather than adding it twice: the
+    // list answers "where have I been", and the same star five times over is a
+    // worse answer than the five different ones it pushed out.
+    RECENT = [{ hash: n.hash, title: n.title || '', artist: n.artist || '', at: Date.now() },
+              ...RECENT.filter(r => r && r.hash !== n.hash)].slice(0, RECENT_MAX);
+    saveRecent();
+    if (renderRecent) renderRecent();
+  }
+  let renderRecent = null;          // set when the panel is wired
   const famHue = fam => (FAM_HUE[fam] == null ? hueOf(fam) : FAM_HUE[fam]);
   const famCss = fam => `hsl(${famHue(fam)} 62% 62%)`;
 
@@ -293,9 +390,9 @@
   }
   const durfmt = s => { if (s==null) return '--'; s=Math.round(s);
     return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
-  const keyfmt = n => n.camelot
-    ? `${n.camelot} ${n.key||''} ${(n.scale||'').slice(0,3)}`.trim()
-    : (n.key ? `${n.key} ${(n.scale||'').slice(0,3)}`.trim() : '--');
+  // Written in whichever notation the app is set to read in; app.js owns that
+  // preference so the map, the rows and the exported list can never disagree.
+  const keyfmt = n => keyText(n) || '--';
 
   /* ---- harmonic mixing (Camelot wheel + BPM tolerance) ------------- */
   const camelot = c => { const m = /^(\d{1,2})([AB])$/.exec((c||'').trim().toUpperCase());
@@ -454,15 +551,20 @@
      thousands of wasted draws every frame. Callers set globalAlpha to the
      star's brightness first; the corona is a fraction OF that, so a dim star
      glows dimly. */
-  function drawCorona(p, n, strength){
-    const prevA = ctx.globalAlpha;
-    if (!(strength > 0) || p.r <= 1.8 || prevA <= 0.12) return;
+  /* One corona, assuming the caller has already put the context into additive
+     mode. It used to set 'lighter' and put it back on every single call, and
+     that is what made the glow expensive rather than the light itself: changing
+     the composite operation ends the current batch, so a 3,000-star frame paid
+     6,000 forced flushes on top of its 6,000 blits. The blits are the work; the
+     flushes were pure tax.
+
+     The alpha each star needs still differs (depth, twinkle, harmonic dimming),
+     so it is passed in rather than read back off the context. */
+  function drawCorona(p, n, strength, alpha){
+    if (!(strength > 0) || p.r <= 1.8 || alpha <= 0.12) return;
     const gr = p.r * GLOW_SCALE;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = prevA * GLOW_ALPHA * strength;
-    ctx.drawImage(starSprite(n.hue, n.sat || 64, n.dl, 'corona'), p.sx - gr, p.sy - gr, gr * 2, gr * 2);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = prevA;
+    ctx.globalAlpha = alpha * GLOW_ALPHA * strength;
+    ctx.drawImage(glowSprite(n), p.sx - gr, p.sy - gr, gr * 2, gr * 2);
   }
 
   /* Two sprites per colour, because they have to composite differently.
@@ -508,6 +610,58 @@
   // Canonical body lightness a sprite is baked at. Per-star brightness is
   // applied as alpha at draw time, so this is only the midpoint it varies around.
   const SPRITE_LIGHT = 56;
+
+  /* The two sprites a star draws with, resolved once and kept on the node.
+
+     starSprite() is cheap but not free: it rounds three numbers, builds a key
+     string and hits a Map. Calling it twice per star per frame on a 3,000-track
+     library is 6,000 key strings every frame -- around 360,000 short-lived
+     strings a second for no gain, since n.hue / n.sat / n.dl do not change
+     between layouts.
+
+     Invalidated by clearing these two fields wherever those three are assigned:
+     layout(), and the two single-node recolours (an adjusted blend, an
+     override). There are exactly three such places. */
+  function coreSprite(n){
+    return n._spCore || (n._spCore = starSprite(n.hue, n.sat || 64, n.dl, 'core'));
+  }
+  function glowSprite(n){
+    return n._spGlow || (n._spGlow = starSprite(n.hue, n.sat || 64, n.dl, 'corona'));
+  }
+
+  /* Nebula gas: one very soft, very faint blob per system.
+
+     Stars alone draw a galaxy as a swarm of points with nothing between them,
+     and the thing every real photograph of one has that ours did not is the
+     stuff in between -- lit gas, dim and enormous and the same colour as what
+     lit it. It is drawn additively and kept deliberately weak, because it is
+     accumulating: a galaxy is dozens of these overlapping, and anything you can
+     see clearly on its own blows out to a white cloud when they stack.
+
+     Softer than the star corona, and with no core: gas has no surface. */
+  const NEBULA_R = 96;
+  const NEBULA_SPRITES = new Map();
+  function nebulaSprite(hue, sat){
+    const h = Math.round(hueOk(hue) / 10) * 10;
+    const sa = Math.round(pctOk(sat, 64) / 12) * 12;
+    const key = h + '|' + sa;
+    let cv = NEBULA_SPRITES.get(key);
+    if (cv) return cv;
+    if (NEBULA_SPRITES.size > 200) NEBULA_SPRITES.clear();
+    cv = document.createElement('canvas');
+    cv.width = cv.height = NEBULA_R * 2;
+    const g = cv.getContext('2d');
+    const grd = g.createRadialGradient(NEBULA_R, NEBULA_R, 0, NEBULA_R, NEBULA_R, NEBULA_R);
+    grd.addColorStop(0.00, `hsla(${h} ${sa}% 66% / 0.62)`);
+    grd.addColorStop(0.18, `hsla(${h} ${sa}% 58% / 0.34)`);
+    grd.addColorStop(0.48, `hsla(${h} ${sa}% 50% / 0.13)`);
+    grd.addColorStop(0.78, `hsla(${h} ${sa}% 44% / 0.03)`);
+    grd.addColorStop(1.00, `hsla(${h} ${sa}% 40% / 0)`);
+    g.fillStyle = grd;
+    g.fillRect(0, 0, NEBULA_R * 2, NEBULA_R * 2);
+    NEBULA_SPRITES.set(key, cv);
+    return cv;
+  }
 
   function starSprite(hue, sat, dl, kind){
     const h = Math.round(hueOk(hue) / 6) * 6;
@@ -648,8 +802,7 @@
     // The sun is at the origin and every body orbits it, so the centre of mass
     // is the origin by construction -- there is nothing to search for here.
     BARY.x = BARY.y = BARY.z = 0;
-    MAXR = 0.5;
-    for (const n of members){ const d = Math.hypot(n.x3, n.y3, n.z3); if (d > MAXR) MAXR = d; }
+    setSceneRadius(members.map(n => Math.hypot(n.x3, n.y3, n.z3)));
   }
 
   /* One body's position at time t. Split out because frame() re-runs it every
@@ -667,9 +820,32 @@
      UNI.by is 'vibe' or 'arch'. Vibe membership is fetched once per map load
      (see loadOverlays) because it lives in the database, not on the node. */
   const UNI_FIELD = '\u2014 not in a vibe \u2014';        // where unassigned tracks drift
-  let UNI = { by: 'arch', sep: 1 };
-  try { UNI = Object.assign(UNI, JSON.parse(localStorage.getItem('vibeUniverse') || '{}') || {}); } catch(_){}
-  const saveUni = () => { try{ localStorage.setItem('vibeUniverse', JSON.stringify(UNI)); }catch(_){} };
+  /* `by`   what a galaxy is: 'arch' (keystone genre), 'fam' (family), 'vibe'.
+     `sep`  how big the sky is -- see the relaxation, where it sets the balance.
+     `grav` how hard related galaxies pull on each other; 0 is a plain even shell.
+     `v`    which meaning those numbers have.
+
+     `sep` used to scale the starting positions and nothing else, so a stored 1
+     from that version does not mean what a 1 means now. Rather than silently
+     reinterpreting it, a settings blob from before the change is replaced with
+     the current defaults -- the alternative is a saved preference that quietly
+     becomes a different preference under the user. */
+  const UNI_V = 2;
+  let UNI = { by: 'arch', sep: 1.6, grav: 1, v: UNI_V };
+  try {
+    const saved = JSON.parse(localStorage.getItem('vibeUniverse') || '{}') || {};
+    if (saved.v === UNI_V) UNI = Object.assign(UNI, saved);
+    else if (saved.by) UNI.by = saved.by;      // that one still means what it did
+  } catch(_){}
+  const saveUni = () => {
+    UNI.v = UNI_V;
+    try{ localStorage.setItem('vibeUniverse', JSON.stringify(UNI)); }catch(_){}
+  };
+  // The settled galaxies of the current Universe layout, by name. Kept so the
+  // label layer and the click-to-fly targets can use where gravity actually put
+  // them rather than recomputing the relaxation.
+  let GALAXIES = {};
+  let lastGt = 0;                     // the orbit clock, as of the last tick
   let PLAYLISTS = [];                 // [{id, name}] saved playlists, for Solar
   let VIBES = [];                     // [{id, name, hashes}] from /vibes/membership
   let VIBE_OF = new Map();            // hash -> vibe name (first vibe wins)
@@ -679,34 +855,457 @@
      A track can sit in several vibes at once, but it can only be in one place
      on screen, so the FIRST vibe by name owns it. Deterministic, and stated
      rather than silently picking whichever the query returned first. */
-  function uniGroupOf(n){
-    if (UNI.by === 'vibe') return VIBE_OF.get(n.hash) || UNI_FIELD;
-    return n.fam || 'Other';
+  /* The genre a track is filed under for the genre list: its keystone, which is
+     the tier that answers "what kind of track is this" without splitting House
+     into nine entries you would have to untick one at a time. */
+  function genreKeyOf(n){
+    return n.kkey || n.style || n.fam || 'Other';
   }
 
-  /* One anchor per galaxy, on a Fibonacci sphere so they distribute evenly
-     rather than banding at the poles. The biggest galaxy takes the centre --
-     it is the thing you orbit by default -- and the rest ring it. */
+  /* One tier below whatever a galaxy is.
+
+     A galaxy is a genre, but a genre is not a smooth thing: House is Progressive
+     House and Bassline and Electro House and Tech House, and those are real
+     divisions with their own sound. Drawing them as one even disc says they are
+     interchangeable, which is the opposite of what the rest of the app spends
+     its time telling you. So each one gets its own system inside the galaxy --
+     a cluster of its own, in its own orbit around the middle.
+
+     Always the next tier down, so the nesting holds whichever way you slice the
+     sky: family galaxies are made of genres, genre galaxies are made of
+     subgenres. */
+  function systemKeyOf(n){
+    if (UNI.by === 'fam' || UNI.by === 'vibe') return n.kkey || n.style || 'Other';
+    return n.style || n.kkey || 'Other';
+  }
+
+  function uniGroupOf(n){
+    if (UNI.by === 'vibe') return VIBE_OF.get(n.hash) || UNI_FIELD;
+    // 'genre' is the default: one galaxy per keystone, which is the level at
+    // which "Dubstep" and "Drum n Bass" are different places. Grouping by family
+    // put both inside one Bass galaxy -- which is why that galaxy was a single
+    // dense blob with the interesting structure buried inside it.
+    if (UNI.by === 'fam') return n.fam || 'Other';
+    return n.kkey || n.style || n.fam || 'Other';
+  }
+
+  /* ---- galaxies -----------------------------------------------------
+
+     Every galaxy used to be the same size, in the same orientation, pinned to a
+     point on one sphere. So the biggest genre in the library and a genre with
+     four tracks in it drew the same object, and the sky was a ring of equal
+     blobs -- which is why the dense ones read as fog and the whole thing looked
+     like a diagram rather than a sky.
+
+     A galaxy now has three things the old anchor did not:
+
+       MASS. Its radius grows as the square root of its track count, because a
+       galaxy is a disc: doubling the area doubles the room, and sqrt is what
+       keeps a 1,400-track genre from swallowing the sky while a 5-track one
+       stays a legible speck rather than a single point.
+
+       ORIENTATION. A random-but-stable 3-D rotation, seeded from the name. Real
+       galaxies are not co-planar, and a sky of discs all facing the camera is
+       the single strongest tell that a thing was drawn rather than observed.
+
+       GRAVITY. Where it sits is settled by a relaxation, not assigned. Galaxies
+       repel by mass, so the big ones claim room, and attract along the
+       similarity edges the library already carries -- so genres whose tracks are
+       actually each other's nearest neighbours drift together. That is where
+       the swirl comes from: Drumstep's tracks neighbour both Dubstep and Drum n
+       Bass, so its galaxy is pulled between the two and all three end up in one
+       another's tide. Nothing about that is hardcoded -- take the bridge tracks
+       out of the library and the pull goes with them. */
+
+  // Affinity between galaxies: how many similarity edges cross between them,
+  // normalised by size so a big genre is not simply attractive to everything.
+  function galaxyBonds(groupOf){
+    const bonds = new Map();               // "a\u0000b" -> edge count
+    for (const ed of EDGES){
+      const a = byHash.get(ed.a), b = byHash.get(ed.b);
+      if (!a || !b) continue;
+      const ga = groupOf(a), gb = groupOf(b);
+      if (ga === gb) continue;
+      const k = ga < gb ? ga + '\u0000' + gb : gb + '\u0000' + ga;
+      bonds.set(k, (bonds.get(k) || 0) + (ed.sim || 0.75));
+    }
+    return bonds;
+  }
+
+  // A stable rotation matrix for a galaxy, from its name. Same name, same tilt,
+  // every session -- a sky that re-shuffles itself on reload is not a place.
+  function galaxyBasis(name){
+    const r = rng('gx|' + name);
+    // Two random orthonormal axes in the disc plane, plus their normal.
+    const a = r() * 6.2832, b = Math.acos(2 * r() - 1), c = r() * 6.2832;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const cb = Math.cos(b), sb = Math.sin(b);
+    const cc = Math.cos(c), sc = Math.sin(c);
+    // Z-Y-Z Euler rotation, written out: three cheap trig calls beat a matrix
+    // library for the twenty or so galaxies this ever runs on.
+    return {
+      u: [ca*cb*cc - sa*sc,  sa*cb*cc + ca*sc,  -sb*cc],
+      v: [-ca*cb*sc - sa*cc, -sa*cb*sc + ca*cc,  sb*sc],
+      w: [ca*sb,             sa*sb,              cb],
+    };
+  }
+
+  /* Settle the galaxies by force. Repulsion by mass keeps them out of each
+     other; the bonds pull related ones together; a weak pull to the origin stops
+     the whole sky drifting apart. Runs once per layout on a handful of bodies,
+     so it is a few thousand operations -- nothing that touches a frame. */
   function uniAnchors(){
     const count = {};
     for (const n of NODES){ const g = uniGroupOf(n); count[g] = (count[g]||0)+1; }
     const names = Object.keys(count).sort((a,b)=>count[b]-count[a]);
     if (!names.length) return {};
-    const out = {};
-    // Tighter members + wider anchors as separation rises; at sep=0 the galaxies
-    // collapse back into the single sonic cloud the old galaxy view drew.
-    const R = 2.1 * UNI.sep;
-    const spread = clamp(1 - 0.55*UNI.sep, 0.32, 1);
-    out[names[0]] = { x:0, y:0, z:0, spread };
-    const rest = names.slice(1);
-    rest.forEach((g,i) => {
+
+    const total = NODES.length || 1;
+    const G = {};
+    names.forEach((g, i) => {
+      const r = rng('pos|' + g);
+      // Seeded on a Fibonacci sphere -- an even, deterministic starting point,
+      // so the relaxation converges to the same sky every time rather than
+      // wherever this run's random numbers happened to drop it.
       const k = i + 0.5;
-      const phi = Math.acos(1 - 2*k/rest.length);
-      const th  = Math.PI * (1 + Math.sqrt(5)) * k;
-      out[g] = { x:R*Math.cos(th)*Math.sin(phi), y:R*Math.sin(th)*Math.sin(phi),
-                 z:R*Math.cos(phi), spread };
+      const phi = Math.acos(1 - 2 * k / names.length);
+      const th = Math.PI * (1 + Math.sqrt(5)) * k;
+      const seed = 1.6 + 1.4 * UNI.sep;
+      G[g] = {
+        name: g, n: count[g],
+        // sqrt of the share of the library, floored so a tiny genre is still an
+        // object with an inside rather than a dot. Deliberately NOT scaled by
+        // the separation control: that sets how much space is BETWEEN galaxies,
+        // and scaling the galaxies with it would just be zoom.
+        radius: clamp(1.5 * Math.sqrt(count[g] / total), 0.10, 0.95),
+        mass: Math.sqrt(count[g]),
+        x: seed * Math.cos(th) * Math.sin(phi) + (r() - 0.5) * 0.2,
+        y: seed * Math.sin(th) * Math.sin(phi) + (r() - 0.5) * 0.2,
+        z: seed * Math.cos(phi) + (r() - 0.5) * 0.2,
+        basis: galaxyBasis(g),
+        // Its own rate and direction, stable from the name. A sky where every
+        // galaxy turns the same way at the same speed reads as one mechanism
+        // with things glued to it.
+        spin: (r() < 0.5 ? -1 : 1) * (0.055 + r() * 0.075),
+      };
     });
+
+    const bonds = galaxyBonds(uniGroupOf);
+    // Normalise so the strongest pair in the library pulls at 1. An absolute
+    // edge count would mean a big library collapses and a small one never moves.
+    let maxBond = 0;
+    for (const v of bonds.values()) if (v > maxBond) maxBond = v;
+    const pull = [];
+    for (const [k, v] of bonds){
+      const [a, b] = k.split('\u0000');
+      if (G[a] && G[b]) pull.push([G[a], G[b], v / (maxBond || 1)]);
+    }
+
+    const STEPS = 260;
+    const grav = clamp(UNI.grav, 0, 2);
+    /* What holds the sky together, and therefore how big it is.
+
+       Repulsion pushes outward and this pulls back; the sky settles where they
+       balance, at a radius that goes as the square root of their ratio. So the
+       separation control has to land HERE. Scaling the seed positions and the
+       galaxy radii by it (which is all it used to do) changed where the
+       relaxation started and how big each galaxy was, but not where it finished
+       -- the sky came out the same size at every setting, which is why turning
+       it up did nothing you could see. */
+    /* How much clear space galaxies insist on, as a multiple of them touching.
+
+       This is where the separation control lands, and it is the only place it
+       can honestly land: the sky settles where the galaxies stop overlapping, so
+       the only way to make it emptier is to widen what counts as overlapping.
+       At 1 they sit two radii apart -- a sky of touching discs; by 3 there is
+       more space than galaxy, which is what a universe actually looks like. */
+    const GAP = 1.15 + 0.85 * UNI.sep;
+    // Weak: it only has to stop the pack drifting apart, and anything stronger
+    // fights the spacing above and pulls the sky back into a lump.
+    const hold = 0.004;
+    for (let step = 0; step < STEPS; step++){
+      const cool = 1 - step / STEPS;              // anneal: big moves first
+      for (const g of names) { G[g].fx = 0; G[g].fy = 0; G[g].fz = 0; }
+      /* Repulsion, every pair. Seventy galaxies is ~2,400 pairs.
+
+         This was an inverse-square force divided by each body's own mass -- that
+         is, a real gravitational acceleration -- and on a library with a long
+         tail of tiny genres it produced exactly what physics says it should: the
+         heavy galaxies barely moved, and every one-track genre was flung to the
+         edge of the sky. Those specks then set the frame, so the fit view was
+         mostly empty rim with the entire library crushed into the middle fifth.
+
+         What the sky actually needs is packing, not orbital mechanics. So the
+         repulsion is now short-range: galaxies push only while they overlap, in
+         proportion to how far in they are, and both move -- split by mass, so a
+         big one yields less than a speck but is not immovable. Past contact they
+         ignore each other entirely and the bonds and the centring do the rest.
+         The result fills the volume instead of shelling it. */
+      for (let i = 0; i < names.length; i++){
+        for (let j = i + 1; j < names.length; j++){
+          const A = G[names[i]], B = G[names[j]];
+          let dx = A.x - B.x, dy = A.y - B.y, dz = A.z - B.z;
+          let d2 = dx*dx + dy*dy + dz*dz;
+          if (d2 < 1e-6){ dx = 1e-3; dy = dz = 0; d2 = 1e-6; }
+          const d = Math.sqrt(d2);
+          const want = (A.radius + B.radius) * GAP;
+          if (d >= want) continue;                  // not touching: nothing to resolve
+          const push = (want - d) * 0.45;
+          // Share the correction by mass: the lighter body gives way.
+          const total = A.mass + B.mass;
+          const ux = dx/d, uy = dy/d, uz = dz/d;
+          const ka = B.mass / total, kb = A.mass / total;
+          A.fx += ux*push*ka; A.fy += uy*push*ka; A.fz += uz*push*ka;
+          B.fx -= ux*push*kb; B.fy -= uy*push*kb; B.fz -= uz*push*kb;
+        }
+      }
+      // Attraction along the bonds -- the part that makes neighbours neighbours.
+      for (const [A, B, w] of pull){
+        const dx = B.x - A.x, dy = B.y - A.y, dz = B.z - A.z;
+        const d = Math.hypot(dx, dy, dz) || 1e-3;
+        const rest = (A.radius + B.radius) * 1.5;
+        const f = grav * w * (d - rest) * 0.10;
+        const ux = dx/d, uy = dy/d, uz = dz/d;
+        A.fx += ux*f; A.fy += uy*f; A.fz += uz*f;
+        B.fx -= ux*f; B.fy -= uy*f; B.fz -= uz*f;
+      }
+      for (const g of names){
+        const A = G[g];
+        A.fx -= A.x * hold; A.fy -= A.y * hold; A.fz -= A.z * hold;  // hold the sky together
+        const stepMax = 0.25 * cool;
+        const m = Math.hypot(A.fx, A.fy, A.fz);
+        const k = m > stepMax ? stepMax / m : 1;
+        A.x += A.fx * k; A.y += A.fy * k; A.z += A.fz * k;
+      }
+    }
+
+    // Who is pulling on whom, once it has all settled: the direction and
+    // strength of a galaxy's strongest neighbour, which is what its arms lean
+    // toward. A galaxy with no strong neighbour keeps its own shape.
+    for (const g of names){ G[g].tide = null; }
+    for (const [A, B, w] of pull){
+      const dx = B.x - A.x, dy = B.y - A.y, dz = B.z - A.z;
+      const d = Math.hypot(dx, dy, dz) || 1e-3;
+      // Tidal strength: how hard, relative to how far. Near neighbours deform
+      // each other; a strong bond across the sky barely registers, which is how
+      // tides actually work.
+      const t = w / (d * d + 0.05);
+      for (const [X, sx, sy, sz] of [[A, dx, dy, dz], [B, -dx, -dy, -dz]]){
+        if (!X.tide || t > X.tide.t) X.tide = { t, x: sx/d, y: sy/d, z: sz/d };
+      }
+    }
+    // Where the biggest galaxy landed becomes the origin, so the view still
+    // opens on the busiest music rather than on wherever the relaxation drifted.
+    const c = G[names[0]];
+    for (const g of names){ G[g].x -= c.x; G[g].y -= c.y; G[g].z -= c.z; }
+    return G;
+  }
+
+  /* Divide each galaxy into its systems and place them.
+
+     A system sits where its members' sound puts it -- the mean of their
+     embedding coordinates -- so two subgenres that actually sound alike are
+     neighbours inside the galaxy, exactly as two tracks are. Its size follows
+     its share of the galaxy, the same square root the galaxies themselves use.
+
+     Then they are pushed apart until they stop overlapping, because two systems
+     occupying the same space is two systems you cannot see. A handful per galaxy
+     makes this a few hundred operations. */
+  function buildSystems(G, members){
+    for (const gname in G){
+      const g = G[gname];
+      const mem = members[gname] || [];
+      const acc = {};
+      for (const m of mem){
+        const k = systemKeyOf(m.n);
+        const a = acc[k] || (acc[k] = { k, n: 0, x: 0, y: 0, z: 0 });
+        a.n++; a.x += m.e[0]; a.y += m.e[1]; a.z += m.e[2];
+      }
+      const list = Object.values(acc);
+      for (const a of list){ a.x /= a.n; a.y /= a.n; a.z /= a.n; }
+      const total = mem.length || 1;
+      for (const a of list){
+        // In galaxy-radius units throughout; the galaxy's own radius is applied
+        // once, at draw time.
+        a.sr = clamp(0.62 * Math.sqrt(a.n / total), 0.05, 0.52);
+      }
+      // Separate them. Position only in the disc plane -- a system is a place in
+      // the galaxy, and letting them slide in depth as well would just hide the
+      // overlap rather than resolve it.
+      for (let pass = 0; pass < 90; pass++){
+        let moved = false;
+        for (let i = 0; i < list.length; i++){
+          for (let j = i + 1; j < list.length; j++){
+            const A = list[i], B = list[j];
+            let dx = A.x - B.x, dy = A.y - B.y;
+            let d = Math.hypot(dx, dy);
+            if (d < 1e-6){ dx = (i % 2 ? 1 : -1) * 1e-3; dy = 1e-3; d = 1.4e-3; }
+            const want = (A.sr + B.sr) * 1.12;
+            if (d >= want) continue;
+            const push = (want - d) / 2;
+            const ux = dx / d, uy = dy / d;
+            A.x += ux * push; A.y += uy * push;
+            B.x -= ux * push; B.y -= uy * push;
+            moved = true;
+          }
+        }
+        // Keep them inside the galaxy they belong to.
+        for (const a of list){
+          const d = Math.hypot(a.x, a.y), lim = Math.max(0.05, 1.3 - a.sr);
+          if (d > lim){ a.x *= lim / d; a.y *= lim / d; }
+        }
+        if (!moved) break;
+      }
+      /* Spread them out to fill the galaxy.
+
+         A system sits at the MEAN of its members' coordinates, and a set of
+         means is always tighter than the points it came from -- so left alone
+         the systems huddle near the middle and the galaxy is mostly empty rim.
+         Scaling them out to touch the edge keeps their relative arrangement,
+         which is the part that carries meaning, and uses the room. */
+      let far = 0;
+      for (const a of list) far = Math.max(far, Math.hypot(a.x, a.y) + a.sr);
+      if (far > 0.01 && list.length > 1){
+        const k = 1.18 / far;
+        for (const a of list){ a.x *= k; a.y *= k; }
+      }
+      g.systems = {};
+      for (const a of list){
+        let rad = Math.hypot(a.x, a.y);
+        const ang0 = Math.atan2(a.y, a.x);
+        // Concentrate toward the core, and lag the outer systems so the galaxy
+        // is wound into arms made of clusters rather than of single stars.
+        rad = Math.pow(clamp(rad / 1.3, 0, 1), 1.35) * 1.3;
+        // Every member of a system shares its subgenre, so they share a shade;
+        // one of them is as good as an average and costs nothing.
+        const first = (members[gname] || []).find(m => systemKeyOf(m.n) === a.k);
+        g.systems[a.k] = {
+          rad, sr: a.sr, ang: ang0 + 1.6 * rad, z: a.z * 0.34,
+          mx: a.x, my: a.y, mz: a.z, n: a.n,
+          hue: first ? first.n.hue : 210, sat: first ? first.n.sat : 60,
+          // Mostly rigid with the galaxy, a little quicker toward the middle --
+          // the systems march around together and the arms survive.
+          spin: g.spin * (1 + 0.22 / (rad + 0.35)),
+        };
+      }
+    }
+  }
+
+  /* Place one track inside its galaxy.
+
+     The disc is built from the track's own embedding, as before -- two PCA axes
+     give the position in the plane and the third gives the thickness, so tracks
+     that sound alike still sit together. What is new is what happens to that
+     position afterwards:
+
+       It is spun into the galaxy's own orientation, so the disc lies in that
+       galaxy's plane rather than the world's.
+
+       It is sheared with radius -- the outside lags the inside, which is what
+       makes a rotating disc into a spiral rather than a smear. Differential
+       rotation is the whole reason real galaxies have arms.
+
+       If a neighbour is close and strongly bound, the outer stars are dragged
+       toward it. That is the swirl: two galaxies that share a lot of tracks
+       reach for each other, and the reach is strongest exactly where a real
+       tidal arm would be -- at the rim, on the near side. */
+  /* Work out where a track sits inside its galaxy, once.
+
+     Stored as an orbit rather than a point, because the stars turn: uniPlaceAt()
+     below re-places them every frame. Same split as Solar, and for the same
+     reason -- a galaxy that does not move is a spray of dots that happens to be
+     galaxy-shaped, and rotation is most of what makes a disc read as an object. */
+  /* Where a track sits inside its system, which sits inside its galaxy.
+
+     Two orbits, not one. The system carries the track around the galaxy; the
+     track turns inside the system, faster, the way a moon goes round faster than
+     its planet goes round the sun. Both are worked out once here and re-placed
+     every frame by uniPlaceAt(). */
+  function uniOrbit(n, g, e, jitter){
+    const rr = jitter;
+    const sys = (g.systems && g.systems[systemKeyOf(n)]) || null;
+    // Offset from the system's own centre: where this track sits among its
+    // subgenre, still from its own embedding, so the finest grouping the map can
+    // make is still the one the model heard.
+    const ox = sys ? e[0] - sys.mx : e[0];
+    const oy = sys ? e[1] - sys.my : e[1];
+    const oz = sys ? e[2] - sys.mz : e[2];
+    let rad = Math.hypot(ox, oy) || 1e-4;
+    const ang0 = Math.atan2(oy, ox);
+    /* Concentrate toward the middle. Spread evenly, a cluster draws as a smudge
+       of constant brightness; the fade from a bright centre outward is a large
+       part of what makes one read as an object. Only moves stars inward --
+       nothing is invented. */
+    rad = Math.pow(clamp(rad / 1.3, 0, 1), 1.55);
+    // Scaled into the system it belongs to, so a subgenre of sixty tracks is a
+    // small dense knot and one of six hundred is a broad one.
+    const scale = sys ? sys.sr : 1.3;
+    n.gorb = {
+      g, sys,
+      rad: rad * scale,
+      ang: ang0,
+      z: oz * 0.34 * scale,
+      // A little fixed scatter, so a system is made of stars rather than drawn
+      // as a ring.
+      jx: (rr() - 0.5) * 0.05 * scale,
+      jy: (rr() - 0.5) * 0.05 * scale,
+      jz: (rr() - 0.5) * 0.05 * scale,
+      // Quicker than the system's own march around the galaxy, and in its own
+      // direction, so each cluster reads as a thing turning rather than a patch
+      // being carried.
+      spin: g.spin * (rr() < 0.5 ? -1 : 1) * (2.0 + rr() * 1.6),
+    };
+    uniPlaceAt(n, 0);
+  }
+
+  /* One track's position at time t. */
+  /* A system's own centre, in world coordinates. uniPlaceAt() works this out for
+     every track; the gas needs it once per system. */
+  function systemWorld(g, sys, t, out){
+    const R = g.radius, b = g.basis;
+    const sa = sys.ang + t * sys.spin;
+    const px = Math.cos(sa) * sys.rad * R, py = Math.sin(sa) * sys.rad * R, pz = sys.z * R;
+    let x = b.u[0]*px + b.v[0]*py + b.w[0]*pz;
+    let y = b.u[1]*px + b.v[1]*py + b.w[1]*pz;
+    let z = b.u[2]*px + b.v[2]*py + b.w[2]*pz;
+    if (g.tide){
+      const reach = clamp(g.tide.t * 0.30, 0, 0.55) * (sys.rad / 1.3);
+      x += g.tide.x * reach * R; y += g.tide.y * reach * R; z += g.tide.z * reach * R;
+    }
+    out.x = g.x + x; out.y = g.y + y; out.z = g.z + z;
     return out;
+  }
+
+  function uniPlaceAt(n, t){
+    const o = n.gorb; if (!o) return;
+    const g = o.g, R = g.radius, sys = o.sys;
+    // Where the system is, this instant, around the galaxy's middle.
+    let cx = 0, cy = 0, cz = 0;
+    if (sys){
+      const sa = sys.ang + t * sys.spin;
+      cx = Math.cos(sa) * sys.rad; cy = Math.sin(sa) * sys.rad; cz = sys.z;
+    }
+    // ...and where the track is, this instant, around the system's middle.
+    const a = o.ang + t * o.spin;
+    let px = (cx + Math.cos(a) * o.rad + o.jx) * R;
+    let py = (cy + Math.sin(a) * o.rad + o.jy) * R;
+    let pz = (cz + o.z + o.jz) * R;
+    // Into the galaxy's orientation.
+    const b = g.basis;
+    let x = b.u[0]*px + b.v[0]*py + b.w[0]*pz;
+    let y = b.u[1]*px + b.v[1]*py + b.w[1]*pz;
+    let z = b.u[2]*px + b.v[2]*py + b.w[2]*pz;
+    // The tide, if this galaxy has a strong close neighbour. Proportional to how
+    // far out the star is, so the core stays put and the rim streams away --
+    // which is what a tidal arm looks like.
+    if (g.tide){
+      const reach = clamp(g.tide.t * 0.30, 0, 0.55)
+                  * (((sys ? sys.rad : 0) + o.rad) / 1.3);
+      x += g.tide.x * reach * R;
+      y += g.tide.y * reach * R;
+      z += g.tide.z * reach * R;
+    }
+    n.x3 = g.x + x; n.y3 = g.y + y; n.z3 = g.z + z;
   }
 
   /* ---- build 3-D positions for the current mode -------------------- */
@@ -778,6 +1377,7 @@
         sh = mixShade(sh, styleShade(f2, n.mix[0]), Math.min(0.5, n.mix[1]));
       }
       n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
+      n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
       byHash.set(n.hash, n);
     }
     /* n.grp is what the BIG labels name, which is not always the genre.
@@ -787,8 +1387,10 @@
        The stars keep their genre colours (that is still what they are), but the
        label layer, the legend counts and the click-to-fly targets all follow the
        group the layout actually used. */
-    const byVibe = (mapMode === 'universe' && UNI.by === 'vibe');
-    for (const n of NODES) n.grp = byVibe ? uniGroupOf(n) : n.fam;
+    // In the Universe that is always the galaxy the star was placed in -- by
+    // vibe, by family or by genre. Naming those galaxies after their families
+    // while gravity had sorted them by genre described the wrong grouping.
+    for (const n of NODES) n.grp = (mapMode === 'universe') ? uniGroupOf(n) : n.fam;
     COUNTS = {};
     for (const n of NODES) COUNTS[n.grp] = (COUNTS[n.grp]||0)+1;
     FAMS = Object.keys(COUNTS).sort((a,b)=>COUNTS[b]-COUNTS[a]);
@@ -815,16 +1417,29 @@
          internal structure, and two tracks that sound alike sit together inside
          it exactly as they did before. */
       const p = [0,1,2].map(j => pctl(NODES.map(n=>Math.abs(n.e?n.e[j]:0)),0.96)||1);
-      const anchors = uniAnchors();
+      GALAXIES = uniAnchors();
+      const stray = { name:UNI_FIELD, x:0, y:0, z:0, radius:0.5, tide:null,
+                      basis:galaxyBasis(UNI_FIELD), spin:0.07, systems:{} };
+      // One pass to work out each track's place in the embedding, so the systems
+      // can be built from their members before any track is placed inside one.
+      const members = {};
+      const seat = [];
       for (const n of NODES){
-        const r = rng(n.hash);
-        const a = anchors[uniGroupOf(n)] || anchors[UNI_FIELD] || {x:0,y:0,z:0,spread:1};
-        // spread<1 pulls a galaxy's members in around its anchor so the gaps
-        // between galaxies read as empty space rather than one continuous fog.
-        n.x3 = a.x + (clamp((n.e?n.e[0]:0)/p[0], -1.3, 1.3) + (r()-0.5)*0.04) * a.spread;
-        n.y3 = a.y + (clamp((n.e?n.e[1]:0)/p[1], -1.3, 1.3) + (r()-0.5)*0.04) * a.spread;
-        n.z3 = a.z + (clamp((n.e?n.e[2]:0)/p[2], -1.3, 1.3) + (r()-0.5)*0.04) * a.spread;
-        n.ph = r()*6.28;
+        const g = GALAXIES[uniGroupOf(n)] || stray;
+        const e = [
+          clamp((n.e?n.e[0]:0)/p[0], -1.3, 1.3),
+          clamp((n.e?n.e[1]:0)/p[1], -1.3, 1.3),
+          clamp((n.e?n.e[2]:0)/p[2], -1.3, 1.3),
+        ];
+        (members[g.name] || (members[g.name] = [])).push({ n, e });
+        seat.push({ n, g, e });
+      }
+      buildSystems(GALAXIES, members);
+      buildSystems({ [stray.name]: stray }, members);
+      for (const st of seat){
+        const r = rng(st.n.hash);
+        uniOrbit(st.n, st.g, st.e, r);
+        st.n.ph = r()*6.28;
       }
     } else if (mapMode === 'solar'){
       /* Solar returns here rather than falling through, the way tree does.
@@ -920,11 +1535,8 @@
     // the radius that has to fit on screen is the distance from what the camera
     // is looking AT. Origin-relative, a cloud whose mass sits off to one side
     // would fit its far edge and push the near one out of frame.
-    MAXR = 0.5;
-    for (const n of NODES){
-      const d = Math.hypot(n.x3-BARY.x, n.y3-BARY.y, n.z3-BARY.z);
-      if (d > MAXR) MAXR = d;
-    }
+    setSceneRadius(NODES.map(n =>
+      Math.hypot(n.x3-BARY.x, n.y3-BARY.y, n.z3-BARY.z)));
 
     // subgenre label anchors: centroid of each style sub-cluster with >=labelMin
     // members. In regions they fade in as you zoom into a cluster (semantic zoom /
@@ -1291,7 +1903,7 @@
       : `hsl(${sh.h} ${clamp(sh.s, 45, 85)}% 62%)`;
     const bits = [];
     if (n.bpm) bits.push(Math.round(n.bpm) + ' bpm');
-    if (n.camelot) bits.push(escapeHtml(n.camelot));
+    if (keyText(n)) bits.push(escapeHtml(keyText(n)));
     if (n.duration) bits.push(fmtTime(n.duration));
     treeCardEl.innerHTML =
       `<div class="tc-head" style="border-color:${col}">
@@ -1353,11 +1965,28 @@
     if (mapMode === 'tree'){ renderTree(); rafId = requestAnimationFrame(frame); return; }
     // Solar bodies actually move: re-place every orbit before projecting. Tied
     // to the orbit-speed slider so "pause" stops the system, not just the camera.
+    /* The galaxies turn. Tied to the same orbit-speed slider and pause button as
+       Solar's bodies, so one control stops all the motion on the map. Skipped
+       while dragging, or the sky would slide out from under the cursor. */
+    if (mapMode === 'universe' && spinSpeed > 0 && !dragging){
+      // Scaled by the slider the same way Solar scales its orbits, so the
+      // control sets the rate rather than just switching the motion on.
+      const gt = t * (spinSpeed / 0.0006);
+      // Remembered, so that pausing leaves the gas exactly where the stars
+      // stopped rather than snapping it back to where they started.
+      lastGt = gt;
+      for (const n of NODES) uniPlaceAt(n, gt);
+    }
     if (mapMode === 'solar' && spinSpeed > 0 && !dragging){
       const st = t * (spinSpeed / 0.0006) * 0.06;
       for (const n of NODES) if (n.orb) solarPlace(n, st);
     }
-    if (spinSpeed > 0 && !anim && !dragging && mapMode !== 'solar') rot.y += spinSpeed;
+    /* The camera drifts -- except where the scene moves on its own. In Solar the
+       bodies orbit and in the Universe the galaxies turn, and spinning the
+       camera as well gives two unrelated motions at once: you cannot tell what
+       is the sky moving and what is you moving, which is worse than either. */
+    if (spinSpeed > 0 && !anim && !dragging
+        && mapMode !== 'solar' && mapMode !== 'universe') rot.y += spinSpeed;
     // Orbit centre (eased): a clicked genre's centroid, else the selected track,
     // else the cloud's centre of mass -- plus wherever you have panned from
     // there. So clicking a genre orbits AROUND that cluster, letting go of
@@ -1438,6 +2067,16 @@
         const hot = selHash && (ed.a===selHash||ed.b===selHash);
         // hidden (or solar): only the selection's own web
         if ((!edgesOn || mapMode === 'solar') && !hot) continue;
+        /* In the Universe, only links INSIDE a galaxy.
+           A similarity line between two galaxies is true, but drawn across the
+           gap between them it is also the single thing stopping the sky reading
+           as a sky: a few thousand pale threads over the empty space that is
+           supposed to separate one island from the next. Inside a galaxy the
+           same lines do the opposite -- they trace its structure and hold it
+           together as one object. The selection's own web still crosses freely,
+           because "what else sounds like this" is exactly a question about
+           somewhere else. */
+        if (mapMode === 'universe' && !hot && a.node.grp !== b.node.grp) continue;
         // brightness + thickness scale with how closely the two tracks match
         const s = clamp(((ed.sim ?? 0.75) - 0.6) / 0.4, 0, 1);
         let op, lw;
@@ -1463,38 +2102,121 @@
     // nodes far -> near (drawn BEFORE labels so the text stays on top / legible)
     const selNode = selHash ? byHash.get(selHash) : null;
     const harmonicOn = harmonic && selNode;
-    for (const h of order){
-      const p = proj.get(h), n = p.node;
-      // Baseline shimmer, plus a much stronger pulse for tracks matching the
-      // tag currently under the cursor -- the "what would this filter show me"
-      // preview. Phase-offset per node so they sparkle rather than strobe in
-      // unison, which reads as a glitch instead of a highlight.
+
+    /* The gas, first of all, under every star and every line.
+
+       One blob per system, at the system's own size, in the system's own colour.
+       Skipped when the glow is off -- that switch means "no light bleeding into
+       the black", and gas is nothing but light bleeding into the black. */
+    // Gated on the glow strength alone. NOT on flatMode(): that is true by
+    // default (the 3-D sphere renderer is shelved behind SPHERES), and it means
+    // "draw bodies as discs", not "no light in the black" -- the flat renderer
+    // draws coronas too. Gating on it meant the gas could never appear at all.
+    if (mapMode === 'universe' && LBL.shine > 0 && GALAXIES){
+      const wp = { x:0, y:0, z:0 };
+      ctx.globalCompositeOperation = 'lighter';
+      const gt = spinSpeed > 0 && !dragging ? t * (spinSpeed / 0.0006) : (lastGt || 0);
+      for (const gname in GALAXIES){
+        const g = GALAXIES[gname];
+        if (!g.systems) continue;
+        for (const k in g.systems){
+          const sys = g.systems[k];
+          systemWorld(g, sys, gt, wp);
+          const ax = wp.x-pivot.x, ay = wp.y-pivot.y, az = wp.z-pivot.z;
+          const xx = ax*cy + az*sy, zz = -ax*sy + az*cy;
+          const y2 = ay*cx - zz*sx, z2 = ay*sx + zz*cx;
+          const dist = CAM - z2;
+          if (dist < 0.15) continue;
+          const persp = CAM / dist;
+          const sxp = cxp + xx*persp*DISP, syp = cyp + y2*persp*DISP;
+          // Generous: gas reaches well past the stars it surrounds.
+          const gr = sys.sr * g.radius * persp * DISP * 2.6 + 14;
+          if (sxp < -gr || sxp > W + gr || syp < -gr || syp > H + gr) continue;
+          // Bigger systems hold more of it, and depth fades it like everything
+          // else. Capped low: dozens of these overlap inside one galaxy.
+          const depth = clamp((z2+1.15)/2.3, 0, 1);
+          ctx.globalAlpha = clamp(0.14 + 0.34 * Math.sqrt(sys.n / 260), 0.10, 0.62)
+                          * (0.45 + 0.55*depth) * LBL.opacity;
+          ctx.drawImage(nebulaSprite(sys.hue, sys.sat), sxp-gr, syp-gr, gr*2, gr*2);
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
+
+    /* Every corona first, in one additive pass.
+       Each star used to flip the composite operation to 'lighter' for its own
+       halo and back again for its body -- two context-state changes per star,
+       so a 3,000-star frame ended the draw batch 6,000 times. Hoisting the mode
+       out of the loop leaves the same blits and the same alphas with two state
+       changes for the whole frame.
+       It also fixes a layering accident: a near star's halo used to be painted
+       over a far star's body. Halos belong under bodies, which is what the
+       original comment said it wanted. */
+    /* How bright one star is this frame, and whether it is a harmonic match.
+
+       Baseline shimmer, plus a much stronger pulse for tracks matching the chip
+       currently under the cursor -- the "what would this filter show me"
+       preview. Phase-offset per node so they sparkle rather than strobe in
+       unison, which reads as a glitch instead of a highlight. Three twinkle
+       modes; 'flicker' beats two detuned sines together so the field
+       scintillates irregularly instead of every star breathing on one cycle.
+
+       Both passes call this. It used to be inline in the star loop, which meant
+       the corona pass carried a second copy that had to be kept in step. */
+    const starLight = (p, n) => {
       const lit = HL && nodeHas(n, HL.kind, HL.value);
-      // Three twinkle modes. 'flicker' beats two detuned sines together so the
-      // field scintillates irregularly instead of every star breathing on the
-      // same cycle, which reads as a pulsing grid rather than a sky.
+      /* The hover preview -- "which tracks would this chip show me" -- is a
+         0..1 pulse rather than a brightness multiplier, because it drives three
+         things at once: the star flashes white at the peak, and fades toward
+         transparent at the trough. Colour alone was not enough to find a
+         scattered handful of matches in three thousand stars; something that
+         goes white and then nearly vanishes is visible from across the map even
+         where the matches are a single dot in a crowded cluster. */
+      const flash = lit ? 0.5 + 0.5*Math.sin(t*7 + n.ph*3) : 0;
       const tw = lit
-        ? 1.25 + 0.55*Math.sin(t*7 + n.ph*3)
+        ? 0.55 + 1.45*flash
         : LBL.twinkle === 'off' ? 1
         : LBL.twinkle === 'flicker'
           ? 0.70 + 0.30*Math.sin(t*6.1 + n.ph*5.3) + 0.16*Math.sin(t*2.3 + n.ph*11.7)
           : 0.9 + 0.1*Math.sin(t*1.6 + n.ph);
-      // Brightness, as alpha. This used to be baked into the sprite's lightness,
-      // which is what made the cache key churn every frame.
-      const bright = clamp(((26 + 44*p.depth) * tw) / 70, 0.16, 1);
+      // A lit star is allowed to go properly see-through at the bottom of its
+      // pulse; everything else keeps the old floor so the field never gutters.
+      const bright = clamp(((26 + 44*p.depth) * tw) / 70, lit ? 0.06 : 0.16, 1);
       let compatible = false, dim = 1;
-      if (harmonicOn && h !== selHash){         // harmonic mixing: mute non-matches
+      if (harmonicOn && n.hash !== selHash){    // harmonic mixing: mute non-matches
         compatible = keyCompatible(selNode.camelot, n.camelot) && bpmCompatible(selNode.bpm, n.bpm);
         dim = compatible ? 1 : 0.1;
       }
-      ctx.globalAlpha = bright * dim;
+      return { alpha: bright * dim, compatible, lit, flash };
+    };
+    if (LBL.shine > 0){
+      ctx.globalCompositeOperation = 'lighter';
+      for (const h of order){
+        const p = proj.get(h);
+        // Kept on the projection entry: the star loop below needs the same two
+        // numbers, and deriving them twice a frame for every star is the kind of
+        // small waste this pass exists to remove.
+        p.lit = starLight(p, p.node);
+        // A previewed star's halo swells with the same pulse, so the flash
+        // carries further than the dot itself in a crowded cluster.
+        drawCorona(p, p.node, LBL.shine * (1 + 2.2 * p.lit.flash), p.lit.alpha);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    for (const h of order){
+      const p = proj.get(h), n = p.node;
+      // Brightness, as alpha. This used to be baked into the sprite's lightness,
+      // which is what made the cache key churn every frame.
+      const { alpha, compatible, lit, flash } = p.lit || starLight(p, n);
+      ctx.globalAlpha = alpha;
       if (!Number.isFinite(n.hue)) warnShade('node', n);
       if (glowMode() && !flatMode()){
         // A lit sphere, not a flat disc -- this is what actually separates the
         // 3-D view from the 2-D one, which previously differed only in size and
-        // transparency. Corona first (additive, faint), then the solid core on
-        // top, so a crowded cluster keeps its shape instead of saturating.
-        drawCorona(p, n, LBL.shine);
+        // transparency. The coronas were drawn in the pass above, so every core
+        // here lands on top of every halo and a crowded cluster keeps its shape.
         const cr = p.r * CORE_SCALE;
         if (cr > CRISP_ABOVE){
           // Only when the sprite would be magnified past its own resolution.
@@ -1503,20 +2225,32 @@
           drawSphere(p.sx, p.sy, cr, hueOk(n.hue), pctOk(n.sat, 64),
                      clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84));
         } else {
-          ctx.drawImage(starSprite(n.hue, n.sat||64, n.dl, 'core'), p.sx-cr, p.sy-cr, cr*2, cr*2);
+          ctx.drawImage(coreSprite(n), p.sx-cr, p.sy-cr, cr*2, cr*2);
         }
       } else {
-        // Flat (2-D): a plain disc, over a corona of its own colour. The disc is
-        // what keeps a dense cluster legible -- it is opaque, so neighbours
-        // occlude instead of summing -- and the corona around it is what makes
-        // the field read as a sky rather than dots printed on black. Drawn
-        // first, so the solid body always sits on top of its own halo.
-        drawCorona(p, n, LBL.shine);
+        // Flat (2-D): a plain disc over the corona already laid down above. The
+        // disc is what keeps a dense cluster legible -- it is opaque, so
+        // neighbours occlude instead of summing -- and the halo under it is what
+        // makes the field read as a sky rather than dots printed on black.
         // Depth and twinkle are already in globalAlpha.
         ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
         ctx.fillStyle = `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ` +
                         `${clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84)}%)`;
         ctx.fill();
+      }
+      if (lit && flash > 0.02){
+        /* White over the body, additively, so the star washes out to white at
+           the top of the pulse instead of merely getting brighter in its own
+           colour -- which on a map where colour IS the genre reads as "slightly
+           more House", not as "this one". Drawn at the body's size so it is the
+           star that flashes and not a blob around it. */
+        const wr = (glowMode() && !flatMode()) ? p.r * CORE_SCALE : p.r;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = flash * 0.85;
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, wr, 0, 6.2832);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = alpha;
       }
       if (compatible){                          // key + BPM compatible -> teal ring
         ctx.globalAlpha = 0.5 + 0.5*p.depth;
@@ -1611,6 +2345,9 @@
     // fan out around the cluster -- even a tight galaxy ball -- each tied back
     // to its true centroid by a colour-coded leader line.
     const fl = [];
+    // The biggest galaxy on the map, which every label is sized against.
+    let famMax = 1;
+    for (const f of FAMS) famMax = Math.max(famMax, (CENTROIDS[f] && CENTROIDS[f].n) || 0);
     for (const f of FAMS){
       if (!LBL.showFam) break;                          // family labels hidden
       if (LBL.onlyFam && f !== LBL.onlyFam) continue;   // isolate one genre's label
@@ -1624,16 +2361,39 @@
       const depth = clamp((p.z2+1.15)/2.3, 0, 1);
       const alpha = (0.52 + 0.32*depth) * (1 - 0.9*(famFocus[f]||0)) * LBL.opacity;   // fade when focused
       if (alpha < 0.04) continue;
-      const fs = Math.min(21, 13 + CENTROIDS[f].n*0.3) * clamp(p.persp, 0.9, 1.25) * LBL.size;
+      /* Label size follows the galaxy's mass, the same way the galaxy's own
+         radius does.
+
+         This used to be `min(21, 13 + n*0.3)`, which was written when the map
+         had five families in it and every one of them was big: at five tracks
+         that is 14.5px and at fifteen hundred it is 21px, so everything came out
+         essentially the same size. With a galaxy per genre there are seventy of
+         them, most tiny, and the sky turned into a wall of same-sized words with
+         the stars somewhere behind it.
+
+         Against the biggest galaxy's count, so it is a hierarchy of what is
+         actually there rather than an absolute scale that stops meaning anything
+         on a bigger library. sqrt for the same reason the galaxies use it: a
+         genre with a hundred times the tracks is ten times the object, not a
+         hundred. */
+      const share = Math.sqrt((CENTROIDS[f].n || 1) / famMax);
+      const fs = (9 + 12 * share) * clamp(p.persp, 0.9, 1.25) * LBL.size;
       const text = (LBL.counts ? `${f} ${CENTROIDS[f].n}` : f).toUpperCase();
       ctx.font = `800 ${fs}px Syne, sans-serif`;
       fl.push({ f, text, ax:p.sx, ay:p.sy, lx:p.sx, ly:p.sy,
                 hw:ctx.measureText(text).width/2 + 5, hh:fs*0.62, fs, alpha, depth });
     }
-    // declutter: keep only the N biggest genre labels (by track count)
-    if (LBL.maxFam > 0 && fl.length > LBL.maxFam){
+    /* Declutter: keep only the N biggest genre labels.
+
+       "All" was a sane default at five families and is not at seventy -- naming
+       every galaxy at once means naming none of them, because no single one can
+       be read. So the Universe caps itself unless you have said otherwise; the
+       rest of the names are still one hover or one zoom away. */
+    const famCap = LBL.maxFam > 0 ? LBL.maxFam
+                 : (mapMode === 'universe' ? 16 : 0);
+    if (famCap > 0 && fl.length > famCap){
       fl.sort((a,b) => (CENTROIDS[b.f].n||0) - (CENTROIDS[a.f].n||0));
-      fl.length = LBL.maxFam;
+      fl.length = famCap;
     }
     let cx0 = 0, cy0 = 0;
     for (const l of fl){ cx0 += l.ax; cy0 += l.ay; }
@@ -1642,7 +2402,15 @@
       let spread = 0;                                   // how clustered are the anchors?
       for (const l of fl) spread += Math.hypot(l.lx-cx0, l.ly-cy0);
       spread /= fl.length;
-      if (spread < 90){
+      /* Ring the labels only when their anchors are genuinely on top of one
+         another. The threshold was 90px, from when the Universe put every
+         galaxy in one ball and a group centroid really did carry no direction.
+         Now the galaxies are separated in space, so their anchors point at
+         something -- and at 90 this still fired, flinging every name out to the
+         rim where it named nothing in particular. Below about half a label's
+         width the anchors are useless and the ring is the honest answer; above
+         it, the overlap relaxation below keeps labels on their galaxies. */
+      if (spread < 45){
         // tight ball (galaxy): centroid *direction* is basically noise, so ring
         // the labels evenly by angle around the cluster, each tied back by a
         // leader line. Centre the ring on the ACTUAL node cloud (its visual mass)
@@ -1989,7 +2757,7 @@
     if (best){
       const n = best.node;
       tipEl.innerHTML = `<b>${escapeHtml(n.title)}</b><span>${escapeHtml(n.style||'?')} · `
-        + `${n.bpm?Math.round(n.bpm):'--'} bpm · ${escapeHtml(n.camelot||'--')}</span>`;
+        + `${n.bpm?Math.round(n.bpm):'--'} bpm · ${escapeHtml(keyfmt(n))}</span>`;
       tipEl.style.left = Math.min(mx+14, W-220)+'px';
       tipEl.style.top  = (my+14)+'px';
       tipEl.hidden = false;
@@ -2042,7 +2810,9 @@
     e.preventDefault(); anim=null;
     const r = canvas.getBoundingClientRect();
     const mx = e.clientX - r.left, my = e.clientY - r.top;
-    const nz = clamp(view.zoom * (e.deltaY<0 ? 1.14 : 1/1.14), 0.3, 60);
+    // The floor was 0.3, which on a sky that now sizes its galaxies by mass was
+    // barely wider than the fit view -- there was no way to stand back from it.
+    const nz = clamp(view.zoom * (e.deltaY<0 ? 1.14 : 1/1.14), 0.04, 60);
     const f = nz / view.zoom;                          // actual factor after clamp
     // Keep the point under the cursor fixed -> zoom into wherever you're
     // looking. Zooming about the view centre would carry that point out to
@@ -2122,7 +2892,13 @@
     else PREV.audio.addEventListener('loadedmetadata', go, { once: true });
   }
 
-  async function previewTrack(n){
+  async function previewTrack(n, keepIfSame){
+    // Coming back to the star you are already sampling -- from the strip's own
+    // title -- must not restart the clip. "Take me back to this" and "play this
+    // again from the top" are different requests, and the second one has its own
+    // button. Checked before stopPreview(), which would make it unanswerable.
+    if (keepIfSame && n && PREV.node && PREV.node.hash === n.hash
+        && !PREV.audio.paused && !PREV.audio.ended) return;
     stopPreview();
     // Tree mode used to be excluded here because nothing in it was selectable.
     // The tree card's "sample" button is, so the only thing left to reject is
@@ -2150,6 +2926,11 @@
       AUDIO.sampleLoaded({
         title: n.artist ? stripArtist(n.title, n.artist) : n.title,
         artist: n.artist || '', color: famCss(n.fam),
+        // Carried so the strip's title can lead back to the star being sampled:
+        // an audition you liked is worth being able to return to, and a clip
+        // playing under another view is otherwise a track with no name you can
+        // act on.
+        hash: n.hash,
         start, seconds: PREVIEW_SECONDS,
       });
       if (!AUDIO.wants('sample')) return;           // you're listening to the track
@@ -2157,19 +2938,39 @@
     beginSample(my);
   }
 
-  function selectNode(hash){
+  /* `cut` arrives at the star instead of flying to it.
+
+     Clicking a dot on a map you are already looking at should move -- the glide
+     is what tells you the star you clicked is the one now in the middle. But
+     arriving from somewhere else (the now-playing bar, the sample strip, a deep
+     link) there is no "here" to travel from: the map was not on screen a moment
+     ago, so the flight starts from the whole-library framing and reads as
+     opening zoomed all the way out and then zooming in, which is a 600ms trip
+     through nothing to reach the star you asked for by name. */
+  function selectNode(hash, cut){
     const n = byHash.get(hash); if (!n) return;
     selHash = hash; famPivot = null; focusedFam = null;   // orbit this track, not a genre
     panOff.x = panOff.y = panOff.z = 0;   // picking a track means "centre it", not "keep my pan"
     if (mapMode !== 'tree'){
-      // the pivot eases to this track (frame loop), so it becomes the orbit
-      // centre. keep the rotation, just zoom in a bit and recentre the view.
-      anim = { f:{rx:rot.x,ry:rot.y,z:view.zoom,px:view.panx,py:view.pany},
-               t:{rx:rot.x, ry:rot.y, z:Math.max(1.9,view.zoom), px:0, py:0},
-               t0:performance.now(), dur:600 };
+      if (cut){
+        // Put the camera where the tween would have ended, and the pivot on the
+        // track itself -- the frame loop eases the pivot, so leaving it at the
+        // old centre would still slide the star in from off-screen.
+        anim = null;
+        view.panx = 0; view.pany = 0;
+        view.zoom = Math.max(closeZoom(), view.zoom);
+        pivot.x = n.x3; pivot.y = n.y3; pivot.z = n.z3;
+      } else {
+        // the pivot eases to this track (frame loop), so it becomes the orbit
+        // centre. keep the rotation, just zoom in a bit and recentre the view.
+        anim = { f:{rx:rot.x,ry:rot.y,z:view.zoom,px:view.panx,py:view.pany},
+                 t:{rx:rot.x, ry:rot.y, z:Math.max(closeZoom(), view.zoom), px:0, py:0},
+                 t0:performance.now(), dur:600 };
+      }
     }
+    pushRecent(n);
     openPopup(n);
-    previewTrack(n);                                  // auto-sample the drop
+    previewTrack(n, cut);            // auto-sample the drop, unless it's already playing
   }
 
   async function openPopup(n){
@@ -2527,14 +3328,15 @@
 
     function render(){
       if (!state){ rows.innerHTML = `<span class="pop-bar">…</span>`; return; }
+      const drops = state.drops || [];
       const shown = new Map();
       for (const e of state.adjusted || []) shown.set(e.style, e.score);
       // A genre pushed all the way down can fall out of the top-N; keep its row
       // visible so the press is undoable rather than stranded.
       for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
-      if (!shown.size){ rows.innerHTML = `<div class="ovr-h">nothing read for this track</div>`; return; }
+      for (const g of drops) shown.delete(g);        // removed: listed below instead
       const max = state.max_step || 3;
-      rows.innerHTML = [...shown.entries()].map(([style, score]) => {
+      const rowsHtml = [...shown.entries()].map(([style, score]) => {
         const step = (state.steps || {})[style] || 0;
         const pct  = Math.round((score || 0) * 100);
         return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
@@ -2545,11 +3347,51 @@
             <b>${escapeHtml(style)}</b>${step ? `<em>${escapeHtml(wordFor(step))}</em>` : ''}
           </span>
           <span class="adj-pct">${pct}%</span>
+          <button class="adj-drop" title="remove ${escapeHtml(style)} from this track">✕</button>
         </div>`;
       }).join('');
+      // Removed genres are named, not merely gone -- a remove you cannot see is
+      // a remove you cannot undo.
+      const dropHtml = drops.length
+        ? `<div class="adj-dropped"><span class="ovr-h">removed</span>` +
+          drops.map(g => `<button class="adj-restore" data-g="${escapeHtml(g)}"` +
+            ` title="put ${escapeHtml(g)} back on this track">${escapeHtml(g)} ↩</button>`).join('') +
+          `</div>`
+        : '';
+      if (!shown.size && !drops.length){
+        rows.innerHTML = `<div class="ovr-h">nothing read for this track</div>`; return;
+      }
+      rows.innerHTML = rowsHtml + dropHtml;
       for (const b of rows.querySelectorAll('.adj-step')){
         b.onclick = () => bump(b.closest('.adj-row').dataset.g, Number(b.dataset.d));
       }
+      for (const b of rows.querySelectorAll('.adj-drop')){
+        b.onclick = () => drop(b.closest('.adj-row').dataset.g);
+      }
+      for (const b of rows.querySelectorAll('.adj-restore')){
+        b.onclick = () => restore(b.dataset.g);
+      }
+    }
+
+    // Remove a genre outright. A different statement from -3, not a stronger
+    // one: "not at all" leaves it in the read at a trace, this takes it off the
+    // track. The share it held is redistributed, so the blend closes the gap.
+    function drop(style){
+      if (!state) return;
+      const drops = state.drops || [];
+      if (drops.includes(style)) return;
+      state.drops = [...drops, style];
+      state.steps = { ...(state.steps || {}) };
+      delete state.steps[style];           // "more of this" and "none of this"
+      render();                            //  cannot both be what you meant
+      save();
+    }
+
+    function restore(style){
+      if (!state) return;
+      state.drops = (state.drops || []).filter(g => g !== style);
+      render();
+      save();
     }
 
     // Optimistic: the row moves on click and the server's answer replaces it a
@@ -2566,14 +3408,18 @@
 
     function save(){
       const steps = state.steps || {};
+      const drops = state.drops || [];
       saving = (saving || Promise.resolve()).then(async () => {
         try{
           const r = await fetch(`/weights/${n.hash}`, {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ steps }) });
+            body: JSON.stringify({ steps, drops }) });
           const body = await r.json();
-          if (steps !== state.steps) return;   // superseded by a later click
+          // Identity, not equality: a click during the round-trip replaced both
+          // objects, and its own save is already queued behind this one.
+          if (steps !== state.steps || drops !== state.drops) return;
           state.steps = body.steps || {};
+          state.drops = body.drops || [];
           state.adjusted = body.adjusted && body.adjusted.length ? body.adjusted : state.base;
           render();
           applyToNode(n, state.adjusted);
@@ -2632,6 +3478,7 @@
       sh = mixShade(sh, styleShade(f2, n.mix[0]), n.mix[1]);
     }
     n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
+    n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
     n.flag = false; n.suggest = null;
   }
 
@@ -2691,6 +3538,7 @@
     n.mix = null;                          // manual override -> pure genre, no blend
     const sh = styleShade(n.fam, genre);
     n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
+    n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
     n.flag = false; n.suggest = null;
     closePopup();
     if (NODES.length) layout();          // re-cluster with the new genre
@@ -2876,10 +3724,17 @@
       // in" is actually answerable -- and fit the outermost orbit with a margin
       // for the ring labels, which sit outside it.
       rot.x = -0.62;
-      view.zoom = clamp(0.88 / (MAXR || 1), 0.25, 2.2);
+      view.zoom = clamp(1.15 / (FITR || 1), 0.05, 2.2);
       return;
     }
-    view.zoom = clamp(0.95 / (MAXR || 1), 0.25, 1.6);   // fit the cloud
+    /* Fit the cloud. The factor differs by mode because the modes differ in how
+       much of their radius is deliberately empty: regions packs its families
+       shoulder to shoulder, while the Universe puts real space between galaxies
+       by design. Measured on a 3,300-track library, the same factor filled 90%
+       of the frame in regions and 57% in the Universe -- the same "fit" leaving
+       the sky sitting in a small knot with nothing around it. */
+    const fitK = mapMode === 'universe' ? 1.9 : 1.25;
+    view.zoom = clamp(fitK / (FITR || 1), 0.05, 1.6);
   }
   function focusFamily(fam){          // fly to a genre's centroid + orbit around it
     const c = CENTROIDS[fam]; if (!c) return;
@@ -2942,7 +3797,10 @@
   const keysEl = document.getElementById('map-keys');
   const keysHead = document.getElementById('map-keys-head');
   if (keysEl && keysHead){
-    try{ if (localStorage.getItem('vibeNavKeys') === 'off') keysEl.classList.add('collapsed'); }catch(_){}
+    // Closed unless you have opened it before -- see the legend above.
+    let navOpen = false;
+    try{ navOpen = localStorage.getItem('vibeNavKeys') === 'on'; }catch(_){}
+    keysEl.classList.toggle('collapsed', !navOpen);
     keysHead.addEventListener('click', () => {
       const off = keysEl.classList.toggle('collapsed');
       try{ localStorage.setItem('vibeNavKeys', off ? 'off' : 'on'); }catch(_){}
@@ -3008,6 +3866,8 @@
       // pushed back into sync or the panel would show "any" over a live filter.
       const asel = $f('flt-artist'); if (asel && asel.value.trim().toLowerCase() !== FILT.artist) asel.value = FILT.artist;
       const ssel2 = $f('flt-style'); if (ssel2 && ssel2.value !== FILT.style) ssel2.value = FILT.style;
+      const pchk = $f('flt-playable'); if (pchk && pchk.checked !== !!FILT.playable) pchk.checked = !!FILT.playable;
+      setTxtF('flt-gen-v', FILT.hidden.length ? `${FILT.hidden.length} hidden` : 'all');
       for (const b2 of (($f('flt-tags') || {}).querySelectorAll ? $f('flt-tags').querySelectorAll('.flt-tag') : []))
         b2.classList.toggle('on', FILT.tags.includes(b2.dataset.t));
       filtBtn.classList.toggle('on', filtActive());
@@ -3058,6 +3918,61 @@
     window.mapFilterPopulate = populate;
 
     // let anything outside this block (the popup's tag chips) refresh the panel
+    /* The genre list: one row per keystone, with its track count, all ticked
+       until you untick one. Built from the loaded library rather than the
+       taxonomy, so it lists the genres you actually have and cannot offer a
+       filter that would hide nothing. */
+    const genBox = $f('flt-genres');
+    function genreRows(){
+      const count = {}, famOf = {};
+      for (const n of NODES){
+        const g = genreKeyOf(n);
+        count[g] = (count[g] || 0) + 1;
+        /* `n.family` from the server, NOT `n.fam`.
+           They sound interchangeable and are not: `n.fam` is recomputed on this
+           side from the PulseRoots table and comes out as one of ~54 fine
+           families (Metalcore, Alternative Rock, Phonk), so it is almost never
+           the string "Other" -- which is why the electronic filter used to run
+           and hide nothing at all. The server's `family` is the coarse tier the
+           taxonomy actually files a track under: Dance, Bass, Chill,
+           Experimental, or Other for whatever it could not place. */
+        famOf[g] = n.family || 'Other';
+      }
+      return Object.keys(count).sort((a, b) => count[b] - count[a])
+        .map(g => ({ name: g, n: count[g], fam: famOf[g] }));
+    }
+    function buildGenres(){
+      if (!genBox) return;
+      const rows = genreRows();
+      genBox.innerHTML = rows.map(r =>
+        `<label class="flt-gen"><input type="checkbox" data-g="${escapeHtml(r.name)}"
+          ${FILT.hidden.includes(r.name) ? '' : 'checked'}>
+          <span>${escapeHtml(r.name)}</span><i>${r.n}</i></label>`).join('');
+      for (const cb of genBox.querySelectorAll('input')){
+        cb.onchange = () => {
+          const g = cb.dataset.g;
+          const i = FILT.hidden.indexOf(g);
+          if (cb.checked){ if (i >= 0) FILT.hidden.splice(i, 1); }
+          else if (i < 0) FILT.hidden.push(g);
+          onFilt();
+        };
+      }
+    }
+    function setGenres(pred){
+      const rows = genreRows();
+      FILT.hidden = rows.filter(r => !pred(r)).map(r => r.name);
+      buildGenres(); onFilt();
+    }
+    if (genBox){
+      $f('flt-gen-all').addEventListener('click', () => setGenres(() => true));
+      $f('flt-gen-none').addEventListener('click', () => setGenres(() => false));
+      /* "Electronic" is everything the taxonomy could place: Dance, Bass, Chill
+         or Experimental. What it could not place lands in Other, which on a
+         mostly-electronic library is the metal, punk and hip hop. */
+      $f('flt-gen-elec').addEventListener('click', () => setGenres(r => r.fam !== 'Other'));
+    }
+    window.mapGenrePopulate = buildGenres;
+
     syncFilterUI = syncFilt;
     const onFilt = () => { syncFilt(); };
     $f('flt-artist').addEventListener('input', e => {
@@ -3065,6 +3980,7 @@
     });
     $f('flt-key').addEventListener('change', e => { FILT.key = e.target.value; onFilt(); });
     $f('flt-style').addEventListener('change', e => { FILT.style = e.target.value; onFilt(); });
+    $f('flt-playable').addEventListener('change', e => { FILT.playable = e.target.checked; onFilt(); });
     $f('flt-pl').addEventListener('change', async e => {
       FILT.playlist = e.target.value || null;
       playlistHashes = null;
@@ -3087,17 +4003,88 @@
       FILT = JSON.parse(JSON.stringify(FILT_EMPTY));
       playlistHashes = null;
       $f('flt-artist').value = ''; $f('flt-key').value = ''; $f('flt-pl').value = '';
+      $f('flt-playable').checked = false;
+      if (window.mapGenrePopulate) window.mapGenrePopulate();   // re-tick every genre
       $f('flt-bpm-lo').value = 0; $f('flt-bpm-hi').value = 100;
       $f('flt-len-lo').value = 0; $f('flt-len-hi').value = 100;
       for (const b of filtPanel.querySelectorAll('.flt-tag.on')) b.classList.remove('on');
       syncFilt();
     });
-    filtBtn.addEventListener('click', e => { e.stopPropagation(); filtPanel.hidden = !filtPanel.hidden; });
+    filtBtn.addEventListener('click', e => {
+      e.stopPropagation(); closeMapPanels(filtPanel); filtPanel.hidden = !filtPanel.hidden;
+    });
     filtPanel.addEventListener('click', e => e.stopPropagation());
     document.addEventListener('click', () => { filtPanel.hidden = true; });
   }
 
   /* ---- label options popover --------------------------------------- */
+  /* Every toolbar panel opens in the same corner (`.map-panel` is absolutely
+     positioned at the same spot), so only one can usefully be open. Each button
+     stops its own click from reaching the document handler that closes them,
+     which meant opening a second panel left the first stacked behind it. */
+  function closeMapPanels(except){
+    for (const id of ['map-filt-panel', 'map-recent-panel', 'map-lbl-panel', 'uni-panel']){
+      const el = document.getElementById(id);
+      if (el && el !== except) el.hidden = true;
+    }
+  }
+
+  /* ---- recently viewed stars ---------------------------------------- */
+  const recentBtn = document.getElementById('map-recent-btn');
+  const recentPanel = document.getElementById('map-recent-panel');
+  if (recentBtn && recentPanel){
+    const listEl = document.getElementById('map-recent-list');
+    const hintEl2 = document.getElementById('map-recent-hint');
+    const clearEl = document.getElementById('map-recent-clear');
+
+    renderRecent = () => {
+      // A track can be omitted from the library after you looked at it. Drop
+      // those rather than offering a row that goes nowhere -- but only once the
+      // map has actually loaded, or an empty byHash would erase the whole list.
+      const known = NODES.length
+        ? RECENT.filter(r => r && byHash.has(r.hash))
+        : RECENT.filter(Boolean);
+      if (known.length !== RECENT.length && NODES.length){ RECENT = known; saveRecent(); }
+      recentBtn.classList.toggle('on', known.length > 0);
+      if (!known.length){
+        listEl.innerHTML = '';
+        hintEl2.textContent = 'Nothing yet. Every star you open lands here, newest first.';
+        clearEl.disabled = true;
+        return;
+      }
+      hintEl2.textContent = 'Newest first. Click one to go straight back to it.';
+      clearEl.disabled = false;
+      listEl.innerHTML = known.map(r => {
+        const n = byHash.get(r.hash);
+        const col = n ? famCss(n.fam) : 'var(--dim)';
+        const sub = [r.artist, n && n.style].filter(Boolean).join(' \u00b7 ');
+        return `<button class="recent-item" data-h="${escapeHtml(r.hash)}"
+          title="${escapeHtml(r.title || r.hash)}">
+          <span class="recent-dot" style="background:${col}"></span>
+          <span class="recent-txt"><b>${escapeHtml(r.title || 'Track')}</b>
+          ${sub ? `<i>${escapeHtml(sub)}</i>` : ''}</span></button>`;
+      }).join('');
+      for (const b of listEl.querySelectorAll('.recent-item')){
+        b.onclick = () => {
+          recentPanel.hidden = true;
+          // Same arrival as the now-playing bar: you named the star, so cut to it.
+          if (byHash.has(b.dataset.h)) selectNode(b.dataset.h, true);
+        };
+      }
+    };
+    renderRecent();
+
+    clearEl.addEventListener('click', () => { RECENT = []; saveRecent(); renderRecent(); });
+    recentBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      renderRecent();                       // the list may have grown since it last opened
+      closeMapPanels(recentPanel);
+      recentPanel.hidden = !recentPanel.hidden;
+    });
+    recentPanel.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => { recentPanel.hidden = true; });
+  }
+
   const lblBtn   = document.getElementById('map-lbl-btn');
   const lblPanel = document.getElementById('map-lbl-panel');
   if (lblBtn && lblPanel){
@@ -3155,6 +4142,7 @@
     }
     syncLbl();
     lblBtn.addEventListener('click', e => {
+      closeMapPanels(lblPanel);
       e.stopPropagation();
       lblPanel.hidden = !lblPanel.hidden;
     });
@@ -3202,8 +4190,8 @@
     const PAN = 45, ROT = 0.12;
     const k = e.key.toLowerCase();
     switch (k){
-      case '+': case '=': case 'w': view.zoom = clamp(view.zoom*1.15, 0.3, 60); anim=null; break;
-      case '-': case '_': case 's': view.zoom = clamp(view.zoom/1.15, 0.3, 60); anim=null; break;
+      case '+': case '=': case 'w': view.zoom = clamp(view.zoom*1.15, 0.04, 60); anim=null; break;
+      case '-': case '_': case 's': view.zoom = clamp(view.zoom/1.15, 0.04, 60); anim=null; break;
       case 'a': rot.y -= ROT; break;                 // orbit left
       case 'd': rot.y += ROT; break;                 // orbit right
       case 'arrowleft':  panBy( PAN, 0); break;      // arrows fly the camera
@@ -3236,6 +4224,47 @@
     if (mapMode === 'solar'){ await refreshPlaylists(); await loadSolarSet(); }
     if (NODES.length){ layout(); resetView(); }
   });
+
+  /* Universe: how far apart the galaxies settle and how hard they pull.
+
+     Both re-run the relaxation, which moves every star, so they relayout rather
+     than adjusting the camera. Debounced: dragging a slider fires continuously
+     and a full layout per pixel of travel is not something the thread can keep
+     up with on a large library. */
+  const uniPanel = document.getElementById('uni-panel');
+  const uniBtn = document.getElementById('uni-btn');
+  if (uniBtn && uniPanel){
+    const sepIn = document.getElementById('uni-sep');
+    const gravIn = document.getElementById('uni-grav');
+    const sepV = document.getElementById('uni-sep-v');
+    const gravV = document.getElementById('uni-grav-v');
+    let relayoutT = null;
+    const showVals = () => {
+      sepV.textContent = UNI.sep.toFixed(1) + '\u00d7';
+      gravV.textContent = UNI.grav.toFixed(1) + '\u00d7';
+    };
+    sepIn.value = String(Math.round(UNI.sep * 100));
+    gravIn.value = String(Math.round(UNI.grav * 100));
+    showVals();
+    const relayoutSoon = () => {
+      clearTimeout(relayoutT);
+      relayoutT = setTimeout(() => {
+        saveUni();
+        if (NODES.length && mapMode === 'universe'){ layout(); resetView(); }
+      }, 180);
+    };
+    sepIn.addEventListener('input', () => {
+      UNI.sep = Math.max(0.3, Number(sepIn.value) / 100); showVals(); relayoutSoon();
+    });
+    gravIn.addEventListener('input', () => {
+      UNI.grav = Math.max(0, Number(gravIn.value) / 100); showVals(); relayoutSoon();
+    });
+    uniBtn.addEventListener('click', e => {
+      e.stopPropagation(); closeMapPanels(uniPanel); uniPanel.hidden = !uniPanel.hidden;
+    });
+    uniPanel.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => { uniPanel.hidden = true; });
+  }
 
   // Universe: what a galaxy represents. Relayouts, because it moves every star.
   const uniBy = document.getElementById('uni-by');
@@ -3436,7 +4465,49 @@
     return JSON.parse(new TextDecoder('utf-8').decode(buf));
   }
 
-  async function loadMap(){
+  /* The map is expensive to build -- the server classifies every track in the
+     library, and the client then places every star. It was rebuilt from scratch
+     on every single switch to the Map tab, which is why coming back to it, or
+     jumping to the playing track from the now-playing bar, sat on "building your
+     map" for seconds at a time to arrive at exactly the map you just left.
+
+     So it is built once and kept. MAP_STALE says the library changed underneath
+     it -- a new analysis, an omit, an override, an adjustment -- and is set by
+     the screens that make those changes; edits made ON the map already update
+     their node in place and re-run layout(), so they don't set it. The
+     ↻ rebuild button is the escape hatch for anything that slips through. */
+  let MAP_STALE = true;                 // nothing loaded yet
+  window.vibeMapStale = () => { MAP_STALE = true; };
+
+  /* What marks it stale. Tagging the twenty call sites that write to the library
+     would work until the twenty-first was added without one, and the failure
+     there is silent: a map that quietly disagrees with the library. So this
+     watches fetch instead -- any non-GET to our own server means something
+     changed. It errs deliberately toward rebuilding, because a spurious rebuild
+     costs what every visit used to cost anyway, while a missed one is wrong.
+     The exceptions are the POSTs that are really queries and change nothing. */
+  const READONLY_POST = /^\/(compare|refine|waveform|filepaths\/count|relabel\/preview)(\/|$)/;
+  const _origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    try {
+      const method = String((init && init.method)
+        || (input && input.method) || 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD') {
+        const u = new URL((input && input.url) || String(input), location.href);
+        if (u.origin === location.origin && !READONLY_POST.test(u.pathname)) MAP_STALE = true;
+      }
+    } catch (_) { MAP_STALE = true; }   // couldn't tell what it was -> assume it wrote
+    return _origFetch.apply(this, arguments);
+  };
+
+  async function loadMap(force){
+    // Already built and still current: show what is there. This is the whole
+    // point -- returning to the Map has to be instant, not a rebuild.
+    if (!force && !MAP_STALE && NODES.length){
+      countMap.textContent = mapCountText();
+      return;
+    }
+    MAP_STALE = false;                  // clear first: a failure sets it back
     try{
       // Phase 1 -- the server reads the library, classifies every track and
       // builds the response. Nothing is measurable until it starts sending.
@@ -3459,6 +4530,7 @@
       const nextEdges = data.edges || [];
       if (!nextNodes.length){
         NODES = []; EDGES = [];
+        MAP_STALE = true;               // nothing to keep; look again next time
         loading(false);
         countMap.textContent='0 tracks -- scan some music first';
         return;
@@ -3481,11 +4553,15 @@
       resize(); layout();
       loading(false);
     }catch(err){
+      MAP_STALE = true;                 // a half-built map must not look current
       loading(false);
       countMap.textContent='failed to load map';
       console.error('map load failed', err);
     }
   }
+
+  const rebuildBtn = document.getElementById('map-rebuild');
+  if (rebuildBtn) rebuildBtn.addEventListener('click', () => loadMap(true));
   function switchTo(viewName){
     tabsEl.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view===viewName));
     document.body.classList.toggle('view-guide', viewName === 'guide');
@@ -3522,13 +4598,17 @@
     if (on){
       loadMap().then(() => {
         resize();
-        fitView();
+        // Framing the whole library is for arriving with nothing in particular
+        // to look at. Arriving to see one track, it is the wrong place to start.
+        const want = /^#map=(.+)$/.exec(deepHash);
+        if (!(want && byHash.has(want[1]))) fitView();
         startLoop();
         // the filter choosers are built from the loaded library, so they can only
         // be populated once the nodes exist
         if (window.mapFilterPopulate) window.mapFilterPopulate();
+        if (window.mapGenrePopulate) window.mapGenrePopulate();
         const m = /^#map=(.+)$/.exec(deepHash);
-        if (m && byHash.has(m[1])) selectNode(m[1]);
+        if (m && byHash.has(m[1])) selectNode(m[1], true);   // cut, don't fly
       });
     } else { stopLoop(); }
   }
@@ -3569,6 +4649,13 @@
     if (!document.body.classList.contains('view-map') || !NODES.length) return;
     clearTimeout(rz); rz = setTimeout(resize, 150);
   });
+
+  // The key notation changed under an open map: the hover label repaints itself
+  // every frame, but a popup already on screen would keep the old notation until
+  // it was closed and reopened.
+  window.vibeKeyViewChanged = () => {
+    if (popEl && !popEl.hidden && selHash && byHash.has(selHash)) openPopup(byHash.get(selHash));
+  };
 
   // let other UI (the review-reads panel) jump to a track on the map
   window.vibeMapGoto = (hash) => {

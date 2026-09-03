@@ -45,6 +45,11 @@ module.exports = [
         renderTags: "writable", //       panels.js -> used by app.js (finishRow)
         renderLookup: "writable", //     panels.js -> used by app.js (finishRow)
         renderVibeMatches: "writable", // panels.js -> used by app.js (finishRow)
+        // Key notation (Camelot vs. musical): one preference, read wherever a
+        // key is written, so the map, the rows and the export cannot disagree.
+        KEYVIEW: "writable", //    app.js -> used by options.js (marks the live one)
+        keyText: "writable", //    app.js -> used by map.js (keyfmt, hover label)
+        setKeyView: "writable", // app.js -> used by options.js (the control)
       },
     },
     rules: {

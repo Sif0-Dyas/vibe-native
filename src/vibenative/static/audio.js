@@ -146,6 +146,13 @@ const AUDIO = (function () {
     const playing = isPlaying(sample.audio);
     const m = sample.meta || {};
     el.title.textContent = m.title || 'Track';
+    // Same gesture as the now-playing bar's title: the name of what you are
+    // hearing is the way back to it on the map.
+    const findable = !!(m.hash && typeof window.vibeMapGoto === 'function');
+    el.title.classList.toggle('sb-goto', findable);
+    el.title.title = findable ? 'find this track on the map' : '';
+    if (findable) { el.title.tabIndex = 0; el.title.setAttribute('role', 'button'); }
+    else { el.title.removeAttribute('tabindex'); el.title.removeAttribute('role'); }
     el.dot.style.background = m.color || 'var(--accent-b)';
     el.dot.style.color = m.color || 'var(--accent-b)';   // drives the glow
     el.play.textContent = playing ? '❙❙' : '▶';
@@ -162,6 +169,14 @@ const AUDIO = (function () {
   }
 
   if (bar) {
+    const gotoStar = () => {
+      const h = (sample.meta || {}).hash;
+      if (h && typeof window.vibeMapGoto === 'function') window.vibeMapGoto(h);
+    };
+    el.title.addEventListener('click', gotoStar);
+    el.title.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gotoStar(); }
+    });
     el.play.addEventListener('click', () => {
       if (isPlaying(sample.audio)) { pause('sample'); render(); return; }
       setListen('sample');                     // playing the sample IS choosing it

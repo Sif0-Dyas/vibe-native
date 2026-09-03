@@ -190,6 +190,7 @@
              placeholder="Search a track, artist, or genre&hellip;">
       <div id="map-suggest" hidden></div>
     </div>
+    <div class="mt-group" role="group" aria-label="Layout">
     <div class="map-mode" id="map-mode" title="layout: genre regions vs. pure sonic similarity">
       <button class="mm active" data-mode="regions" type="button">&#9678; regions</button>
       <button class="mm" data-mode="universe" type="button" title="Every track as a star, grouped into galaxies">&#10022; universe</button>
@@ -198,9 +199,27 @@
     </div>
     <select id="uni-by" class="map-filter mode-only" data-for="universe"
             title="What each galaxy in the Universe represents">
-      <option value="arch">by genre</option>
-      <option value="vibe">by vibe</option>
+      <option value="arch">galaxy = genre</option>
+      <option value="fam">galaxy = family</option>
+      <option value="vibe">galaxy = vibe</option>
     </select>
+    <div class="map-lblwrap mode-only" data-for="universe">
+      <button id="uni-btn" class="map-toggle" type="button"
+              title="how far apart the galaxies sit, and how hard they pull on each other">&#9737;&#8942;</button>
+      <div id="uni-panel" class="map-panel" hidden>
+        <div class="mp-head">Galaxies</div>
+        <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
+          <input type="range" id="uni-sep" min="30" max="400" value="100"></div>
+        <div class="mp-hint">How much empty space the sky is made of. Bigger genres take
+          proportionally more room, so this stretches the gaps, not the galaxies.</div>
+        <div class="mp-sep"></div>
+        <div class="mp-field"><span>Gravity <i id="uni-grav-v">1.0&times;</i></span>
+          <input type="range" id="uni-grav" min="0" max="250" value="100"></div>
+        <div class="mp-hint">How hard genres that share tracks pull on each other. At 0 the
+          galaxies just spread out evenly; turn it up and the ones whose tracks are actually
+          each other&rsquo;s nearest neighbours drift together and start to swirl.</div>
+      </div>
+    </div>
     <select id="solar-pl" class="map-filter mode-only" data-for="solar"
             title="Which playlist to show as a solar system"></select>
     <select id="solar-by" class="map-filter mode-only" data-for="solar"
@@ -209,11 +228,13 @@
       <option value="bpm">rings: tempo</option>
       <option value="genre">rings: genre</option>
     </select>
-    <button id="map-harmonic" class="map-toggle" type="button" title="harmonic mixing: with a track selected, highlight key + BPM compatible tracks">&#127911;</button>
-    <button id="map-edges" class="map-toggle on" type="button" title="show / hide the connection lines">&#8776;</button>
+    </div>
+    <div class="mt-group" role="group" aria-label="What is shown">
     <select id="map-filter" class="map-filter" title="show only one genre (or just the flagged reads)">
       <option value="">all genres</option>
     </select>
+    <button id="map-harmonic" class="map-toggle" type="button" title="harmonic mixing: with a track selected, highlight key + BPM compatible tracks">&#127911;</button>
+    <button id="map-edges" class="map-toggle on" type="button" title="show / hide the connection lines">&#8776;</button>
     <div class="map-lblwrap">
       <button id="map-filt-btn" class="map-toggle" type="button" title="filter by artist, genre, key, tags, playlist, BPM or length">&#9781;</button>
       <div id="map-filt-panel" class="map-panel" hidden>
@@ -239,8 +260,36 @@
             <input type="range" id="flt-len-lo" min="0" max="100" value="0">
             <input type="range" id="flt-len-hi" min="0" max="100" value="100">
           </div></div>
-        <div class="mp-hint">sliders at their ends mean "no limit"</div>
+        <div class="mp-hint">sliders at their ends mean &ldquo;no limit&rdquo;</div>
+        <div class="mp-sep"></div>
+        <div class="mp-field"><span>Genres <i id="flt-gen-v">all</i></span></div>
+        <div class="flt-genbtns">
+          <button id="flt-gen-all" type="button">all</button>
+          <button id="flt-gen-none" type="button">none</button>
+          <button id="flt-gen-elec" type="button"
+                  title="everything the genre taxonomy recognises as electronic">electronic</button>
+        </div>
+        <div id="flt-genres" class="flt-genres"></div>
+        <div class="mp-hint">Untick a genre to take it off the map. Counts are how many
+          tracks read as that genre.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-row"><input type="checkbox" id="flt-playable">
+          <span>Only tracks with audio</span></label>
+        <div class="mp-hint">Hides stars whose audio file was never found &mdash; dragged-in
+          tracks that were analysed and never linked to a folder. They can&rsquo;t be
+          previewed or exported, so they are stars you can look at but not use.
+          <b>This only hides them.</b> Where every star sits is worked out from your whole
+          library, so the ones left keep their exact positions and their neighbours still
+          mean what they meant. Repair the paths under <b>Options</b> to bring them back.</div>
         <div class="mp-btns"><button id="flt-reset" type="button" class="mp-reset">clear filters</button></div>
+      </div>
+      <button id="map-recent-btn" class="map-toggle" type="button" title="stars you have looked at recently">&#9201;</button>
+      <div id="map-recent-panel" class="map-panel" hidden>
+        <div class="mp-head">Recently viewed</div>
+        <div id="map-recent-list" class="recent-list"></div>
+        <div class="mp-hint" id="map-recent-hint">Every star you open lands here, newest first.
+          Click one to go straight back to it.</div>
+        <div class="mp-btns"><button id="map-recent-clear" type="button" class="mp-reset">clear history</button></div>
       </div>
       <button id="map-lbl-btn" class="map-toggle" type="button" title="label options (hide, colour, spacing, transparency)">&#127991;</button>
       <div id="map-lbl-panel" class="map-panel" hidden>
@@ -297,14 +346,21 @@
         </div>
       </div>
     </div>
-    <button id="map-play" class="map-toggle on" type="button" title="pause / play the orbit (Space)">&#9208;</button>
-    <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
-      <input type="range" id="map-spin" min="0" max="100" value="10">
-    </label>
+    </div>
+    <div class="mt-group" role="group" aria-label="Motion">
+      <button id="map-play" class="map-toggle on" type="button" title="pause / play the orbit (Space)">&#9208;</button>
+      <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
+        <input type="range" id="map-spin" min="0" max="100" value="10">
+      </label>
+    </div>
+    <div class="mt-tail">
     <span class="map-hint" id="map-count">loading&hellip;</span>
-    <span class="spacer"></span>
-    <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
-    <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
+    <div class="mt-group" role="group" aria-label="Actions">
+      <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
+      <button id="map-rebuild" type="button" title="rebuild the map from the library (after analysing new music elsewhere)">&#8635; rebuild</button>
+      <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
+    </div>
+    </div>
   </div>
   <div id="map-stage">
     <canvas id="map-canvas"></canvas>
