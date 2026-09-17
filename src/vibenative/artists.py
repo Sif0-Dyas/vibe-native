@@ -13,9 +13,12 @@ real one's catalogue across two fictional halves.
 
 So separators are handled in two tiers:
 
-* **Unambiguous** -- ``/``, ``,``, ``feat.``, ``ft.``, ``vs.``, ``presents``.
-  These are punctuation or explicit credit words; they do not occur inside an
-  act's own name.
+* **Unambiguous** -- ``feat.``, ``ft.``, ``vs.``, ``presents``. Explicit
+  credit words; they do not occur inside an act's own name.
+* **Punctuation** -- ``/`` and ``,``. Almost always a separator, so these split
+  by default -- but ``AC/DC`` and ``Tyler, The Creator`` are single acts, and
+  the library can tell: a credit that keeps appearing whole, whose halves never
+  appear anywhere else, is an act. Only that evidence stops the split.
 * **Ambiguous** -- ``&``, ``and``, ``x``, ``with`` and ``+``. Every one of these
   is a word that appears inside real names: ``Above & Beyond``,
   ``Fly With Us``, ``Sam and Dave``. Split only when the library itself says
@@ -39,10 +42,8 @@ import re
 
 # Separators that are safe to split on unconditionally. Ordered longest-first
 # where they share a prefix ("featuring" before "feat") so the longer wins.
-_HARD = re.compile(
-    r"(?i)\s*/\s*"
-    r"|\s*,\s*"
-    r"|\s+featuring\s+"
+_WORDS = re.compile(
+    r"(?i)\s+featuring\s+"
     r"|\s+feat\.?\s+"
     r"|\s+ft\.?\s+"
     r"|\s+versus\s+"
@@ -50,6 +51,10 @@ _HARD = re.compile(
     r"|\s+presents\s+"
     r"|\s+pres\.?\s+"
 )
+
+# Punctuation separators. Split by default; kept whole only when the library
+# attests the joined form as an act in its own right (see _is_act).
+_PUNCT = re.compile(r"\s*/\s*|\s*,\s*")
 
 # Ambiguous separators -- every one of these occurs inside real artist names, so
 # each split has to be justified by the library (see _soft_split).
@@ -75,11 +80,55 @@ def _clean(part):
     return part.strip(_TRIM)
 
 
-def hard_split(credit):
-    """Split a credit on the unambiguous separators only."""
+# A credit seen more often than this is treated as an act in its own right even
+# if one of its halves also records alone. Two is deliberately low: a genuine
+# duo accumulates far more than a couple of appearances, while a one-off
+# collaboration rarely exceeds it.
+_PAIRING_MAX = 2
+
+
+def _pieces(credit):
+    """A credit split on the credit words alone."""
     if not credit:
         return []
-    return [p for p in (_clean(x) for x in _HARD.split(credit)) if p]
+    return [p for p in (_clean(x) for x in _WORDS.split(credit)) if p]
+
+
+def _parts(piece):
+    """A piece split on punctuation."""
+    return [p for p in (_clean(x) for x in _PUNCT.split(piece)) if p]
+
+
+def _is_act(piece, parts, index):
+    """Whether a punctuation-joined piece is attested as one act.
+
+    "AC/DC" earns this by appearing whole more than a couple of times while
+    neither "AC" nor "DC" ever turns up anywhere else -- the same test the
+    ampersand rule applies, read from the other direction. A one-off
+    "Smoakland/Heyz" fails on frequency; a "Chris Lorenzo" who also records
+    alone fails the second half, and the credit splits as it should.
+    """
+    whole = index.get(piece, 0)
+    if whole <= _PAIRING_MAX:
+        return False
+    return all(index.get(p, 0) == whole for p in parts)
+
+
+def hard_split(credit, index=None):
+    """Split a credit on the unambiguous separators only.
+
+    With an ``index`` (from :func:`build_index`) a punctuation-joined name the
+    library attests as an act -- "AC/DC", "Tyler, The Creator" -- is kept whole.
+    Without one, punctuation always splits.
+    """
+    out = []
+    for piece in _pieces(credit):
+        parts = _parts(piece)
+        if len(parts) > 1 and index and _is_act(piece, parts, index):
+            out.append(piece)
+        else:
+            out.extend(parts)
+    return out
 
 
 def build_index(credits):
@@ -89,19 +138,20 @@ def build_index(credits):
     the whole library rather than one credit at a time: deciding whether
     ``Above & Beyond`` is one act or two is only answerable by looking at how
     the rest of the collection uses those names.
+
+    A punctuation-joined piece ("AC/DC") is counted whole as well as by its
+    parts, so :func:`_is_act` can compare the two. Neither key can collide: a
+    part never contains the punctuation that made the piece.
     """
     counts = {}
     for c in credits:
-        for part in hard_split(c):
-            counts[part] = counts.get(part, 0) + 1
+        for piece in _pieces(c):
+            parts = _parts(piece)
+            if len(parts) > 1:
+                counts[piece] = counts.get(piece, 0) + 1
+            for part in parts:
+                counts[part] = counts.get(part, 0) + 1
     return counts
-
-
-# A credit seen more often than this is treated as an act in its own right even
-# if one of its halves also records alone. Two is deliberately low: a genuine
-# duo accumulates far more than a couple of appearances, while a one-off
-# collaboration rarely exceeds it.
-_PAIRING_MAX = 2
 
 
 def _soft_split(name, index):
@@ -135,7 +185,7 @@ def split_credit(credit, index=None):
     Always returns at least one name for a non-empty credit, and never returns
     duplicates (``A & B feat. A`` is two artists, not three).
     """
-    parts = hard_split(credit)
+    parts = hard_split(credit, index)
     if not parts:
         return []
     out, seen = [], set()

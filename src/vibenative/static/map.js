@@ -152,10 +152,11 @@
     // survivors or change whose neighbours are whose. What you see is the same
     // map with fewer dots on it, not a different map.
     if (FILT.playable && !n.a) return false;
-    // Unticked in the genre list. Matched against the keystone, which is the
+    // Unticked in the genre list. Matched against the keystones, which is the
     // level the list is written at -- so hiding "Dubstep" hides Brostep with it
-    // rather than leaving its subgenres behind.
-    if (FILT.hidden.length && FILT.hidden.includes(genreKeyOf(n))) return false;
+    // rather than leaving its subgenres behind, and hides the Drumstep that is
+    // half Dubstep too.
+    if (FILT.hidden.length && genreKeysOf(n).some(g => FILT.hidden.includes(g))) return false;
     if (!inRange(n.bpm, FILT.bpm)) return false;
     if (!inRange(n.duration, FILT.len)) return false;
     return true;
@@ -430,7 +431,14 @@
   function starsFor(n){
     const t = (TRACK_RATINGS[n.hash] || {}).stars || 0;
     if (!LBL.useArtistRating) return t;
-    const a = (ARTIST_RATINGS[artistKey(n.artist)] || {}).stars || 0;
+    // The popup rates the split artists (artistsOf), never the raw credit, so
+    // a co-credited track has to look each of them up: rating "Chris Lorenzo"
+    // 5* must grow every "AC Slater/Chris Lorenzo" star too. The raw credit is
+    // still tried for ratings made before credits were split.
+    let a = (ARTIST_RATINGS[artistKey(n.artist)] || {}).stars || 0;
+    for (const name of artistsOf(n)){
+      a = Math.max(a, (ARTIST_RATINGS[artistKey(name)] || {}).stars || 0);
+    }
     // The better of the two, not the average: a 5-star track by an unrated
     // artist is still a 5-star track, and averaging would bury it.
     return Math.max(t, a);
@@ -855,11 +863,17 @@
      A track can sit in several vibes at once, but it can only be in one place
      on screen, so the FIRST vibe by name owns it. Deterministic, and stated
      rather than silently picking whichever the query returned first. */
-  /* The genre a track is filed under for the genre list: its keystone, which is
-     the tier that answers "what kind of track is this" without splitting House
-     into nine entries you would have to untick one at a time. */
-  function genreKeyOf(n){
-    return n.kkey || n.style || n.fam || 'Other';
+  /* The genres a track is filed under for the genre list: its keystones, which
+     is the tier that answers "what kind of track is this" without splitting
+     House into nine entries you would have to untick one at a time.
+
+     The keystones themselves, not `kkey`: a fusion's key is the joined
+     "Drum n Bass + Dubstep", which would give the list a row of its own for
+     every blend and leave the track on the map after you unticked Dubstep. A
+     fusion is filed under both of its parents instead, and hidden with either. */
+  function genreKeysOf(n){
+    if (n.keystones && n.keystones.length) return n.keystones;
+    return [n.kkey || n.style || n.fam || 'Other'];
   }
 
   /* One tier below whatever a galaxy is.
@@ -1598,22 +1612,33 @@
     // except the Universe clustered by vibe, where it is the vibe -- and there
     // the legend must list the same things the map labels, or clicking a legend
     // row would filter on a name nothing on screen carries.
+    //
+    // Each subgenre row also remembers the PulseRoots family (n.fam) its tracks
+    // carry, because that -- not the group -- is what focusStyle() filters on
+    // and what the subgenre shade (styleShade / SUB_HUE) is keyed by. In the
+    // Universe the group is a keystone or a vibe, and passing that as the
+    // family made every subgenre row a silent no-op and its recolour a key
+    // nothing read. A style that straddles families keeps the commoner one.
     const subs = {};
     for (const n of NODES){ const st = n.style || n.fam;
-      (subs[n.grp] = subs[n.grp] || {})[st] = (subs[n.grp][st] || 0) + 1; }
+      const g = (subs[n.grp] = subs[n.grp] || {});
+      const e = (g[st] = g[st] || { c:0, fams:{} });
+      e.c++; e.fams[n.fam] = (e.fams[n.fam] || 0) + 1; }
+    const famOf = e => Object.keys(e.fams).sort((a, b) => e.fams[b] - e.fams[a])[0];
     const groups = FAMS.map(f => {
       const active = filterFam === f ? ' active' : '';
       const head = `<span class="leg leg-fam${active}" data-fam="${escapeHtml(f)}">`
         + `<span class="dot" title="click to recolour this genre" style="background:${famCss(f)}"></span>`
         + `<b>${escapeHtml(f)}</b>&nbsp;${COUNTS[f]}</span>`;
       // a lone subgenre identical to the family isn't really a "sub" -> skip it
-      const list = Object.entries(subs[f] || {}).filter(([st]) => st !== f).sort((a,b) => b[1]-a[1]);
+      const list = Object.entries(subs[f] || {}).filter(([st]) => st !== f).sort((a,b) => b[1].c-a[1].c);
       if (!list.length) return `<div class="leg-group">${head}</div>`;
       const shown = list.slice(0, 10), more = list.length - shown.length;
-      const subHtml = shown.map(([st, c]) => {
-        const sh = styleShade(f, st);
+      const subHtml = shown.map(([st, e]) => {
+        const c = e.c, fam = famOf(e);
+        const sh = styleShade(fam, st);
         const col = `hsl(${sh.h} ${clamp(sh.s, 40, 88)}% ${clamp(58 + sh.dl, 44, 70)}%)`;
-        return `<span class="leg-sub" data-fam="${escapeHtml(f)}" data-style="${escapeHtml(st)}"`
+        return `<span class="leg-sub" data-fam="${escapeHtml(fam)}" data-style="${escapeHtml(st)}"`
           + ` title="zoom to ${escapeHtml(st)}"><span class="sdot" title="click to recolour this subgenre"`
           + ` style="background:${col}"></span>${escapeHtml(st)} ${c}</span>`;
       }).join('') + (more > 0 ? `<span class="leg-more">+${more} more</span>` : '');
@@ -2705,14 +2730,22 @@
      and off only by perspective for things nearer or further, which is the same
      approximation the old screen pan made for everything.
 
-     Tree is 2-D and has no pivot to move, so it keeps the screen-space pan. */
-  function panBy(dx, dy){
+     Tree is 2-D and has no pivot to move, so it keeps the screen-space pan.
+
+     `snap` moves the eased pivot by the same step, not just its target. A drag
+     doesn't need it (frame() eases 1:1 while dragging), but a wheel zoom does:
+     the zoom is applied instantly, so if the compensating pan only moved the
+     target, the point under the cursor would jump toward the centre and slide
+     back over the next twenty frames. */
+  function panBy(dx, dy, snap){
     if (mapMode === 'tree'){ view.panx += dx; view.pany += dy; return; }
     const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
     const s = -1 / (Math.min(W,H) * 0.40 * view.zoom);      // = -1/DISP, see frame()
-    panOff.x += (dx*cy + dy*sy*sx) * s;                     // right=(cy,0,sy)
-    panOff.y += (dy*cx) * s;                                // down =(sy*sx, cx, -cy*sx)
-    panOff.z += (dx*sy - dy*cy*sx) * s;
+    const wx = (dx*cy + dy*sy*sx) * s;                      // right=(cy,0,sy)
+    const wy = (dy*cx) * s;                                 // down =(sy*sx, cx, -cy*sx)
+    const wz = (dx*sy - dy*cy*sx) * s;
+    panOff.x += wx; panOff.y += wy; panOff.z += wz;
+    if (snap){ pivot.x += wx; pivot.y += wy; pivot.z += wz; }
   }
 
   /* ---- interaction: orbit / pan / zoom / click --------------------- */
@@ -2822,7 +2855,7 @@
     // panBy sizes a pixel by it.
     const ox = mx - (W/2 + view.panx), oy = my - (H/2 + view.pany);
     view.zoom = nz;
-    panBy(ox * (1 - f), oy * (1 - f));
+    panBy(ox * (1 - f), oy * (1 - f), true);
   }, { passive:false });
 
   /* ---- select + camera fly ----------------------------------------- */
@@ -2851,7 +2884,18 @@
   }
   if (typeof AUDIO !== 'undefined') AUDIO.registerSample({
     audio: PREV.audio,
-    restart: () => { if (PREV.node) beginSample(null); },   // ⟲ replay / switching back
+    restart: () => { if (PREV.node) beginSample(null); },   // ⟲ replay
+    // ▶ after a pause, or switching back to the sample: pick the clip up where
+    // it stopped. Only once it has run out (stopPreview cleared stopAt) does
+    // "play" mean "again from the drop" -- that is what ⟲ is for otherwise.
+    resume: () => {
+      if (!PREV.node) return;
+      const t = PREV.audio.currentTime;
+      if (PREV.stopAt && t >= PREV.start && t < PREV.stopAt){
+        if (typeof AUDIO !== 'undefined') AUDIO.claim('sample');
+        PREV.audio.play().catch(() => {});
+      } else beginSample(null);
+    },
     release: () => { stopPreview(); },
   });
 
@@ -3973,9 +4017,8 @@
     const genBox = $f('flt-genres');
     function genreRows(){
       const count = {}, famOf = {};
-      for (const n of NODES){
-        const g = genreKeyOf(n);
-        count[g] = (count[g] || 0) + 1;
+      for (const n of NODES) for (const g of genreKeysOf(n)){
+        count[g] = (count[g] || 0) + 1;      // a fusion counts under each parent
         /* `n.family` from the server, NOT `n.fam`.
            They sound interchangeable and are not: `n.fam` is recomputed on this
            side from the PulseRoots table and comes out as one of ~54 fine

@@ -613,6 +613,11 @@ def weights_put(h):
             else:
                 p.pop("weights", None)
         if raw_drops is not None:
+            # Store only the drops that take effect: the one that would empty
+            # the read is refused, and a refused drop the panel still listed as
+            # "removed" would contradict the star it never removed from.
+            base = ((p.get("relabel") or {}).get("styles")) or p.get("salience") or p.get("styles") or []
+            drops = W.surviving_drops(base, drops)
             if drops:
                 p["drops"] = drops
                 # Also clear any step already stored for a genre being removed.

@@ -54,6 +54,32 @@ def test_duplicates_are_collapsed_case_insensitively():
     assert artists.split_credit("Skrillex/SKRILLEX/Diplo") == ["Skrillex", "Diplo"]
 
 
+# --- punctuation inside a name ----------------------------------------------
+
+
+def test_attested_act_with_a_slash_is_kept_whole():
+    """"AC/DC" keeps turning up whole and "AC" and "DC" never turn up alone."""
+    i = artists.build_index(["AC/DC"] * 4 + ["Smoakland/Heyz"])
+    assert artists.split_credit("AC/DC", i) == ["AC/DC"]
+    assert artists.split_credit("AC/DC feat. Axl", i) == ["AC/DC", "Axl"]
+    # The one-off collaboration in the same library still splits.
+    assert artists.split_credit("Smoakland/Heyz", i) == ["Smoakland", "Heyz"]
+
+
+def test_attested_act_with_a_comma_is_kept_whole():
+    i = artists.build_index(["Tyler, The Creator"] * 3)
+    assert artists.split_credit("Tyler, The Creator", i) == ["Tyler, The Creator"]
+
+
+def test_frequent_pairing_still_splits_when_a_half_records_alone():
+    i = artists.build_index(["AC Slater/Chris Lorenzo"] * 5 + ["Chris Lorenzo"])
+    assert artists.split_credit("AC Slater/Chris Lorenzo", i) == ["AC Slater", "Chris Lorenzo"]
+
+
+def test_without_an_index_punctuation_always_splits():
+    assert artists.split_credit("AC/DC") == ["AC", "DC"]
+
+
 # --- the ampersand rule -----------------------------------------------------
 
 
@@ -121,6 +147,10 @@ def test_build_index_counts_hard_split_parts():
     assert i["B"] == 3
     assert i["A"] == 1
     assert i["C"] == 1
+    # The joined forms are counted too, so an act like "AC/DC" can be told
+    # apart from a pairing.
+    assert i["A/B"] == 1
+    assert i["B, C"] == 1
 
 
 def test_build_index_does_not_split_ampersands():

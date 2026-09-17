@@ -39,10 +39,11 @@ const AUDIO = (function () {
   try { Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}') || {}); } catch (_) { /* private mode */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) { /* private mode */ } };
 
-  /* The sample source. map.js registers its element and the two verbs only it
-     can implement (restart the clip from the drop; give the clip up). */
+  /* The sample source. map.js registers its element and the verbs only it can
+     implement (restart the clip from the drop; resume a paused one; give the
+     clip up). */
   const sample = {
-    audio: null, restart: null, release: null,
+    audio: null, restart: null, resume: null, release: null,
     loaded: false, meta: null, start: 0, seconds: 0,
   };
 
@@ -79,7 +80,10 @@ const AUDIO = (function () {
   function setListen(kind) {
     claim(kind);
     if (kind === 'sample') {
-      if (sample.loaded && !isPlaying(sample.audio) && sample.restart) sample.restart();
+      // Resume, not restart: the strip's play button is "play / pause", and a
+      // pause that comes back from the drop is a replay -- which has its own key.
+      const go = sample.resume || sample.restart;
+      if (sample.loaded && !isPlaying(sample.audio) && go) go();
     } else if (trackLoaded() && !isPlaying(trackAudio())) {
       const t = trackAudio();
       if (t) t.play().catch(() => { /* the bar's error handler reports it */ });
@@ -211,6 +215,7 @@ const AUDIO = (function () {
     registerSample(opts) {
       sample.audio = opts.audio;
       sample.restart = opts.restart;
+      sample.resume = opts.resume || null;
       sample.release = opts.release;
       applyVolume();
       ['play', 'pause', 'ended'].forEach(ev => sample.audio.addEventListener(ev, render));

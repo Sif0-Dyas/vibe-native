@@ -303,12 +303,23 @@ def test_a_drop_and_a_step_on_the_same_genre_cannot_both_hold():
     assert "House" not in out
 
 
-def test_dropping_everything_leaves_the_track_with_an_identity():
+def test_dropping_everything_leaves_the_last_reading_standing():
     """A track with no read at all is not something a per-genre remove should be
-    able to say -- and the empty result falls back to the unedited read, so the
-    last press would look like it undid every press before it."""
+    able to say, and falling back to the unedited read would make the last press
+    look like it undid every press before it. The press that would empty the
+    read is the one refused."""
     out = W.apply(REAL, {}, ["Techno", "House", "Tech Trance", "Electro House"])
-    assert out and out[0]["style"] == "Techno"
+    assert [e["style"] for e in out] == ["Electro House"]
+    assert out[0]["score"] == pytest.approx(1.0)
+
+
+def test_surviving_drops_refuses_only_the_emptying_press():
+    drops = ["Techno", "Polka", "House", "Tech Trance", "Electro House"]
+    # The unknown genre takes nothing off, so it is kept; the last real one is
+    # refused so the panel and the map keep telling the same story.
+    assert W.surviving_drops(REAL, drops) == ["Techno", "Polka", "House", "Tech Trance"]
+    assert W.surviving_drops(REAL, ["House"]) == ["House"]
+    assert W.surviving_drops([], ["House"]) == ["House"]
 
 
 def test_drops_are_cleaned_the_way_they_are_stored():

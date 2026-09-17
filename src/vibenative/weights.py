@@ -102,6 +102,31 @@ def clean_drops(drops):
     return out
 
 
+def surviving_drops(entries, drops):
+    """The drops that actually take effect against this read, in order.
+
+    A track with every genre removed has no identity at all, which is not
+    something a per-genre remove should be able to say -- and the read it would
+    fall back to is the unedited one, so the last press would look like it undid
+    every press before it. So the press that would empty the read is refused:
+    the last reading standing survives, and its drop is left out of the list so
+    the panel never shows a genre as removed while the map still carries it.
+
+    Drops of genres the read never held are kept -- they take nothing off, and
+    a later relabel may yet bring the genre in.
+    """
+    styles = {(e or {}).get("style") for e in entries or []}
+    styles.discard(None)
+    left = set(styles)
+    out = []
+    for d in clean_drops(drops):
+        if d in left and len(left) == 1:
+            continue
+        left.discard(d)
+        out.append(d)
+    return out
+
+
 def apply(entries, steps, drops=None, topk=8):
     """Apply per-genre steps and drops to a ranked style read.
 
@@ -119,6 +144,7 @@ def apply(entries, steps, drops=None, topk=8):
     A dropped genre is removed before anything is weighed, so the share it held
     is redistributed rather than left as a hole. Its step, if it had one, goes
     with it: "more of this" and "none of this" cannot both be what you meant.
+    The drop that would empty the read is refused (see :func:`surviving_drops`).
     """
     steps = {k: clamp_step(v) for k, v in (steps or {}).items() if clamp_step(v) != 0}
     scored = {}
@@ -131,16 +157,10 @@ def apply(entries, steps, drops=None, topk=8):
         except (TypeError, ValueError):
             continue
 
-    drops = clean_drops(drops)
+    drops = surviving_drops(entries, drops)
     if drops:
         steps = {k: v for k, v in steps.items() if k not in drops}
-        kept = {s: v for s, v in scored.items() if s not in drops}
-        # A track with every genre removed has no identity at all, which is not
-        # something a per-genre remove should be able to say -- and the read it
-        # would fall back to is the unedited one, so the last press would look
-        # like it undid every press before it. The last reading standing survives.
-        if kept:
-            scored = kept
+        scored = {s: v for s, v in scored.items() if s not in drops}
     # Relative to the total, not the top reading. Scaling off the top looked
     # proportional but wasn't: the result is renormalised against a sum that also
     # varies, so "moderately" landed at 43% on a confident track and 30% on an
