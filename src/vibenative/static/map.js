@@ -2973,6 +2973,53 @@
     previewTrack(n, cut);            // auto-sample the drop, unless it's already playing
   }
 
+  /* The genre chips above a track's title: subgenre, then keystone, then
+     archgenre -- narrowest first, because the narrow one is the answer and the
+     wider ones are the context for it.
+
+     The card used to carry a single chip holding the widest tier, which names
+     the room a track belongs in and never the record: every Tech House, Deep
+     House and Bassline track on the map said "House" and stopped there.
+
+     A tier is dropped when it repeats the one beside it, keeping the wider
+     reading of the name -- House IS an archgenre, so a House track gets one chip
+     and not three identical ones. Read from server-side fields because all three
+     come out of the taxonomy, which the user can edit and only the server holds;
+     each falls back to what the node already carried, so a map built before they
+     were sent still names the track instead of showing a blank chip. */
+  function genreTiers(n){
+    const tiers = [
+      { cls:'is-sub',  txt: n.ksub || n.style || '',            why:'subgenre' },
+      { cls:'is-key',  txt: n.klabel || n.kkey || n.fam || '',  why:'genre' },
+      { cls:'is-arch', txt: n.karch || '',                      why:'archgenre' },
+    ];
+    const seen = new Set(), out = [];
+    for (let i = tiers.length - 1; i >= 0; i--){       // widest first, so it wins the name
+      const t = tiers[i], k = t.txt.toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.unshift(t);
+    }
+    // One tier for the whole track -- a standalone archgenre, or a style the
+    // taxonomy has no keystone for at all -- is not "a subgenre of nothing". It
+    // is the answer, so it is painted as one: the single solid chip this card
+    // has always shown.
+    if (out.length === 1) out[0].cls = 'is-arch';
+    return out;
+  }
+
+  /* The three chips share the star's own hue and differ only in how solidly they
+     are painted, so the row reads as one genre widening rather than three
+     unrelated labels. Computed here rather than with color-mix() in the
+     stylesheet: this runs inside a desktop WebView whose version is the user's,
+     and a hue arithmetic that works everywhere beats a colour function that
+     might not. */
+  function famChipVars(n){
+    const h = famHue(n.fam);
+    return `--c:hsl(${h} 62% 62%);--c-tint:hsl(${h} 40% 24%);`
+         + `--c-line:hsl(${h} 34% 38%);--c-text:hsl(${h} 62% 76%)`;
+  }
+
   async function openPopup(n){
     const meta = [
       n.style ? `<span><b>${escapeHtml(n.style)}</b> ${(n.score*100).toFixed(0)}%</span>` : '',
@@ -2983,7 +3030,8 @@
     const other = (n.styles||[]).filter(s=>s && s!==n.style);
     popEl.innerHTML = `
       <button class="pop-x" title="close">close ✕</button>
-      <span class="pop-fam" style="background:${famCss(n.fam)}">${escapeHtml(n.fam)}</span>
+      <div class="pop-fams" style="${famChipVars(n)}">${genreTiers(n).map(t =>
+        `<span class="pop-fam ${t.cls}" title="${t.why}">${escapeHtml(t.txt)}</span>`).join('')}</div>
       <div class="pop-title">${escapeHtml(n.artist ? stripArtist(n.title, n.artist) : n.title)}</div>
       ${artistsOf(n).length ? `<div class="pop-artist">${artistsOf(n).map(a =>
         `<button class="pop-artchip" data-kind="artist" data-v="${escapeHtml(a)}"
@@ -4479,14 +4527,27 @@
   let MAP_STALE = true;                 // nothing loaded yet
   window.vibeMapStale = () => { MAP_STALE = true; };
 
+  /* The fingerprint the loaded map was built from -- see /map/stamp. Stale says
+     "something wrote to the library"; this says whether that write touched
+     anything the map is made of. */
+  let MAP_STAMP = null;
+
   /* What marks it stale. Tagging the twenty call sites that write to the library
      would work until the twenty-first was added without one, and the failure
      there is silent: a map that quietly disagrees with the library. So this
      watches fetch instead -- any non-GET to our own server means something
-     changed. It errs deliberately toward rebuilding, because a spurious rebuild
-     costs what every visit used to cost anyway, while a missed one is wrong.
-     The exceptions are the POSTs that are really queries and change nothing. */
+     changed. It errs deliberately toward rebuilding, because a missed one is
+     wrong, and a spurious one now costs a stamp check rather than a rebuild
+     (loadMap). The exceptions are the POSTs that are really queries and change
+     nothing at all, so they don't even cost that. */
   const READONLY_POST = /^\/(compare|refine|waveform|filepaths\/count|relabel\/preview)(\/|$)/;
+  /* Writes the map cannot see. A rating changes the library, but a map node is
+     not built from one -- ratings arrive as an overlay, and the widget that saved
+     it has already updated the map's copy (see wireRating), so the star is the
+     right size before the request even lands. Marking the map stale for these
+     was the common case of the bug this whole mechanism exists to avoid: rate a
+     track, jump to another, and the galaxy is torn down and rebuilt around you. */
+  const OVERLAY_POST = /^\/(ratings|artist-ratings)(\/|$)/;
   const _origFetch = window.fetch;
   window.fetch = function (input, init) {
     try {
@@ -4494,11 +4555,25 @@
         || (input && input.method) || 'GET').toUpperCase();
       if (method !== 'GET' && method !== 'HEAD') {
         const u = new URL((input && input.url) || String(input), location.href);
-        if (u.origin === location.origin && !READONLY_POST.test(u.pathname)) MAP_STALE = true;
+        if (u.origin === location.origin
+            && !READONLY_POST.test(u.pathname)
+            && !OVERLAY_POST.test(u.pathname)) MAP_STALE = true;
       }
     } catch (_) { MAP_STALE = true; }   // couldn't tell what it was -> assume it wrote
     return _origFetch.apply(this, arguments);
   };
+
+  /* The digest of what the map would be built from right now, or null if the
+     server can't say. Cheap: it reads and hashes the library rather than
+     classifying it. */
+  async function mapStamp(){
+    try{
+      const r = await _origFetch('/map/stamp');   // straight through: this is a read
+      if (!r.ok) return null;
+      const j = await r.json();
+      return (j && j.stamp) || null;
+    }catch(_){ return null; }
+  }
 
   async function loadMap(force){
     // Already built and still current: show what is there. This is the whole
@@ -4506,6 +4581,36 @@
     if (!force && !MAP_STALE && NODES.length){
       countMap.textContent = mapCountText();
       return;
+    }
+    /* Marked stale, but the write that marked it may not have been about the
+       map. The flag above is set by watching fetch, which cannot tell what a
+       write meant -- only that there was one -- and most writes are not about
+       what a track IS. That cost a full rebuild on the next visit: rate a track,
+       jump to another one, and the galaxy you were reading is torn down and
+       rebuilt around you.
+
+       So ask what the map would be keyed on before spending that. A match means
+       the library the map was built from is the library that is there now, and
+       there is nothing to rebuild -- only the overlays to re-read, which is four
+       small requests.
+
+       The two overlays that DO move stars get placed again, because neither is in
+       the stamp -- a vibe and a playlist are things you put tracks into, not part
+       of what a track is. A vibe is a galaxy in Universe mode, so a membership
+       change has to re-place; Solar draws one playlist and nothing else. Both are
+       re-placed, which is the work those modes actually need -- not a whole map. */
+    if (!force && NODES.length && MAP_STAMP){
+      const now = await mapStamp();
+      if (now && now === MAP_STAMP){
+        MAP_STALE = false;
+        const vibeSig = () => VIBES.map(v => v.name + '#' + (v.hashes || []).join(',')).join('|');
+        const wasVibes = vibeSig();
+        await loadOverlays();
+        if (mapMode === 'solar') await loadSolarSet();
+        if (mapMode === 'solar' || vibeSig() !== wasVibes) layout();
+        countMap.textContent = mapCountText();
+        return;
+      }
     }
     MAP_STALE = false;                  // clear first: a failure sets it back
     try{
@@ -4528,8 +4633,9 @@
          ready to replace it in one synchronous step. */
       const nextNodes = data.nodes || [];
       const nextEdges = data.edges || [];
+      const nextStamp = data.stamp || null;
       if (!nextNodes.length){
-        NODES = []; EDGES = [];
+        NODES = []; EDGES = []; MAP_STAMP = null;
         MAP_STALE = true;               // nothing to keep; look again next time
         loading(false);
         countMap.textContent='0 tracks -- scan some music first';
@@ -4546,7 +4652,7 @@
       await new Promise(r => setTimeout(r, 0));
 
       // --- the swap: no await between here and layout() ---
-      NODES = nextNodes; EDGES = nextEdges;
+      NODES = nextNodes; EDGES = nextEdges; MAP_STAMP = nextStamp;
       byHash.clear();
       for (const n of NODES) byHash.set(n.hash, n);
       if (mapMode === 'solar') solarSetFrom(solarPayload);
@@ -4554,6 +4660,7 @@
       loading(false);
     }catch(err){
       MAP_STALE = true;                 // a half-built map must not look current
+      MAP_STAMP = null;
       loading(false);
       countMap.textContent='failed to load map';
       console.error('map load failed', err);

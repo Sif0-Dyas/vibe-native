@@ -72,6 +72,14 @@ def _keystone_fields(p, mode="dark"):
     Computed per request rather than stored, so editing the taxonomy or the
     palette re-labels the whole map on the next load with no migration. It's
     pure table lookup over the style read that's already in the payload.
+
+    All three tiers travel, not just the widest one. The popup used to have the
+    top tier and nothing else, which names the room a track belongs in and never
+    the record: every Tech House, Deep House and Bassline track read "House".
+    ``ksub`` is the strongest style *within* the primary keystone rather than the
+    track's dominant style, so the chips always read as one chain -- Tech House
+    under House under House -- instead of a subgenre that hangs off a keystone
+    the card isn't showing.
     """
     from .. import keystone as K
     from .. import palette as P
@@ -80,11 +88,20 @@ def _keystone_fields(p, mode="dark"):
     if not cls:
         return {}
     paint = P.track_paint(cls, mode) or {}
+    primary = cls["keystones"][0]
+    # subgenres are ordered keystone-first and then by score, so the first entry
+    # under the primary keystone is that keystone's strongest read.
+    ksub = next(
+        (s["style"] for s in cls["subgenres"] if s.get("keystone") == primary and s.get("style")),
+        None,
+    )
     return {
         "family": cls["family"],
         "keystones": cls["keystones"],
         "klabel": cls["label"],
         "kkey": cls["key"],
+        "karch": cls["archgenre"],
+        "ksub": ksub,
         "kfusion": cls["fusion"],
         "kshares": cls["shares"],
         "rings": paint.get("rings") or [],
@@ -144,6 +161,12 @@ def audit_route():
 # ----------------------------------------------------------------------------
 CACHE_KEEP = 4  # recent builds to keep on disk (one per mode, plus a little slack)
 
+# Bumped whenever a node or edge grows, loses or changes a field. The app version
+# is in the fingerprint too, but it moves per release and the node shape moves per
+# commit -- without this, adding a field to _map_node during development serves
+# yesterday's map, missing the field, to code that now needs it.
+NODE_SCHEMA = 2
+
 
 def _map_cache_dir():
     from ..db import DB_PATH
@@ -165,6 +188,7 @@ def _map_fingerprint(rows, tags_by_hash, mode):
 
     h = hashlib.blake2b(digest_size=16)
     h.update(__version__.encode("utf-8"))
+    h.update(f"schema{NODE_SCHEMA}".encode())
     h.update(mode.encode("utf-8"))
     h.update(str(DB_PATH).encode("utf-8", "replace"))
     try:
@@ -340,10 +364,35 @@ def map_route():
         fl = flags.get(n["hash"])
         n["flag"] = bool(fl)
         n["suggest"] = fl["suggested_style"] if fl else None
-    resp = jsonify({"nodes": nodes, "edges": edges})
+    resp = jsonify({"nodes": nodes, "edges": edges, "stamp": fp})
     _map_cache_write(fp, resp.get_data())
     resp.headers["X-Map-Cache"] = "miss"
     return resp
+
+
+@bp.get("/map/stamp")
+def map_stamp_route():
+    """The fingerprint /map would be built from, without building it.
+
+    The client keeps the map it has and only rebuilds when the library changes
+    underneath it. It cannot see the library, so it watches its own writes and
+    assumes the worst -- which is right, but coarse: rating a track, or an
+    adjustment the map already applied to the star in place, marks a map stale
+    that is in fact still exactly correct, and the next visit spends a rebuild
+    proving it.
+
+    So it asks here first. This is the same digest /map keys its cache on -- read
+    the rows, hash them -- which is about a quarter of a second against seven and
+    a half to rebuild, and it is derived from the same inputs, so a match is a
+    real answer and not an optimistic one.
+    """
+    mode = "light" if request.args.get("mode") == "light" else "dark"
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute(
+            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
+        ).fetchall()
+        tags_by_hash = _tags_by_hash(c)
+    return jsonify({"stamp": _map_fingerprint(rows, tags_by_hash, mode)})
 
 
 @bp.get("/")

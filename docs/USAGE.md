@@ -387,7 +387,9 @@ Under **☰ filter** there's **Only tracks with audio**. It hides stars whose au
 
 Arriving this way is a *cut*, not a flight: the map opens already centered on the star rather than framing your whole library and zooming in. Clicking a dot on a map you are already looking at still glides, because there the movement is what tells you which star you picked.
 
-**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre family, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **⚖ adjust** / **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer, on the same track).
+**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **⚖ adjust** / **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer, on the same track).
+
+Above the title is the track's genre, read narrow to wide: **subgenre · genre · archgenre** — *Grime · Dubstep · Bass*. A tier that would repeat the one beside it is dropped rather than printed twice, so a House track says *House* once and a Progressive House track says *Progressive House · House*: House is the top of its own tree, not a room inside something wider. The chips share the star's own colour and get more solid as they widen, so the widest one is the chip the card has always shown and the narrower ones read as detail hanging off it.
 
 Selecting a track also **auditions it**: a ~22-second clip starts from the track's *drop* (its first sustained burst of energy, or 40% in if there isn't one). A **sample strip** appears above the now-playing bar with its own **▶ play/pause**, **↻ replay** (back to the drop), **■ stop**, and **volume + mute** — so auditioning can sit quietly under whatever else you're doing.
 
@@ -407,6 +409,14 @@ as long as it is open, and the result is also stored next to your library file, 
 — analysing new music, an override, an adjustment, an omit, a tag, a palette
 change, editing the taxonomy — invalidates it automatically, so the map you see is
 never out of date with the library it came from.
+
+The app deliberately assumes the worst here: *anything* it writes to your library
+counts as a change, because a map that quietly disagrees with your library is much
+worse than a slow one. But most of those writes turn out not to touch the map at
+all — rating a track is the common one — so before rebuilding it asks the library
+one cheap question: *would the map come out the same?* If it would, nothing is
+rebuilt and nothing moves. Rating a track and then jumping to another one no longer
+tears down the galaxy you were reading.
 
 **↻ rebuild** forces a fresh build anyway. You shouldn't need it, but it's there
 if something ever looks out of step.

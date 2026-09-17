@@ -24,7 +24,11 @@ def test_map_empty_db(client):
     r = client.get("/map")
     assert r.status_code == 200
     body = r.get_json()
-    assert body == {"nodes": [], "edges": []}
+    assert body["nodes"] == []
+    assert body["edges"] == []
+    # The stamp travels with the map so the client can ask whether the one it is
+    # holding is still the current one -- see /map/stamp.
+    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
 
 
 def test_tags_empty(client):

@@ -197,3 +197,62 @@ def test_a_truncated_entry_is_rebuilt_rather_than_served(client):
     assert hit is False                              # rejected, not served
     assert style_of(body, h) == "Techno"             # and rebuilt correctly
     assert build(client)[0] is True                  # the good entry replaced it
+
+
+# --- the stamp: "is the map I am holding still the current one?" --------------
+def test_the_stamp_matches_the_map_it_was_built_with(client):
+    seed(client)
+    _, body = build(client)
+    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
+
+
+def test_the_stamp_answers_the_same_on_a_cache_hit(client):
+    """A hit serves the stored bytes, so the stamp inside them has to be the key
+    that entry is filed under -- otherwise a cached map would report itself as
+    something the stamp endpoint has never heard of, and the client would rebuild
+    on every visit."""
+    seed(client)
+    build(client)
+    hit, body = build(client)
+    assert hit is True
+    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
+
+
+def test_the_stamp_moves_when_the_library_does(client):
+    h = seed(client)
+    before = client.get("/map/stamp").get_json()["stamp"]
+    client.post(f"/override/{h}", json={"genre": "Trance"})
+    assert client.get("/map/stamp").get_json()["stamp"] != before
+
+
+def test_a_rating_leaves_the_stamp_alone(client):
+    """The reason the endpoint exists. A rating writes to the library, so the
+    client marks its map stale -- but ratings arrive as an overlay and no node is
+    built from one, so the map it is holding is still exactly right. The stamp is
+    what lets it find that out for a quarter of a second instead of a rebuild."""
+    h = seed(client)
+    before = client.get("/map/stamp").get_json()["stamp"]
+    assert client.post(f"/ratings/{h}", json={"stars": 5}).status_code == 200
+    assert client.get("/map/stamp").get_json()["stamp"] == before
+
+
+def test_the_node_carries_all_three_genre_tiers(client):
+    """The popup names a track subgenre-first and widens from there, so every
+    tier has to travel. Only the server has the taxonomy the wider two come out
+    of -- the client cannot derive them."""
+    h = seed(client, payload={"salience": [{"style": "Neurofunk", "score": 0.9}]})
+    _, body = build(client)
+    node = next(n for n in body["nodes"] if n["hash"] == h)
+    assert node["ksub"] == "Neurofunk"
+    assert node["klabel"] == "Drum n Bass"
+    assert node["karch"] == "Bass"
+
+
+def test_a_standalone_archgenre_repeats_rather_than_inventing_a_tier(client):
+    """House is the top of its own tree. The node says so by naming House at both
+    tiers; the popup drops the repeat. What it must not do is manufacture some
+    wider grouping to fill the slot."""
+    h = seed(client, payload={"salience": [{"style": "House", "score": 0.9}]})
+    _, body = build(client)
+    node = next(n for n in body["nodes"] if n["hash"] == h)
+    assert node["ksub"] == node["klabel"] == node["karch"] == "House"

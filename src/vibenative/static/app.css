@@ -1313,11 +1313,19 @@ body.view-options .lensbar{ display:none; }
   font-family:'JetBrains Mono',monospace; font-size:12px;
 }
 .pop-x:hover{ color:var(--text); }
+/* The genre chain above the title: subgenre, genre, archgenre -- narrowest
+   first. One hue (the star's own, set on the row) painted three ways, so the
+   widest tier is the solid one it always was and the narrower ones read as
+   detail hanging off it rather than as three competing labels. */
+.pop-fams{ display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-bottom:8px; }
 .pop-fam{
   display:inline-block; font-family:'JetBrains Mono',monospace; font-size:9px;
   letter-spacing:.1em; text-transform:uppercase; padding:2px 8px; border-radius:20px;
-  color:#0D0F14; font-weight:600; margin-bottom:8px;
+  color:#0D0F14; font-weight:600; background:var(--c);
+  border:1px solid transparent;
 }
+.pop-fam.is-sub{ background:transparent; border-color:var(--c-line); color:var(--c-text); }
+.pop-fam.is-key{ background:var(--c-tint); border-color:var(--c-line); color:var(--c-text); }
 .pop-title{ font-family:'Syne',sans-serif; font-weight:700; font-size:16px; line-height:1.2; }
 .pop-artist{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim); margin-top:2px; }
 .pop-meta{
