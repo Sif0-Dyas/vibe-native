@@ -201,9 +201,12 @@ def summarise(top_n=5, mode="dark"):
                  "observed": {"p10": 120, "median": 125, "p90": 129,
                               "min": 80, "max": 738, "n": 662},
                  "octave_flag": None},
+         "self_count": 210,
+             -- tracks whose dominant read is plain "House", no subgenre,
          "subgenres": [{"style": "Progressive House", "count": 167}, ...],
              -- counts are TRACKS whose dominant subgenre is that style, so they
-             sum to at most the keystone's own count and agree with the map,
+             plus self_count sum to at most the keystone's own count and agree
+             with the map; the keystone's own name is never in this list,
          "top": [{"hash": ..., "title": ..., "share": 1.0}, ...]}
 
     ``top`` is the most *representative* tracks -- highest share of this
@@ -294,6 +297,12 @@ def summarise(top_n=5, mode="dark"):
                     "keystone": name,
                     "family": K.family_of(name),
                     "count": b["count"],
+                    # Tracks whose dominant read is the keystone itself -- plain
+                    # "House", not any House subgenre. Reported here, not as a
+                    # subgenre row: a genre is not a subgenre of itself, and
+                    # every consumer of the list used to have to strip the
+                    # self-named entry before "House > House" reached a screen.
+                    "self_count": b["subgenres"].get(name, 0),
                     "share": round(b["count"] / total, 4),
                     "color": P.keystone_color(name, mode),
                     "slotted": name in P.KEYSTONE_SLOT,
@@ -314,6 +323,7 @@ def summarise(top_n=5, mode="dark"):
                     "subgenres": [
                         _subgenre_profile(s, n, b, name, mode, top_n)
                         for s, n in sorted(b["subgenres"].items(), key=lambda kv: -kv[1])
+                        if s != name
                     ],
                     "top": b["tracks"][:top_n],
                 }

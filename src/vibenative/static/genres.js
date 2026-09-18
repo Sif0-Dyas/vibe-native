@@ -115,11 +115,7 @@
   }
 
   function keystoneCard(k) {
-    /* A keystone's own name shows up in its subgenre list (House lists "House",
-       Dubstep lists "Dubstep"). That is the tier being restated, not a child of
-       it, and printing "House > House" is the same duplication the tree view
-       had to be fixed for. */
-    var kids = (k.subgenres || []).filter(function (s) { return s.style !== k.keystone; });
+    var kids = k.subgenres || [];
     var chip = function (s) {
       return '<span class="gen-sub">' + esc(s.style) + '<i>' + s.count + '</i></span>';
     };
@@ -443,7 +439,6 @@
             // this section lists what it holds, exactly as a multi-keystone
             // archgenre like Bass already does.
             (solo ? (f.keystones[0].subgenres || [])
-                      .filter(function (sg) { return sg.style !== f.keystones[0].keystone; })
                       .map(function (sg) { return subgenreCard(sg, f.keystones[0]); })
                       .join('')
                   : '') +

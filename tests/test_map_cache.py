@@ -290,3 +290,15 @@ def test_a_track_the_taxonomy_cannot_place_still_carries_every_tier(client):
     placed = next(n for n in body["nodes"] if n["hash"] == h3)
     assert placed["klabel"] == "Techno"
     assert set(placed) == set(n1) == set(n2)
+
+
+def test_a_genre_is_not_a_subgenre_of_itself(client):
+    """Plain-House tracks are counted on the keystone (self_count), not listed
+    as a "House" subgenre of House -- every screen that consumed the list used
+    to have to strip that row before "House > House" reached the user."""
+    seed(client, h="sg1", payload={"salience": [{"style": "House", "score": 0.9}]})
+    seed(client, h="sg2", payload={"salience": [{"style": "Progressive House", "score": 0.9}]})
+    body = client.get("/genres?flat=1&top=0").get_json()
+    house = next(g for g in body if g["keystone"] == "House")
+    assert house["self_count"] == 1
+    assert [s["style"] for s in house["subgenres"]] == ["Progressive House"]
