@@ -810,6 +810,12 @@
      reinterpreting it, a settings blob from before the change is replaced with
      the current defaults -- the alternative is a saved preference that quietly
      becomes a different preference under the user. */
+  /* Regions has the same two dials: `sep` scales the sphere the family
+     anchors sit on, `spread` scales how far a family's stars reach from its
+     anchor (and its subgenre knots from each other). */
+  let REG = { sep: 1, spread: 1 };
+  try { REG = Object.assign(REG, JSON.parse(localStorage.getItem('vibeRegions') || '{}') || {}); } catch(_){}
+  const saveReg = () => { try{ localStorage.setItem('vibeRegions', JSON.stringify(REG)); }catch(_){} };
   const UNI_V = 2;
   let UNI = { by: 'arch', sep: 1.6, grav: 1, spread: 1, v: UNI_V };
   try {
@@ -1097,7 +1103,7 @@
        (system orbits, star orbits, the scatter, the gas) is a multiple of its
        radius, so this one number is the whole control. Past ~1.5 neighbouring
        galaxies can start to touch; that is what separation is for. */
-    const spread = clamp(UNI.spread, 0.3, 8);
+    const spread = clamp(UNI.spread, 0.3, 20);
     for (const g of names) G[g].radius *= spread;
     return G;
   }
@@ -1475,20 +1481,22 @@
         const k = i + 0.5;
         const phi = Math.acos(1 - 2*k/rest.length);
         const th  = Math.PI * (1 + Math.sqrt(5)) * k;
-        anchors[f] = { x:1.7*Math.cos(th)*Math.sin(phi),
-                       y:1.7*Math.sin(th)*Math.sin(phi),
-                       z:1.7*Math.cos(phi) };
+        const R = 1.7 * clamp(REG.sep, 0.3, 100);      // separation: the anchors' sphere
+        anchors[f] = { x:R*Math.cos(th)*Math.sin(phi),
+                       y:R*Math.sin(th)*Math.sin(phi),
+                       z:R*Math.cos(phi) };
       });
       // sub-clusters: within each family, group tracks by dominant style
       // (subgenre) and give each style its own sub-anchor on a small sphere
       // around the family anchor -- so Dubstep and Drum n Bass separate visibly
       // inside Bass Music instead of blending together.
       const styleAnchors = {}, styleCount = {};
+      const regSpread = clamp(REG.spread, 0.3, 20);      // spread: how far stars reach
       for (const f of FAMS){
         const cnt = {};
         for (const n of NODES) if (n.fam===f){ const s=n.style||f; cnt[s]=(cnt[s]||0)+1; }
         const styles = Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
-        const famSpread = 0.06 + Math.sqrt(COUNTS[f]) * 0.013;
+        const famSpread = (0.06 + Math.sqrt(COUNTS[f]) * 0.013) * regSpread;
         const subR = famSpread * (styles.length>1 ? 1.0 : 0);   // more room for subgenres
         styles.forEach((s,i) => {
           styleCount[`${f}||${s}`] = cnt[s];
@@ -1522,9 +1530,9 @@
         const s = n.style || n.fam;
         const a = styleAnchors[`${n.fam}||${s}`] || anchors[n.fam];
         const f = fa[n.fam];
-        const famSpread = 0.06 + Math.sqrt(COUNTS[n.fam]) * 0.013;
+        const famSpread = (0.06 + Math.sqrt(COUNTS[n.fam]) * 0.013) * regSpread;
         // tight sub-cluster so subgenres stay distinct
-        const spread = Math.min(famSpread*0.42, 0.03 + Math.sqrt(styleCount[`${n.fam}||${s}`]||1)*0.011);
+        const spread = Math.min(famSpread*0.42, (0.03 + Math.sqrt(styleCount[`${n.fam}||${s}`]||1)*0.011) * regSpread);
         const r = rng(n.hash);
         const loc = j => n.e && f ? clamp((n.e[f.ax[j]]-f.mean[f.ax[j]])/f.pc[j], -1.15, 1.15)
                                   : (r()-0.5);
@@ -4014,7 +4022,7 @@
      which meant opening a second panel left the first stacked behind it. */
   function closeMapPanels(except){
     for (const id of ['map-filt-panel', 'map-recent-panel', 'map-lbl-panel', 'uni-panel',
-                      'map-keys-body', 'tree-gen-panel']){
+                      'reg-panel', 'map-keys-body', 'tree-gen-panel']){
       const el = document.getElementById(id);
       if (el && el !== except) el.hidden = true;
     }
@@ -4221,54 +4229,63 @@
      than adjusting the camera. Debounced: dragging a slider fires continuously
      and a full layout per pixel of travel is not something the thread can keep
      up with on a large library. */
-  const uniPanel = document.getElementById('uni-panel');
-  const uniBtn = document.getElementById('uni-btn');
-  if (uniBtn && uniPanel){
-    const sepIn = document.getElementById('uni-sep');
-    const gravIn = document.getElementById('uni-grav');
-    const spreadIn = document.getElementById('uni-spread');
-    const sepV = document.getElementById('uni-sep-v');
-    const gravV = document.getElementById('uni-grav-v');
-    const spreadV = document.getElementById('uni-spread-v');
-    let relayoutT = null;
-    const showVals = () => {
-      sepV.textContent = UNI.sep.toFixed(1) + '\u00d7';
-      gravV.textContent = UNI.grav.toFixed(1) + '\u00d7';
-      spreadV.textContent = UNI.spread.toFixed(1) + '\u00d7';
+  /* A slider that covers two decades. A linear 0.3..100 range would give the
+     whole 0.3..3 stretch -- where the sky actually looks like a sky -- a few
+     pixels; the position is the log of the value instead, so every doubling
+     is the same distance along the track. Slider positions are 0..1000. */
+  function logSlider(input, valueEl, min, max, get, set){
+    const pos = v => 1000 * Math.log(clamp(v, min, max) / min) / Math.log(max / min);
+    const val = p => min * Math.pow(max / min, clamp(p, 0, 1000) / 1000);
+    const show = () => {
+      const v = get();
+      valueEl.textContent = (v >= 10 ? v.toFixed(0) : v.toFixed(1)) + '\u00d7';
     };
-    sepIn.value = String(Math.round(UNI.sep * 100));
-    gravIn.value = String(Math.round(UNI.grav * 100));
-    spreadIn.value = String(Math.round(UNI.spread * 100));
-    showVals();
+    input.min = 0; input.max = 1000; input.step = 1;
+    input.value = String(Math.round(pos(get())));
+    show();
+    input.addEventListener('input', () => { set(val(Number(input.value))); show(); });
+    return show;
+  }
+  /* A popover of dials for one view. Every dial re-runs the layout, which moves
+     every star, so it relays out rather than adjusting the camera. Debounced:
+     dragging a slider fires continuously and a full layout per pixel of travel
+     is not something the thread can keep up with on a large library. */
+  function wireDials(btnId, panelId, mode, save, dials){
+    const panel = document.getElementById(panelId), btn = document.getElementById(btnId);
+    if (!btn || !panel) return;
+    let relayoutT = null;
     const relayoutSoon = () => {
       clearTimeout(relayoutT);
       relayoutT = setTimeout(() => {
-        saveUni();
-        if (NODES.length && mapMode === 'universe'){ layout(); resetView(); }
+        save();
+        if (NODES.length && mapMode === mode){ layout(); resetView(); }
       }, 180);
     };
-    sepIn.addEventListener('input', () => {
-      UNI.sep = Math.max(0.3, Number(sepIn.value) / 100); showVals(); relayoutSoon();
+    for (const d of dials){
+      const input = document.getElementById(d.id), valueEl = document.getElementById(d.id + '-v');
+      if (!input || !valueEl) continue;
+      if (d.log) logSlider(input, valueEl, d.min, d.max, d.get, v => { d.set(v); relayoutSoon(); });
+      else {
+        const show = () => { valueEl.textContent = d.get().toFixed(1) + '\u00d7'; };
+        input.value = String(Math.round(d.get() * 100)); show();
+        input.addEventListener('input', () => { d.set(Math.max(d.min, Number(input.value) / 100)); show(); relayoutSoon(); });
+      }
+    }
+    btn.addEventListener('click', e => {
+      e.stopPropagation(); closeMapPanels(panel); panel.hidden = !panel.hidden;
     });
-    gravIn.addEventListener('input', () => {
-      UNI.grav = Math.max(0, Number(gravIn.value) / 100); showVals(); relayoutSoon();
-    });
-    spreadIn.addEventListener('input', () => {
-      UNI.spread = Math.max(0.3, Number(spreadIn.value) / 100); showVals(); relayoutSoon();
-    });
-    uniBtn.addEventListener('click', e => {
-      e.stopPropagation(); closeMapPanels(uniPanel); uniPanel.hidden = !uniPanel.hidden;
-    });
-    uniPanel.addEventListener('click', e => e.stopPropagation());
-    document.addEventListener('click', () => { uniPanel.hidden = true; });
+    panel.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => { panel.hidden = true; });
   }
-
-  // Universe: what a galaxy represents. Relayouts, because it moves every star.
-  const uniBy = document.getElementById('uni-by');
-  if (uniBy) uniBy.addEventListener('change', () => {
-    UNI.by = uniBy.value; saveUni();
-    if (NODES.length && mapMode === 'universe'){ layout(); resetView(); }
-  });
+  wireDials('uni-btn', 'uni-panel', 'universe', saveUni, [
+    { id:'uni-sep',    log:true,  min:0.3, max:100, get:() => UNI.sep,    set:v => { UNI.sep = v; } },
+    { id:'uni-grav',   log:false, min:0,             get:() => UNI.grav,   set:v => { UNI.grav = v; } },
+    { id:'uni-spread', log:true,  min:0.3, max:20,  get:() => UNI.spread, set:v => { UNI.spread = v; } },
+  ]);
+  wireDials('reg-btn', 'reg-panel', 'regions', saveReg, [
+    { id:'reg-sep',    log:true,  min:0.3, max:100, get:() => REG.sep,    set:v => { REG.sep = v; } },
+    { id:'reg-spread', log:true,  min:0.3, max:20,  get:() => REG.spread, set:v => { REG.spread = v; } },
+  ]);
 
   // Tree: which families are on the diagram -- a checklist, rebuilt from the
   // families the tree found, so it lists what you actually have.

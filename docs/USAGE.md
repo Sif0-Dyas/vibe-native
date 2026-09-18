@@ -302,8 +302,13 @@ Three controls behind **⊙⋮**:
   evenly and ignore each other; turn it up and the related ones clump and swirl.
 - **Spread** — how far apart the stars inside each galaxy sit. The galaxies stay
   where they are and grow or shrink into the space between them, so past about
-  1.5× neighbours can start to touch — raise Separation with it. Both go a long
-  way (Separation to 10×, Spread to 8×) for a truly empty sky.
+  1.5× neighbours can start to touch — raise Separation with it. Both dials go a
+  very long way (Separation to 100×, Spread to 20×), and the sliders are
+  logarithmic so the useful low end is not crushed into a few pixels.
+
+**◎ regions** has the same two dials behind **◎⋮** on its own row: **Separation**
+moves the genre clusters out from the middle (the biggest stays at the core),
+**Spread** is how far each cluster's stars reach from its centre.
 
 Galaxy names are sized by how big the galaxy is, and only the biggest sixteen
 are shown at once — naming seventy galaxies at the same time means naming none of

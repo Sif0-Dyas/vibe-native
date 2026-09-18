@@ -543,10 +543,35 @@ def _boot_and_load(window):
     window.load_html(error_html(detail))
 
 
+# The window icon. PyInstaller stamps it on the exe (see the .spec), but run
+# from pythonw.exe the window would otherwise carry Python's icon in the title
+# bar and the taskbar.
+ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe.ico")
+
+
+def _own_taskbar_identity():
+    """Tell Windows this process is Vibedentify, not python.
+
+    Without an explicit AppUserModelID the taskbar groups the window under the
+    host interpreter (pythonw.exe) and shows its icon, and pinning it pins
+    Python. With one, the taskbar entry is the app's own -- the window's icon,
+    grouped and pinned as itself.
+    """
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Vibedentify.App")
+    except Exception:
+        pass
+
+
 def main():
     _ensure_std_streams()  # frozen --windowed: guard None stdout/stderr before anything writes
     import webview
 
+    _own_taskbar_identity()
     configure()  # pick this launch's port + token before anything uses BASE_URL
     api = Api()
     window = webview.create_window(
@@ -571,7 +596,10 @@ def main():
     window.events.loaded += on_loaded
     # private_mode=False + a stable storage_path so IndexedDB (which holds the
     # File System Access handles for replayable dropped tracks) persists.
-    webview.start(_boot_and_load, window, private_mode=False, storage_path=_webview_storage_path())
+    # `icon` is documented as GTK/QT-only, but the WinForms backend honours it
+    # too (it sets the Form's Icon), which is what puts it on the taskbar.
+    webview.start(_boot_and_load, window, private_mode=False, storage_path=_webview_storage_path(),
+                  icon=ICON if os.path.isfile(ICON) else None)
     _shutdown_backend()  # window closed -> stop the backend we launched
 
 

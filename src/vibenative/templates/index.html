@@ -359,6 +359,26 @@
          the toolbar reads the same in every mode -->
     <div id="map-modebar" class="mt-group map-modebar" hidden>
     <span class="mb-cap" id="map-modebar-cap"></span>
+    <div class="mode-only" data-for="regions">
+      <div class="map-lblwrap">
+        <button id="reg-btn" class="map-toggle" type="button"
+                title="how far apart the genre clusters sit, and how far apart the stars inside them are">&#9678;&#8942;</button>
+        <div id="reg-panel" class="map-panel" hidden>
+          <div class="mp-head">Clusters</div>
+          <div class="mp-field"><span>Separation <i id="reg-sep-v">1.0&times;</i></span>
+            <input type="range" id="reg-sep" min="0" max="1000" value="0"></div>
+          <div class="mp-hint">How far from the middle the genre clusters sit. The biggest
+            genre stays at the core; the rest move out on their sphere.</div>
+          <div class="mp-sep"></div>
+          <div class="mp-head">Stars</div>
+          <div class="mp-field"><span>Spread <i id="reg-spread-v">1.0&times;</i></span>
+            <input type="range" id="reg-spread" min="0" max="1000" value="0"></div>
+          <div class="mp-hint">How far a cluster's stars reach from its centre, and its
+            subgenre knots from each other. Clusters stay put and grow into the space
+            between them, so raise Separation with it.</div>
+        </div>
+      </div>
+    </div>
     <div class="mode-only" data-for="universe">
     <select id="uni-by" class="map-filter"
             title="What each galaxy in the Universe represents">
@@ -372,7 +392,7 @@
       <div id="uni-panel" class="map-panel" hidden>
         <div class="mp-head">Galaxies</div>
         <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
-          <input type="range" id="uni-sep" min="30" max="1000" value="100"></div>
+          <input type="range" id="uni-sep" min="0" max="1000" value="0"></div>
         <div class="mp-hint">How much empty space the sky is made of. Bigger genres take
           proportionally more room, so this stretches the gaps, not the galaxies.</div>
         <div class="mp-sep"></div>
@@ -384,10 +404,11 @@
         <div class="mp-sep"></div>
         <div class="mp-head">Stars</div>
         <div class="mp-field"><span>Spread <i id="uni-spread-v">1.0&times;</i></span>
-          <input type="range" id="uni-spread" min="30" max="800" value="100"></div>
+          <input type="range" id="uni-spread" min="0" max="1000" value="0"></div>
         <div class="mp-hint">How far apart the stars inside each galaxy sit. The galaxies stay
           where they are and grow or shrink into the space between them &mdash; past about
-          1.5&times; neighbours can start to touch, so raise Separation with it.</div>
+          1.5&times; neighbours start to touch, so raise Separation with it. Both dials go a
+          long way: Separation to 100&times;, Spread to 20&times;.</div>
       </div>
     </div>
     </div>
