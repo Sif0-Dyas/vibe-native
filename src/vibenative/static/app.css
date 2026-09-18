@@ -1019,6 +1019,15 @@ body.view-options .lensbar{ display:none; }
 .opt-seg button:hover{ color:var(--text); background:rgba(255,255,255,.04); }
 .opt-seg button.on{ color:var(--accent-a); background:rgba(86,180,233,.14); }
 
+/* A preference slider with its readout, sitting in a row's value slot. */
+.opt-slide{ display:inline-flex; align-items:center; gap:10px; }
+.opt-slide input[type="range"]{ width:150px; accent-color:var(--accent-a); }
+.opt-slide i{ font-style:normal; font-family:'JetBrains Mono',monospace; font-size:11px;
+  color:var(--accent-a); min-width:3.5em; text-align:right; }
+/* A preference checkbox row: the label is the whole row, as in the map panels. */
+.opt-check{ display:flex; align-items:center; gap:9px; padding:9px 0 2px; cursor:pointer;
+  color:var(--text); font-size:12.5px; }
+.opt-check input{ accent-color:var(--accent-a); }
 .opt-badge{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px;
   font-family:'JetBrains Mono',monospace; }
 .opt-badge.ok{ background:rgba(0,158,115,.15); color:var(--other); }
@@ -2446,9 +2455,27 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    Map: universe / solar controls, and the artist rating block.
    ========================================================================== */
 
-/* Controls that belong to exactly one map mode. [hidden] alone loses to the
-   display rules on .map-filter, so state it explicitly. */
+/* The mode bar: the active view's own controls, on a row of their own under
+   the toolbar. Shown only while a view that has controls is on screen, so
+   the toolbar itself reads the same in every mode. */
+.map-modebar{
+  display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px;
+  padding:6px clamp(14px,3vw,28px); border-bottom:1px solid var(--line);
+  background:var(--panel);
+}
+.map-modebar[hidden]{ display:none; }
+.mb-cap{
+  font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--dim);
+  letter-spacing:.04em; text-transform:uppercase; white-space:nowrap;
+}
+.mode-only{ display:flex; align-items:center; gap:6px; }
 .mode-only[hidden]{ display:none !important; }
+.map-modebar .map-filter{ max-width:180px; }
+.mb-row{
+  margin:0; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--dim);
+  cursor:pointer;
+}
+.mb-row:hover{ color:var(--text); }
 
 /* The artist rating sits directly under the track rating and must not read as
    a second go at the same control -- it applies to everything by that artist.
@@ -2467,10 +2494,6 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    window, so the input stretched to ~1400px and threw its button against the
    far edge. A name field does not need more room than a name. */
 #vibes-view .opt-edit{ max-width:520px; }
-
-/* Mode-only selects must not push the toolbar onto a second line. They carry
-   short option text now; this caps them regardless of the longest option. */
-.mode-only.map-filter{ max-width:132px; }
 
 /* ---- collaboration credits ------------------------------------------------
    A credit like "AC Slater/Chris Lorenzo/Fly With Us" is three artists, and

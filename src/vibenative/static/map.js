@@ -29,8 +29,19 @@
 
   let NODES = [], EDGES = [], FAMS = [], COUNTS = {}, CENTROIDS = {}, STYLE_CENTROIDS = {};
   const byHash = new Map();
-  let mapMode = 'regions';                 // 'regions' | 'universe' | 'tree' | 'solar'
+  const MAP_MODES = ['regions', 'universe', 'solar', 'tree'];
+  // The view the Map opens on: the preference, unless the URL names one below.
+  let mapMode = MAP_MODES.includes(PREFS.defaultMap) ? PREFS.defaultMap : 'regions';
   let TREE = null;                         // {nodes, links, rows} for tree mode
+  /* The tree's own settings. `edmOnly` drops every family the taxonomy files
+     as "Other" -- the rock, pop and spoken-word a DJ library picks up -- so
+     the diagram is the electronic taxonomy and nothing else. */
+  let TREE_OPTS = { edmOnly:false };
+  try { TREE_OPTS = Object.assign(TREE_OPTS, JSON.parse(localStorage.getItem('vibeTree') || '{}') || {}); } catch(_){}
+  const saveTree = () => { try{ localStorage.setItem('vibeTree', JSON.stringify(TREE_OPTS)); }catch(_){} };
+  // A node the tree shows. n.family is the server's coarse tier, which is the
+  // one that is "Other" for everything non-electronic (see genreRows).
+  const treeShows = n => !(TREE_OPTS.edmOnly && n.family === 'Other');
   let treeHits = [], hoverGenre = null;    // tree node hit-boxes + hovered node
   let famLabelHits = [];                   // family-label hit-boxes -> click to fly
   let styleLabelHits = [];                 // subgenre-label hit-boxes -> click to fly
@@ -650,8 +661,15 @@
   let SOLAR = { playlist: '', by: 'similarity' };
   try { SOLAR = Object.assign(SOLAR, JSON.parse(localStorage.getItem('vibeSolar') || '{}') || {}); } catch(_){}
   const saveSolar = () => { try{ localStorage.setItem('vibeSolar', JSON.stringify(SOLAR)); }catch(_){} };
-  let SOLAR_SET = null;                 // Set of hashes in the chosen playlist
-  let SOLAR_RINGS = [];                 // [{label, r, n}] for the ring legend
+  let SOLAR_SET = null;                 // Set of hashes in the chosen playlist(s)
+  let SOLAR_RINGS = [];                 // [{label, r, n, cx, cz}] for the ring legend
+  /* The systems on screen: one per playlist. A single playlist is one system
+     at the origin; "all playlists" (SOLAR_ALL) lays every saved playlist out
+     as its own sun on a grid, so the whole collection can be seen at once.
+     A track in several playlists orbits the first sun that claims it -- it
+     can only be in one place. */
+  let SOLAR_SYSTEMS = [];               // [{name, hashes:Set, cx, cz}]
+  const SOLAR_ALL = '__all__';
   let SOLAR_NAME = '';                  // the sun's name
 
   function solarLayout(){
@@ -661,9 +679,34 @@
     // genre-keyed FAMS, or a full regions label set over an empty system.
     CENTROIDS = {}; STYLE_CENTROIDS = {};
     SOLAR_RINGS = [];
-    const members = SOLAR_SET ? NODES.filter(n => SOLAR_SET.has(n.hash)) : [];
-    if (!members.length) return;
+    for (const n of NODES) n.orb = null;   // a body from the last sun must not linger
+    if (!SOLAR_SYSTEMS.length) return;
 
+    /* Where each sun sits. One system is at the origin, as it always was.
+       Several are laid out on a grid in the orbital plane, spaced so the
+       outermost ring of one (radius ~2) clears its neighbour's. */
+    const K = SOLAR_SYSTEMS.length;
+    const cols = Math.ceil(Math.sqrt(K)), rows = Math.ceil(K / cols);
+    const SPACING = 4.8;
+    const taken = new Set();
+    const placed = [];
+    SOLAR_SYSTEMS.forEach((sys, i) => {
+      sys.cx = K > 1 ? ((i % cols) - (cols - 1) / 2) * SPACING : 0;
+      sys.cz = K > 1 ? (Math.floor(i / cols) - (rows - 1) / 2) * SPACING : 0;
+      const members = NODES.filter(n => sys.hashes.has(n.hash) && !taken.has(n.hash));
+      for (const n of members) taken.add(n.hash);
+      sys.n = members.length;
+      if (members.length){ solarSystemLayout(sys, members); placed.push(...members); }
+    });
+    if (!placed.length) return;
+    // Every sun orbits nothing, so the centre of mass is the grid's centre --
+    // the origin by construction. There is nothing to search for here.
+    BARY.x = BARY.y = BARY.z = 0;
+    setSceneRadius(placed.map(n => Math.hypot(n.x3, n.y3, n.z3)));
+  }
+
+  /* One system: decide each member's ring, then place every body on it. */
+  function solarSystemLayout(sys, members){
     // --- decide each member's ring ---------------------------------------
     let bands = [];                     // [{label, members:[]}] innermost first
     if (SOLAR.by === 'bpm'){
@@ -718,7 +761,7 @@
     const AU = 1.0 / Math.max(1, bands.length);
     bands.forEach((b, bi) => {
       const r = 0.42 + (bi + 1) * AU * 1.55;
-      SOLAR_RINGS.push({ label: b.label, r, n: b.members.length });
+      SOLAR_RINGS.push({ label: b.label, r, n: b.members.length, cx: sys.cx, cz: sys.cz });
       b.members.forEach((n, i) => {
         const rr = rng(n.hash);
         // Evenly spaced by index so a crowded ring reads as a belt rather than
@@ -733,14 +776,11 @@
           incl: (rr() - 0.5) * 0.30,
           // Inner orbits sweep faster (Keplerian in spirit, not to scale).
           speed: 0.30 / Math.pow(r, 1.5),
+          cx: sys.cx, cz: sys.cz,        // which sun it goes round
         };
         solarPlace(n, 0);
       });
     });
-    // The sun is at the origin and every body orbits it, so the centre of mass
-    // is the origin by construction -- there is nothing to search for here.
-    BARY.x = BARY.y = BARY.z = 0;
-    setSceneRadius(members.map(n => Math.hypot(n.x3, n.y3, n.z3)));
   }
 
   /* One body's position at time t. Split out because frame() re-runs it every
@@ -748,8 +788,8 @@
   function solarPlace(n, t){
     const o = n.orb; if (!o) return;
     const a = o.a0 + t * o.speed;
-    n.x3 = Math.cos(a) * o.r;
-    n.z3 = Math.sin(a) * o.r;
+    n.x3 = o.cx + Math.cos(a) * o.r;
+    n.z3 = o.cz + Math.sin(a) * o.r;
     n.y3 = Math.sin(a) * o.r * o.incl;
     n.ph = o.a0;
   }
@@ -1556,8 +1596,17 @@
     if (mapMode === 'solar'){
       if (!SOLAR_SET) return 'pick a saved playlist to see it as a solar system';
       const tracks = SOLAR_RINGS.reduce((a, r) => a + r.n, 0);
+      if (SOLAR_SYSTEMS.length > 1){
+        return `${n(tracks, 'track')} · ${n(SOLAR_SYSTEMS.length, 'system')} · all playlists`;
+      }
       return `${n(tracks, 'track')} · ${n(SOLAR_RINGS.length, 'orbit')} · `
         + `${SOLAR_NAME || 'solar'}`;
+    }
+    if (mapMode === 'tree' && TREE){
+      // What the diagram holds, which with "EDM only" on is less than the library.
+      const shown = NODES.reduce((a, x) => a + (x.treeFam ? 1 : 0), 0);
+      const fams = TREE.nodes.filter(k => k.kind === 'fam').length;
+      return `${n(shown, 'track')} · ${n(fams, 'genre')} · tree`;
     }
     return `${n(NODES.length, 'track')} · ${n(FAMS.length, groupNoun())} · ${mapMode}`;
   }
@@ -1698,12 +1747,13 @@
        toward the bigger family, which keeps the result stable between loads. */
     const styleFam = {};
     for (const n of NODES){
+      if (!treeShows(n)) continue;
       const s = n.style || n.fam;
       (styleFam[s] ||= {});
       styleFam[s][n.fam] = (styleFam[s][n.fam] || 0) + 1;
     }
     const famSize = {};
-    for (const n of NODES) famSize[n.fam] = (famSize[n.fam] || 0) + 1;
+    for (const n of NODES) if (treeShows(n)) famSize[n.fam] = (famSize[n.fam] || 0) + 1;
     const parentOf = {};
     for (const s in styleFam){
       let best = null, bestN = -1;
@@ -1716,6 +1766,8 @@
 
     const groups = {};
     for (const n of NODES){
+      n.treeFam = null;                  // not on the diagram unless placed below
+      if (!treeShows(n)) continue;
       const sub = n.style || n.fam;
       const fam = parentOf[sub] || n.fam;
       // Stash the resolved parent on the node: the tree card looks branches up
@@ -1855,9 +1907,10 @@
      applied, so the card can never show a track the branch does not contain. */
   function treeMembers(nd){
     if (!nd) return [];
-    if (nd.kind === 'fam') return NODES.filter(n => (n.treeFam || n.fam) === nd.fam);
-    return NODES.filter(n =>
-      (n.treeFam || n.fam) === nd.fam && (n.style || n.fam) === nd.label);
+    // n.treeFam is only set on the nodes the diagram placed, so a track the
+    // EDM-only switch dropped cannot turn up on a card either.
+    if (nd.kind === 'fam') return NODES.filter(n => n.treeFam === nd.fam);
+    return NODES.filter(n => n.treeFam === nd.fam && (n.style || n.fam) === nd.label);
   }
 
   let treeCardTrack = null;                // the track the card is showing
@@ -2576,39 +2629,45 @@
      so text lands on top of the rings, never under them. */
   function drawSolarChrome(t, project){
     if (!SOLAR_RINGS.length) return;
-    const c0 = project({x:0, y:0, z:0});
-    if (c0.persp > 0){
-      // Orbit rings, as projected ellipses. Sampled rather than drawn with
-      // ctx.ellipse because the ring is a circle in WORLD space and the camera
-      // can be at any orientation -- a screen-space ellipse would only be right
-      // when looking straight down the Y axis.
-      ctx.save();
-      ctx.lineWidth = 1;
-      for (const ring of SOLAR_RINGS){
-        ctx.strokeStyle = 'rgba(150,172,208,0.18)';
-        ctx.beginPath();
-        // `pen` tracks whether the previous sample was drawable. Without it, a
-        // ring passing behind the camera had its two visible arcs joined by a
-        // straight lineTo across the whole viewport.
-        let pen = false;
-        for (let i=0; i<=64; i++){
-          const a = (i/64)*6.2832;
-          const q = project({ x:Math.cos(a)*ring.r, y:0, z:Math.sin(a)*ring.r });
-          if (q.persp <= 0){ pen = false; continue; }
-          if (!pen){ ctx.moveTo(q.sx, q.sy); pen = true; } else ctx.lineTo(q.sx, q.sy);
-        }
-        ctx.stroke();
+    const many = SOLAR_SYSTEMS.length > 1;
+    // Orbit rings, as projected ellipses. Sampled rather than drawn with
+    // ctx.ellipse because the ring is a circle in WORLD space and the camera
+    // can be at any orientation -- a screen-space ellipse would only be right
+    // when looking straight down the Y axis.
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (const ring of SOLAR_RINGS){
+      ctx.strokeStyle = 'rgba(150,172,208,0.18)';
+      ctx.beginPath();
+      // `pen` tracks whether the previous sample was drawable. Without it, a
+      // ring passing behind the camera had its two visible arcs joined by a
+      // straight lineTo across the whole viewport.
+      let pen = false;
+      for (let i=0; i<=64; i++){
+        const a = (i/64)*6.2832;
+        const q = project({ x:ring.cx + Math.cos(a)*ring.r, y:0, z:ring.cz + Math.sin(a)*ring.r });
+        if (q.persp <= 0){ pen = false; continue; }
+        if (!pen){ ctx.moveTo(q.sx, q.sy); pen = true; } else ctx.lineTo(q.sx, q.sy);
       }
-      ctx.restore();
+      ctx.stroke();
+    }
+    ctx.restore();
 
-      // The sun: the playlist itself, rendered as the one body that emits
-      // rather than reflects.
-      const pulse = 1 + 0.05*Math.sin(t*1.4);
-      const sr = clamp(26 * c0.persp * Math.sqrt(view.zoom) * pulse, 10, 130);
+    // The suns: each playlist itself, rendered as the one body that emits
+    // rather than reflects. Smaller when there are several, so a sun does not
+    // swallow its own inner ring once the whole collection is in frame.
+    const pulse = 1 + 0.05*Math.sin(t*1.4);
+    const suns = [];
+    for (const sys of SOLAR_SYSTEMS){
+      if (!sys.n) continue;
+      const c0 = project({x:sys.cx, y:0, z:sys.cz});
+      if (c0.persp <= 0) continue;
+      const sr = clamp((many ? 16 : 26) * c0.persp * Math.sqrt(view.zoom) * pulse, 6, 130);
+      suns.push({ sys, c0, sr });
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.55;
-      ctx.drawImage(starSprite(44, 92, 8, 'corona'), c0.sx-sr*2.4, c0.sy-sr*2.4, sr*4.8, sr*4.8);
+      ctx.drawImage(starSprite(44, 92, 8), c0.sx-sr*2.4, c0.sy-sr*2.4, sr*4.8, sr*4.8);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
       drawSphere(c0.sx, c0.sy, sr, 46, 95, 74);
@@ -2618,15 +2677,15 @@
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round'; ctx.lineWidth = 3.5;
-    if (c0.persp > 0 && SOLAR_NAME){
+    for (const { sys, c0 } of suns){
       // Above the sun, not on it: printed at the centre it sat over both the
       // sun's own glow and the innermost ring's label.
-      const sy0 = c0.sy - clamp(34 * c0.persp * Math.sqrt(view.zoom), 16, 90);
-      ctx.font = `800 ${Math.round(17*LBL.size)}px Syne, sans-serif`;
+      const sy0 = c0.sy - clamp((many ? 24 : 34) * c0.persp * Math.sqrt(view.zoom), 12, 90);
+      ctx.font = `800 ${Math.round((many ? 13 : 17)*LBL.size)}px Syne, sans-serif`;
       ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-      ctx.strokeText(SOLAR_NAME.toUpperCase(), c0.sx, sy0);
+      ctx.strokeText(sys.name.toUpperCase(), c0.sx, sy0);
       ctx.fillStyle = '#ffe9b0';
-      ctx.fillText(SOLAR_NAME.toUpperCase(), c0.sx, sy0);
+      ctx.fillText(sys.name.toUpperCase(), c0.sx, sy0);
     }
     // Ring labels sit at the near edge of each orbit, where there is reliably
     // empty space between one ring and the next.
@@ -2636,9 +2695,11 @@
     // default tilt), which is the one place on a ring guaranteed not to be
     // behind the sun. Alternating the vertical offset keeps two adjacent rings
     // from printing their text on the same line when the system is near
-    // edge-on.
+    // edge-on. With the whole collection in frame the rings are too small to
+    // label; the count line and the hover carry that.
+    if (many) { ctx.restore(); return; }
     SOLAR_RINGS.forEach((ring, i) => {
-      const q = project({ x:0, y:0, z:ring.r });
+      const q = project({ x:ring.cx, y:0, z:ring.cz + ring.r });
       if (q.persp <= 0) return;
       const text = `${ring.label} · ${ring.n}`;
       const dy = 12 + (i % 2) * 12;
@@ -2800,7 +2861,7 @@
      actually SOUNDS is AUDIO's call (audio.js): the clip and the bottom Now
      Playing bar are the two audio sources, and the listener picks one. So this
      code cues the clip and reports it; it never pauses the other side itself. */
-  const PREVIEW_SECONDS = 22;
+  const previewSeconds = () => Math.max(4, Number(PREFS.sampleSeconds) || 22);
   const PREV = { audio: new Audio(), token: 0, stopAt: 0, url: null, start: 0, node: null };
   PREV.audio.preload = 'auto';
   PREV.audio.addEventListener('timeupdate', () => {
@@ -2826,7 +2887,9 @@
   // else ~40% in. Uses the DAW rms envelope from /waveform.
   async function dropStart(hash, duration){
     const dur = duration || 0;
-    const cap = Math.max(0, dur - PREVIEW_SECONDS);   // leave room to play the clip
+    const cap = Math.max(0, dur - previewSeconds());  // leave room to play the clip
+    if (PREFS.sampleFrom === 'start') return 0;
+    if (PREFS.sampleFrom === 'middle') return dur ? Math.min(dur * 0.4, cap) : 0;
     try {
       const mm = await fetch('/waveform/' + hash).then(r => r.ok ? r.json() : null);
       const rms = mm && mm.rms;
@@ -2851,7 +2914,7 @@
     const go = () => {
       if (my !== null && my !== PREV.token) return;
       try { PREV.audio.currentTime = PREV.start; } catch(_){ /* seek after load */ }
-      PREV.stopAt = PREV.start + PREVIEW_SECONDS;
+      PREV.stopAt = PREV.start + previewSeconds();
       if (typeof AUDIO !== 'undefined') AUDIO.claim('sample');   // pauses the track
       PREV.audio.play().catch(() => {});
     };
@@ -2898,7 +2961,7 @@
         // playing under another view is otherwise a track with no name you can
         // act on.
         hash: n.hash,
-        start, seconds: PREVIEW_SECONDS,
+        start, seconds: previewSeconds(),
       });
       if (!AUDIO.wants('sample')) return;           // you're listening to the track
     }
@@ -2937,7 +3000,9 @@
     }
     pushRecent(n);
     openPopup(n);
-    previewTrack(n, cut);            // auto-sample the drop, unless it's already playing
+    // Auto-sample the drop, unless it's already playing -- or unless you have
+    // asked not to, in which case the popup's play button is the sample.
+    if (PREFS.autoSample) previewTrack(n, cut);
   }
 
   /* The genre chips above a track's title: subgenre, then keystone, then
@@ -3985,15 +4050,28 @@
     }
     if (k.startsWith('arrow') || k === ' ') e.preventDefault();
   });
-  /* Only the active mode's controls are shown. The toolbar already carries a
-     lot; adding a playlist picker and two cluster selects that are meaningless
-     in four of five modes would make it unreadable. */
+  /* Only the active mode's controls are shown, on the mode bar under the
+     toolbar. The toolbar already carries a lot; a playlist picker and two
+     cluster selects that are meaningless in the other modes would make it
+     unreadable, and a bar that appears only when there is something on it
+     tells you at a glance that this view has settings of its own. */
+  const MODE_CAP = { regions:'\u25ce regions', universe:'\u2726 universe',
+                     solar:'\u2609 solar', tree:'\u22a2 tree' };
   function syncModeControls(){
+    let any = false;
     document.querySelectorAll('.mode-only').forEach(el => {
       el.hidden = el.dataset.for !== mapMode;
+      if (!el.hidden) any = true;
     });
+    const bar = document.getElementById('map-modebar');
+    const cap = document.getElementById('map-modebar-cap');
+    if (bar) bar.hidden = !any;
+    if (cap) cap.textContent = MODE_CAP[mapMode] || mapMode;
   }
   syncModeControls();
+  // The mode buttons reflect the opening view (a preference, so not
+  // necessarily the one the template marks active).
+  modeEl && modeEl.querySelectorAll('.mm').forEach(b => b.classList.toggle('active', b.dataset.mode === mapMode));
 
   modeEl && modeEl.addEventListener('click', async e => {
     const b = e.target.closest('.mm'); if (!b || b.dataset.mode===mapMode) return;
@@ -4059,6 +4137,16 @@
     UNI.by = uniBy.value; saveUni();
     if (NODES.length && mapMode === 'universe'){ layout(); resetView(); }
   });
+
+  // Tree: keep only the electronic families.
+  const treeEdm = document.getElementById('tree-edm');
+  if (treeEdm){
+    treeEdm.checked = !!TREE_OPTS.edmOnly;
+    treeEdm.addEventListener('change', () => {
+      TREE_OPTS.edmOnly = treeEdm.checked; saveTree();
+      if (NODES.length && mapMode === 'tree'){ layout(); resetView(); }
+    });
+  }
 
   // Solar: which playlist is the sun, and what decides an orbit.
   const solarPl = document.getElementById('solar-pl');
@@ -4134,9 +4222,12 @@
     const sel = document.getElementById('solar-pl');
     if (sel && sel.dataset.sig !== sig){
       sel.dataset.sig = sig;
-      sel.innerHTML = opts || '<option value="">no saved playlists yet</option>';
-      if (SOLAR.playlist && PLAYLISTS.some(pl => String(pl.id) === String(SOLAR.playlist)))
-        sel.value = SOLAR.playlist;
+      const all = PLAYLISTS.length > 1
+        ? `<option value="${SOLAR_ALL}">\u2609 all playlists</option>` : '';
+      sel.innerHTML = (all + opts) || '<option value="">no saved playlists yet</option>';
+      const known = SOLAR.playlist === SOLAR_ALL ? PLAYLISTS.length > 1
+        : PLAYLISTS.some(pl => String(pl.id) === String(SOLAR.playlist));
+      if (SOLAR.playlist && known) sel.value = SOLAR.playlist;
       else if (PLAYLISTS.length){ SOLAR.playlist = String(PLAYLISTS[0].id); sel.value = SOLAR.playlist; }
     }
 
@@ -4200,15 +4291,28 @@
   async function fetchSolarPayload(){
     solarPayload = null;
     if (!SOLAR.playlist) return;
+    if (SOLAR.playlist === SOLAR_ALL){
+      // Every saved playlist, fetched together; one that has since been
+      // deleted simply is not a sun.
+      const got = await Promise.all(PLAYLISTS.map(pl => playlistHashSet(pl.id)));
+      const systems = PLAYLISTS.map((pl, i) => got[i] && { name: pl.name, hashes: got[i].hashes })
+                               .filter(Boolean);
+      if (systems.length) solarPayload = { name: 'all playlists', systems };
+      return;
+    }
     const pl = PLAYLISTS.find(x => String(x.id) === String(SOLAR.playlist));
     const got = await playlistHashSet(SOLAR.playlist);
     if (got) solarPayload = { name: pl ? pl.name : got.name, hashes: got.hashes };
   }
 
   function solarSetFrom(payload){
-    if (!payload){ SOLAR_SET = null; SOLAR_NAME = ''; return; }
+    if (!payload){ SOLAR_SET = null; SOLAR_NAME = ''; SOLAR_SYSTEMS = []; return; }
     SOLAR_NAME = payload.name || '';
-    SOLAR_SET = payload.hashes;
+    SOLAR_SYSTEMS = payload.systems
+      ? payload.systems.map(s => ({ name: s.name, hashes: s.hashes, cx: 0, cz: 0, n: 0 }))
+      : [{ name: SOLAR_NAME, hashes: payload.hashes, cx: 0, cz: 0, n: 0 }];
+    SOLAR_SET = new Set();
+    for (const s of SOLAR_SYSTEMS) for (const h of s.hashes) SOLAR_SET.add(h);
   }
 
   /* Fetch and apply in one step, for the callers that are not mid-swap. */

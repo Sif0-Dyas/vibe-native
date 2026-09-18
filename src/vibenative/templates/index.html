@@ -197,44 +197,6 @@
       <button class="mm" data-mode="solar" type="button" title="One playlist as a solar system">&#9737; solar</button>
       <button class="mm" data-mode="tree" type="button" title="A flat family tree of your genres">&#8866; tree</button>
     </div>
-    <select id="uni-by" class="map-filter mode-only" data-for="universe"
-            title="What each galaxy in the Universe represents">
-      <option value="arch">galaxy = genre</option>
-      <option value="fam">galaxy = family</option>
-      <option value="vibe">galaxy = vibe</option>
-    </select>
-    <div class="map-lblwrap mode-only" data-for="universe">
-      <button id="uni-btn" class="map-toggle" type="button"
-              title="how far apart the galaxies sit, how hard they pull on each other, and how far apart the stars inside them are">&#9737;&#8942;</button>
-      <div id="uni-panel" class="map-panel" hidden>
-        <div class="mp-head">Galaxies</div>
-        <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
-          <input type="range" id="uni-sep" min="30" max="400" value="100"></div>
-        <div class="mp-hint">How much empty space the sky is made of. Bigger genres take
-          proportionally more room, so this stretches the gaps, not the galaxies.</div>
-        <div class="mp-sep"></div>
-        <div class="mp-field"><span>Gravity <i id="uni-grav-v">1.0&times;</i></span>
-          <input type="range" id="uni-grav" min="0" max="250" value="100"></div>
-        <div class="mp-hint">How hard genres that share tracks pull on each other. At 0 the
-          galaxies just spread out evenly; turn it up and the ones whose tracks are actually
-          each other&rsquo;s nearest neighbours drift together and start to swirl.</div>
-        <div class="mp-sep"></div>
-        <div class="mp-head">Stars</div>
-        <div class="mp-field"><span>Spread <i id="uni-spread-v">1.0&times;</i></span>
-          <input type="range" id="uni-spread" min="30" max="300" value="100"></div>
-        <div class="mp-hint">How far apart the stars inside each galaxy sit. The galaxies stay
-          where they are and grow or shrink into the space between them &mdash; past about
-          1.5&times; neighbours can start to touch, so raise Separation with it.</div>
-      </div>
-    </div>
-    <select id="solar-pl" class="map-filter mode-only" data-for="solar"
-            title="Which playlist to show as a solar system"></select>
-    <select id="solar-by" class="map-filter mode-only" data-for="solar"
-            title="What decides how far out a track orbits">
-      <option value="similarity">rings: fit</option>
-      <option value="bpm">rings: tempo</option>
-      <option value="genre">rings: genre</option>
-    </select>
     </div>
     <div class="mt-group" role="group" aria-label="What is shown">
     <select id="map-filter" class="map-filter" title="show only one genre (or just the flagged reads)">
@@ -365,6 +327,57 @@
       <button id="map-rebuild" type="button" title="rebuild the map from the library (after analysing new music elsewhere)">&#8635; rebuild</button>
       <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
     </div>
+    </div>
+  </div>
+  <!-- the active view's own controls: shown under the toolbar only while that
+       view is the one on screen, so the bar above stays the same in every mode -->
+  <div id="map-modebar" class="map-modebar" hidden>
+    <span class="mb-cap" id="map-modebar-cap"></span>
+    <div class="mode-only" data-for="universe">
+    <select id="uni-by" class="map-filter"
+            title="What each galaxy in the Universe represents">
+      <option value="arch">galaxy = genre</option>
+      <option value="fam">galaxy = family</option>
+      <option value="vibe">galaxy = vibe</option>
+    </select>
+    <div class="map-lblwrap">
+      <button id="uni-btn" class="map-toggle" type="button"
+              title="how far apart the galaxies sit, how hard they pull on each other, and how far apart the stars inside them are">&#9737;&#8942;</button>
+      <div id="uni-panel" class="map-panel" hidden>
+        <div class="mp-head">Galaxies</div>
+        <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
+          <input type="range" id="uni-sep" min="30" max="400" value="100"></div>
+        <div class="mp-hint">How much empty space the sky is made of. Bigger genres take
+          proportionally more room, so this stretches the gaps, not the galaxies.</div>
+        <div class="mp-sep"></div>
+        <div class="mp-field"><span>Gravity <i id="uni-grav-v">1.0&times;</i></span>
+          <input type="range" id="uni-grav" min="0" max="250" value="100"></div>
+        <div class="mp-hint">How hard genres that share tracks pull on each other. At 0 the
+          galaxies just spread out evenly; turn it up and the ones whose tracks are actually
+          each other&rsquo;s nearest neighbours drift together and start to swirl.</div>
+        <div class="mp-sep"></div>
+        <div class="mp-head">Stars</div>
+        <div class="mp-field"><span>Spread <i id="uni-spread-v">1.0&times;</i></span>
+          <input type="range" id="uni-spread" min="30" max="300" value="100"></div>
+        <div class="mp-hint">How far apart the stars inside each galaxy sit. The galaxies stay
+          where they are and grow or shrink into the space between them &mdash; past about
+          1.5&times; neighbours can start to touch, so raise Separation with it.</div>
+      </div>
+    </div>
+    </div>
+    <div class="mode-only" data-for="solar">
+    <select id="solar-pl" class="map-filter"
+            title="Which playlist to show as a solar system"></select>
+    <select id="solar-by" class="map-filter"
+            title="What decides how far out a track orbits">
+      <option value="similarity">rings: fit</option>
+      <option value="bpm">rings: tempo</option>
+      <option value="genre">rings: genre</option>
+    </select>
+    </div>
+    <div class="mode-only" data-for="tree">
+      <label class="mp-row mb-row" title="Keep only the genres the taxonomy recognises as electronic">
+        <input type="checkbox" id="tree-edm"><span>EDM only</span></label>
     </div>
   </div>
   <div id="map-stage">

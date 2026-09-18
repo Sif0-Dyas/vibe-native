@@ -197,12 +197,47 @@ function mainGenreSet(segments, expand){
 function bandColor(g, mainSet){ return (mainSet && !mainSet.has(g)) ? OTHER_COLOR : colorFor(g); }
 function bandLabel(g, mainSet){ return (mainSet && !mainSet.has(g)) ? 'Other' : g; }
 
+/* ===================== PREFERENCES ================================
+   The app-wide settings the Options tab edits, in one persisted object. Each
+   screen keeps its own view state (map labels, the Universe sliders, the
+   library columns) under its own key; these are the choices that cut across
+   screens or that a screen has no natural place to ask about. Read them
+   through PREFS; change them through setPref, which persists and applies. */
+const PREFS_DEFAULTS = {
+  sampleSeconds: 22,        // how long a preview clip runs
+  sampleFrom: 'drop',       // 'drop' | 'middle' | 'start' -- where it starts
+  autoSample: true,         // cue a clip when a star is selected on the map
+  defaultMap: 'regions',    // the map view the Map tab opens on
+  uiScale: 100,             // whole-app zoom, percent
+  analyzerIdentity: 'v2',   // the Analyzer's default lenses (see GLOBAL)
+  analyzerSeg: 'hysteresis',
+};
+const PREFS = Object.assign({}, PREFS_DEFAULTS);
+try { Object.assign(PREFS, JSON.parse(localStorage.getItem('vibePrefs') || '{}') || {}); } catch (_) { /* private mode */ }
+const PREF_LISTENERS = [];        // (key, value) => void, for screens that react live
+function setPref(key, value){
+  if (!(key in PREFS_DEFAULTS)) return;
+  PREFS[key] = value;
+  try { localStorage.setItem('vibePrefs', JSON.stringify(PREFS)); } catch (_) { /* private mode */ }
+  if (key === 'uiScale') applyUiScale();
+  for (const fn of PREF_LISTENERS) fn(key, value);
+}
+/* UI scale is a CSS zoom on the body: the app is laid out in pixels, so a
+   root font-size would only scale the text. Chromium honours zoom, and both
+   the browser and the desktop shell are Chromium. */
+function applyUiScale(){
+  const z = Math.max(60, Math.min(160, Number(PREFS.uiScale) || 100));
+  document.body.style.zoom = z === 100 ? '' : (z / 100);
+}
+applyUiScale();
+
 /* ===================== ANALYZER LENSES ===========================
    Two independent switches, both recomputed from the per-frame top-k data:
      identity  : 'v2' (salience) | 'v1' (flat % of track)   -> side breakdown
      seg       : 'raw' | 'hysteresis' | 'sibling'           -> waveform stream
-   GLOBAL holds the defaults; each row may override either. */
-const GLOBAL = {identity: 'v2', seg: 'hysteresis'};
+   GLOBAL holds the defaults (from PREFS, so they survive a restart and the
+   Options tab can set them); each row may override either. */
+const GLOBAL = {identity: PREFS.analyzerIdentity, seg: PREFS.analyzerSeg};
 
 // near-synonym clusters that flicker; member -> canonical name. Editable.
 const SIBLING_GROUPS = {
@@ -2007,12 +2042,18 @@ const gId = document.getElementById('g-identity');
 const gSeg = document.getElementById('g-seg');
 gId.value = GLOBAL.identity; gSeg.value = GLOBAL.seg;
 gId.addEventListener('change', () => {
-  GLOBAL.identity = gId.value;
+  GLOBAL.identity = gId.value; setPref('analyzerIdentity', gId.value);
   for (const r of results){ if (r.ok && r.row && r.row._applyModes && !r.row._idOverride) r.row._applyModes(); }
 });
 gSeg.addEventListener('change', () => {
-  GLOBAL.seg = gSeg.value;
+  GLOBAL.seg = gSeg.value; setPref('analyzerSeg', gSeg.value);
   for (const r of results){ if (r.ok && r.row && r.row._applyModes && !r.row._segOverride) r.row._applyModes(); }
+});
+// The same two lenses set from the Options tab: the selects are the source of
+// truth for the rows, so route the change through them.
+PREF_LISTENERS.push((k, v) => {
+  if (k === 'analyzerIdentity' && gId.value !== v){ gId.value = v; gId.dispatchEvent(new Event('change')); }
+  if (k === 'analyzerSeg' && gSeg.value !== v){ gSeg.value = v; gSeg.dispatchEvent(new Event('change')); }
 });
 
 

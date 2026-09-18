@@ -14,6 +14,23 @@
   function badge(ok, text) {
     return '<span class="opt-badge ' + (ok ? 'ok' : 'warn') + '">' + esc(text) + '</span>';
   }
+  /* A segmented choice bound to one preference: [[value, label], ...]. */
+  function seg(pref, choices) {
+    return '<span class="opt-seg" data-pref="' + esc(pref) + '">' + choices.map(function (c) {
+      return '<button data-v="' + esc(c[0]) + '"' + (PREFS[pref] === c[0] ? ' class="on"' : '') +
+        '>' + esc(c[1]) + '</button>';
+    }).join('') + '</span>';
+  }
+  /* A slider bound to one numeric preference, with a live readout. */
+  function slider(pref, min, max, step, fmt) {
+    return '<span class="opt-slide"><input type="range" data-pref="' + esc(pref) + '" min="' + min +
+      '" max="' + max + '" step="' + step + '" value="' + esc(PREFS[pref]) + '" data-fmt="' + esc(fmt) +
+      '"><i>' + esc(String(PREFS[pref]) + fmt) + '</i></span>';
+  }
+  function check(pref, label) {
+    return '<label class="opt-check"><input type="checkbox" data-pref="' + esc(pref) + '"' +
+      (PREFS[pref] ? ' checked' : '') + '><span>' + esc(label) + '</span></label>';
+  }
 
   function render(s) {
     var gpuText = s.provider || (s.gpu_available ? 'DirectML available' : 'CPU only');
@@ -80,8 +97,56 @@
         'row, noise across a library. Applies to the Analyzer, the map and the exported ' +
         'list. The Library tab keeps its own Key and Camelot columns, which you pick ' +
         'under <b>columns</b>.</div>' +
+        '<div class="opt-row"><span class="k">Size</span>' +
+          '<span class="v">' + slider('uiScale', 70, 150, 5, '%') + '</span></div>' +
+        '<div class="opt-note">Scales the whole app. Useful on a small laptop screen or a ' +
+        'big monitor across the room.</div>' +
         '<div class="opt-note">Light mode is planned for a future update; the app is ' +
         'dark-themed for now.</div>' +
+      '</div>' +
+      '<div class="opt-card"><h3>Playback</h3>' +
+        '<div class="opt-row"><span class="k">Sample length</span>' +
+          '<span class="v">' + slider('sampleSeconds', 6, 60, 2, 's') + '</span></div>' +
+        '<div class="opt-row"><span class="k">Sample starts at</span>' +
+          '<span class="v">' + seg('sampleFrom', [['drop', 'the drop'], ['middle', 'the middle'],
+                                                 ['start', 'the beginning']]) + '</span></div>' +
+        '<div class="opt-note"><b>The drop</b> is the first sustained loud section &mdash; ' +
+        'usually the part you would judge a track by. <b>The middle</b> is 40% in; ' +
+        '<b>the beginning</b> is the intro.</div>' +
+        check('autoSample', 'Play a sample when you select a star on the map') +
+        '<div class="opt-note">Off, the map stays silent until you press play in the ' +
+        'track&rsquo;s panel.</div>' +
+      '</div>' +
+      '<div class="opt-card"><h3>Map</h3>' +
+        '<div class="opt-row"><span class="k">Opens on</span>' +
+          '<span class="v">' + seg('defaultMap', [['regions', 'regions'], ['universe', 'universe'],
+                                                 ['solar', 'solar'], ['tree', 'tree']]) + '</span></div>' +
+        '<div class="opt-note">The view the Map tab shows first. A link to a specific ' +
+        'view or track still wins.</div>' +
+        '<div class="opt-actions"><button id="opt-map-reset">reset map settings</button></div>' +
+        '<div class="opt-note" id="opt-map-reset-msg">Puts every map control back to its ' +
+        'default &mdash; labels, glow, the Universe and Solar sliders, recoloured genres. ' +
+        'Your library, ratings and playlists are untouched.</div>' +
+      '</div>' +
+      '<div class="opt-card"><h3>Analyzer</h3>' +
+        '<div class="opt-row"><span class="k">Overall genre</span>' +
+          '<span class="v">' + seg('analyzerIdentity', [['v2', 'weight by energy'], ['v1', 'plain average']]) +
+          '</span></div>' +
+        '<div class="opt-note">Whether the loudest, most characteristic parts of a track ' +
+        'count for more than the quiet ones when deciding its genre.</div>' +
+        '<div class="opt-row"><span class="k">Genre over time</span>' +
+          '<span class="v">' + seg('analyzerSeg', [['raw', 'every change'], ['hysteresis', 'steady'],
+              ['sibling', 'merge similar'], ['family', 'families'], ['hyst+sib', 'steady + merged']]) +
+          '</span></div>' +
+        '<div class="opt-note">How the coloured genre bands along the waveform are smoothed. ' +
+        'These are the defaults for every row; the Analyzer&rsquo;s <b>advanced</b> panel ' +
+        'sets the same two, and can override them per track.</div>' +
+      '</div>' +
+      '<div class="opt-card"><h3>Preferences</h3>' +
+        '<div class="opt-actions"><button id="opt-prefs-reset">reset everything to defaults</button></div>' +
+        '<div class="opt-note">Every setting on this tab and every remembered view state ' +
+        '&mdash; map controls, library columns, the sample volume. Nothing in your ' +
+        'library is touched. The app reloads.</div>' +
       '</div>';
 
     body.querySelectorAll('[data-reveal]').forEach(function (b) {
@@ -93,6 +158,46 @@
     wireDbEdit();
     wireFilePaths();
     wireKeyView();
+    wirePrefs();
+  }
+
+  /* Every control that carries data-pref edits that preference in place. */
+  function wirePrefs() {
+    body.querySelectorAll('.opt-seg[data-pref]').forEach(function (s) {
+      s.querySelectorAll('button').forEach(function (b) {
+        b.onclick = function () {
+          setPref(s.dataset.pref, b.dataset.v);
+          s.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        };
+      });
+    });
+    body.querySelectorAll('input[type="range"][data-pref]').forEach(function (r) {
+      var out = r.nextElementSibling;
+      r.oninput = function () {
+        setPref(r.dataset.pref, Number(r.value));
+        if (out) out.textContent = r.value + (r.dataset.fmt || '');
+      };
+    });
+    body.querySelectorAll('input[type="checkbox"][data-pref]').forEach(function (c) {
+      c.onchange = function () { setPref(c.dataset.pref, c.checked); };
+    });
+    var mapReset = document.getElementById('opt-map-reset');
+    if (mapReset) mapReset.onclick = function () {
+      ['vibeMapLabels', 'vibeUniverse', 'vibeSolar', 'vibeTree', 'vibeFamHue', 'vibeSubHue',
+       'vibeLegend', 'vibeNavKeys'].forEach(function (k) {
+        try { localStorage.removeItem(k); } catch (_) { /* private mode */ }
+      });
+      note('opt-map-reset-msg', 'Map settings reset. Reloading…');
+      setTimeout(function () { location.reload(); }, 400);
+    };
+    var all = document.getElementById('opt-prefs-reset');
+    if (all) all.onclick = function () {
+      var keys = [];
+      try { for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (_) { /* private mode */ }
+      keys.filter(function (k) { return k && k.indexOf('vibe') === 0; })
+          .forEach(function (k) { try { localStorage.removeItem(k); } catch (_) { /* private mode */ } });
+      location.reload();
+    };
   }
 
   /* Key notation. app.js owns the setting and the re-render, so this is only the
