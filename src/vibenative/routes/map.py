@@ -68,7 +68,7 @@ def _tags_by_hash(c):
     return out
 
 
-def _keystone_fields(p, mode="dark"):
+def _keystone_fields(p, style, mode="dark"):
     """The taxonomy read for one track: family, keystone(s), label and paint.
 
     Computed per request rather than stored, so editing the taxonomy or the
@@ -82,13 +82,32 @@ def _keystone_fields(p, mode="dark"):
     track's dominant style, so the chips always read as one chain -- Tech House
     under House under House -- instead of a subgenre that hangs off a keystone
     the card isn't showing.
+
+    Every field is always present. A track the taxonomy cannot place -- a
+    style with no keystone, or no read at all -- is filed under its dominant
+    style as a standalone genre of its own (or "Other" with no read), the way
+    a standalone archgenre repeats its name at every tier. The client reads
+    fields, not fallback chains: a node with holes in it meant every consumer
+    carried its own guess at what should have been there, and they disagreed.
     """
     from .. import keystone as K
     from .. import palette as P
 
     cls = K.classify(p)
     if not cls:
-        return {}
+        k = style or "Other"
+        return {
+            "family": "Other",
+            "keystones": [k],
+            "klabel": k,
+            "kkey": k,
+            "karch": k,
+            "ksub": style,
+            "kfusion": False,
+            "kshares": {k: 1.0} if style else {},
+            "rings": [],
+            "kcolor": None,
+        }
     paint = P.track_paint(cls, mode) or {}
     return {
         "family": cls["family"],
@@ -108,7 +127,7 @@ def _map_node(h, title, filename, payload, filepath="", tags=(), mode="dark"):
     p = payload if isinstance(payload, dict) else json.loads(payload)
     style, score = _dominant_style(p)
     return {
-        **_keystone_fields(p, mode),
+        **_keystone_fields(p, style, mode),
         "cands": _override_candidates(p, style),
         "tags": list(tags),
         "hash": h,
@@ -160,7 +179,7 @@ CACHE_KEEP = 4  # recent builds to keep on disk (one per mode, plus a little sla
 # is in the fingerprint too, but it moves per release and the node shape moves per
 # commit -- without this, adding a field to _map_node during development serves
 # yesterday's map, missing the field, to code that now needs it.
-NODE_SCHEMA = 2
+NODE_SCHEMA = 3
 
 
 def _map_cache_dir():

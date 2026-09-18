@@ -269,3 +269,24 @@ def test_a_standalone_archgenre_repeats_rather_than_inventing_a_tier(client):
     _, body = build(client)
     node = next(n for n in body["nodes"] if n["hash"] == h)
     assert node["ksub"] == node["klabel"] == node["karch"] == "House"
+
+
+def test_a_track_the_taxonomy_cannot_place_still_carries_every_tier(client):
+    """The client reads fields, not fallback chains, so every node has the whole
+    shape. A style with no keystone is filed under itself, the way a standalone
+    archgenre repeats its own name; a track with no read at all is "Other"."""
+    h1 = seed(client, h="np1", payload={"salience": [{"style": "Spoken Word", "score": 0.9}]})
+    h2 = seed(client, h="np2", payload={"styles": []})
+    _, body = build(client)
+    n1 = next(n for n in body["nodes"] if n["hash"] == h1)
+    assert n1["keystones"] == ["Spoken Word"]
+    assert n1["ksub"] == n1["klabel"] == n1["kkey"] == n1["karch"] == "Spoken Word"
+    assert n1["family"] == "Other" and n1["rings"] == [] and n1["kfusion"] is False
+    n2 = next(n for n in body["nodes"] if n["hash"] == h2)
+    assert n2["keystones"] == ["Other"] and n2["klabel"] == "Other" and n2["ksub"] is None
+    # ...and the shape is the same one a placed track carries.
+    h3 = seed(client, h="np3")
+    _, body = build(client)
+    placed = next(n for n in body["nodes"] if n["hash"] == h3)
+    assert placed["klabel"] == "Techno"
+    assert set(placed) == set(n1) == set(n2)

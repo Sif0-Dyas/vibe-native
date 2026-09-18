@@ -877,11 +877,10 @@
      The keystones themselves, not `kkey`: a fusion's key is the joined
      "Drum n Bass + Dubstep", which would give the list a row of its own for
      every blend and leave the track on the map after you unticked Dubstep. A
-     fusion is filed under both of its parents instead, and hidden with either. */
-  function genreKeysOf(n){
-    if (n.keystones && n.keystones.length) return n.keystones;
-    return [n.kkey || n.style || n.fam || 'Other'];
-  }
+     fusion is filed under both of its parents instead, and hidden with either.
+     Always present: the server files a track the taxonomy cannot place under
+     its own style, so there is nothing to fall back to here. */
+  function genreKeysOf(n){ return n.keystones; }
 
   /* One tier below whatever a galaxy is.
 
@@ -896,8 +895,8 @@
      sky: family galaxies are made of genres, genre galaxies are made of
      subgenres. */
   function systemKeyOf(n){
-    if (UNI.by === 'fam' || UNI.by === 'vibe') return n.kkey || n.style || 'Other';
-    return n.style || n.kkey || 'Other';
+    if (UNI.by === 'fam' || UNI.by === 'vibe') return n.kkey;
+    return n.style || n.kkey;          // a track with no read at all sits with its keystone
   }
 
   /* Which galaxy a track belongs to.
@@ -911,8 +910,8 @@
     // which "Dubstep" and "Drum n Bass" are different places. Grouping by family
     // put both inside one Bass galaxy -- which is why that galaxy was a single
     // dense blob with the interesting structure buried inside it.
-    if (UNI.by === 'fam') return n.fam || 'Other';
-    return n.kkey || n.style || n.fam || 'Other';
+    if (UNI.by === 'fam') return n.fam;
+    return n.kkey;
   }
 
   /* ---- galaxies -----------------------------------------------------
@@ -3038,14 +3037,13 @@
      A tier is dropped when it repeats the one beside it, keeping the wider
      reading of the name -- House IS an archgenre, so a House track gets one chip
      and not three identical ones. Read from server-side fields because all three
-     come out of the taxonomy, which the user can edit and only the server holds;
-     each falls back to what the node already carried, so a map built before they
-     were sent still names the track instead of showing a blank chip. */
+     come out of the taxonomy, which the user can edit and only the server holds
+     -- and always sends, filing an unplaceable track under its own style. */
   function genreTiers(n){
     const tiers = [
-      { cls:'is-sub',  txt: n.ksub || n.style || '',            why:'subgenre' },
-      { cls:'is-key',  txt: n.klabel || n.kkey || n.fam || '',  why:'genre' },
-      { cls:'is-arch', txt: n.karch || '',                      why:'archgenre' },
+      { cls:'is-sub',  txt: n.ksub || '',   why:'subgenre' },
+      { cls:'is-key',  txt: n.klabel,       why:'genre' },
+      { cls:'is-arch', txt: n.karch,        why:'archgenre' },
     ];
     const seen = new Set(), out = [];
     for (let i = tiers.length - 1; i >= 0; i--){       // widest first, so it wins the name
@@ -3826,7 +3824,7 @@
            and hide nothing at all. The server's `family` is the coarse tier the
            taxonomy actually files a track under: Dance, Bass, Chill,
            Experimental, or Other for whatever it could not place. */
-        famOf[g] = n.family || 'Other';
+        famOf[g] = n.family;
       }
       return Object.keys(count).sort((a, b) => count[b] - count[a])
         .map(g => ({ name: g, n: count[g], fam: famOf[g] }));
