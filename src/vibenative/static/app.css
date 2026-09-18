@@ -1019,8 +1019,10 @@ body.view-options .lensbar{ display:none; }
   text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%; }
 /* A three-way choice where a dropdown would hide two thirds of it: the options
    are short, mutually exclusive, and worth seeing side by side. */
-.opt-seg{ display:inline-flex; border:1px solid var(--line); border-radius:7px;
+.opt-seg{ display:inline-flex; flex-wrap:wrap; justify-content:flex-end; border:1px solid var(--line); border-radius:7px;
   overflow:hidden; }
+/* A row whose value is a segmented choice may need to wrap its buttons. */
+.opt-row .v:has(.opt-seg){ white-space:normal; overflow:visible; max-width:72%; }
 .opt-seg button{
   background:none; border:none; border-right:1px solid var(--line); cursor:pointer;
   color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:11px;
@@ -1338,10 +1340,13 @@ body.view-options .lensbar{ display:none; }
   display:inline-block; font-family:'JetBrains Mono',monospace; font-size:9px;
   letter-spacing:.1em; text-transform:uppercase; padding:2px 8px; border-radius:20px;
   color:#0D0F14; font-weight:600; background:var(--c);
-  border:1px solid transparent;
+  border:1px solid transparent; cursor:pointer;
 }
 .pop-fam.is-sub{ background:transparent; border-color:var(--c-line); color:var(--c-text); }
 .pop-fam.is-key{ background:var(--c-tint); border-color:var(--c-line); color:var(--c-text); }
+.pop-fam:hover{ filter:brightness(1.18); }
+/* A tier chip that is filtering: the same accent ring every other chip gets. */
+.pop-fam.on{ box-shadow:0 0 0 2px var(--accent-a); }
 .pop-title{ font-family:'Syne',sans-serif; font-weight:700; font-size:16px; line-height:1.2; }
 .pop-artist{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim); margin-top:2px; }
 .pop-meta{
@@ -2777,23 +2782,58 @@ body.rowlens-on .rowlens{ display:flex; }
 
 
 /* ============================================================================
-   HEADER SPECTRUM STYLES (Options -> Appearance -> Sound bars)
-   The bars are the same 48 animated spans whatever the style; these change
-   only how each one is painted.
+   HEADER GRAPHICS (Options -> Appearance -> Header)
+   The strip behind the app's name. app.js renders one of these into
+   #eq-bars; the bar styles share the 48 animated spans (each carries its
+   colour in --c so the style, not an inline rule, decides how it is painted),
+   the others are their own small scene.
    ========================================================================== */
+.eq-bars span{ background:var(--c, var(--accent-a)); }
 .eq-bars.eq-off{ display:none; }
 /* LED blocks: each bar is a stack of lit segments with dark gaps. */
 .eq-bars.eq-blocks{ gap:3px; opacity:.2; }
 .eq-bars.eq-blocks span{
   border-radius:1px;
-  background:repeating-linear-gradient(to top, var(--accent-a) 0 3px, transparent 3px 5px);
+  background:repeating-linear-gradient(to top, var(--c, var(--accent-a)) 0 3px, transparent 3px 5px);
 }
 /* Bubbles: a column of dots that rises and falls. */
 .eq-bars.eq-dots{ gap:4px; opacity:.22; }
 .eq-bars.eq-dots span{
   border-radius:0;
-  background:radial-gradient(circle at 50% 50%, var(--accent-b) 0 38%, transparent 44%) 0 100% / 100% 7px repeat-y;
+  background:radial-gradient(circle at 50% 50%, var(--c, var(--accent-b)) 0 38%, transparent 44%) 0 100% / 100% 7px repeat-y;
 }
 /* Soft glow: wide, blurred pills, more aurora than analyser. */
 .eq-bars.eq-glow{ gap:0; opacity:.16; filter:blur(4px); }
 .eq-bars.eq-glow span{ border-radius:6px 6px 0 0; }
+/* Waveform: a sine drawn twice over, sliding left so it never ends. */
+.eq-bars.eq-wave{ display:block; padding:0; opacity:.35; overflow:hidden; }
+.eq-bars.eq-wave svg{ position:absolute; left:0; top:0; height:100%; width:200%;
+  animation:eqwave 6s linear infinite; }
+.eq-bars.eq-wave path{ fill:none; stroke:url(#eq-wave-grad); stroke-width:1.6; }
+@keyframes eqwave{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+/* Starfield: a scatter of points that drift and twinkle. */
+.eq-bars.eq-stars{ display:block; padding:0; opacity:.6; }
+.eq-bars.eq-stars i{
+  position:absolute; width:2px; height:2px; border-radius:50%; background:var(--c, var(--accent-a));
+  box-shadow:0 0 4px var(--c, var(--accent-a));
+  animation:eqstar var(--d,3s) ease-in-out var(--dl,0s) infinite alternate,
+            eqdrift 40s linear var(--dl,0s) infinite;
+}
+@keyframes eqstar{ from{ opacity:.15; } to{ opacity:1; } }
+@keyframes eqdrift{ from{ transform:translateX(0); } to{ transform:translateX(-60px); } }
+/* Vinyl: one record at the far right, turning at 33 and a third. */
+.eq-bars.eq-vinyl{ display:block; padding:0; opacity:.5; }
+.eq-bars.eq-vinyl i{
+  position:absolute; right:14px; top:50%; width:44px; height:44px; margin-top:-22px;
+  border-radius:50%;
+  background:
+    radial-gradient(circle, var(--accent-a) 0 4px, var(--panel) 4px 7px, transparent 7px),
+    repeating-radial-gradient(circle, #111 0 1px, #2a2a33 1px 2.4px);
+  box-shadow:0 0 0 1px var(--line), 0 0 14px var(--ov-3);
+  animation:eqspin 1.8s linear infinite;
+}
+.eq-bars.eq-vinyl i::after{
+  content:''; position:absolute; inset:8px; border-radius:50%;
+  background:linear-gradient(135deg, transparent 40%, rgba(255,255,255,.08) 50%, transparent 60%);
+}
+@keyframes eqspin{ to{ transform:rotate(360deg); } }

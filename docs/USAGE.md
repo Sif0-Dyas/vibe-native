@@ -149,7 +149,10 @@ Per-track actions live on each row (and many are repeated in the Map popup); lib
 - **Hovering a chip previews it.** Point at a genre, artist or tag chip in the
   Map popup and every track it would show you flashes white and fades, over and
   over, so a scattered handful of matches is findable among three thousand stars
-  without clicking anything.
+  without clicking anything. The **genre tier chips above the title** are chips
+  too: the subgenre filters by style, the genre by keystone (a fusion counts
+  under both parents), the archgenre by itself — hover to preview, click to
+  filter, click again to clear.
 - **⚠ review reads** *(footer)* — a one-click sweep for likely mistakes. The app flags reads it's unsure about — specifically, a low-confidence label whose closest-sounding neighbors strongly disagree (the classic "a bass track got called K-pop" case). The panel lists every flagged track with its suggested fix, plus buttons to jump to it on the Map or omit it. It only ever **flags and suggests** — it never changes a genre on its own.
 - **Clear list** empties the on-screen Analyzer list (without deleting any analysis); **Export .txt** dumps the current list (genre, BPM, key, duration) to a text file.
 
@@ -481,7 +484,7 @@ The **⚙ Options** tab is a quick status-and-settings dashboard. Each item show
 
 - **Cards fold.** On the Genres and Vibes tabs, "How this works", the totals card and every archgenre section close and open from their heading; "How this works" starts closed, the rest open, and the app remembers what you folded.
 - **Training data lives on the Genres tab** (under *Library actions*): what the app has collected from your genre corrections, and how ready each genre is for training.
-- **Sound bars**: the animated spectrum behind the app's name has styles (bars, LED blocks, bubbles, soft glow, or off) under Options → Appearance.
+- **Header**: the animation behind the app's name is yours to pick under Options → Appearance — a spectrum in four styles (bars, LED blocks, bubbles, soft glow), a scrolling waveform, a starfield, a spinning record, or nothing.
 - **Your files are safe.** Analyzing only reads your audio; it's never modified or moved, and nothing is uploaded anywhere — it all stays on your machine.
 - **Nothing is analyzed twice.** Results are remembered by the audio itself, so the same track returns instantly even if you rename or move the file, and re-scanning a big folder only works on what's new.
 - **The Analyzer is temporary; your library is permanent.** Reloading the page clears the on-screen Analyzer list, but every analysis is saved — it's all still on the **Library** and **Map**, and re-dropping files repopulates the Analyzer instantly from memory.

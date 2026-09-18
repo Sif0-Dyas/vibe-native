@@ -86,7 +86,10 @@
   // `hidden` is the set of genre names taken off the map by the genre list. A
   // set of exclusions rather than a list of inclusions, so a genre that appears
   // in the library later is visible by default rather than silently absent.
-  const FILT_EMPTY = { artist:'', key:'', style:'', tags:[], playlist:null,
+  // `style` is a subgenre (the dominant read or any runner-up); `genre` a
+  // keystone (a fusion counts under both parents); `arch` an archgenre. The
+  // three tier chips above a track's title set one each.
+  const FILT_EMPTY = { artist:'', key:'', style:'', genre:'', arch:'', tags:[], playlist:null,
                        playable:false, hidden:[], bpm:[null,null], len:[null,null] };
   let FILT = JSON.parse(JSON.stringify(FILT_EMPTY));
   let playlistHashes = null;        // Set of hashes for the chosen playlist, or null
@@ -124,6 +127,8 @@
       return artistsLower(n).some(a => a.includes(v));
     }
     if (kind === 'style')  return n.style === value || (n.styles || []).includes(value);
+    if (kind === 'genre')  return (n.keystones || []).includes(value);
+    if (kind === 'arch')   return n.karch === value;
     return false;
   }
   // Set by the filter panel so anything that changes FILT can refresh the
@@ -131,7 +136,7 @@
   let syncFilterUI = () => {};
 
   const filtActive = () =>
-    !!(FILT.artist || FILT.key || FILT.style || FILT.tags.length || FILT.playlist
+    !!(FILT.artist || FILT.key || FILT.style || FILT.genre || FILT.arch || FILT.tags.length || FILT.playlist
        || FILT.playable || FILT.hidden.length
        || FILT.bpm[0] != null || FILT.bpm[1] != null
        || FILT.len[0] != null || FILT.len[1] != null);
@@ -159,6 +164,8 @@
     // A track counts as its genre even when that genre is only a runner-up read,
     // so filtering to House finds the tracks that are partly House too.
     if (FILT.style && !nodeHas(n, 'style', FILT.style)) return false;
+    if (FILT.genre && !nodeHas(n, 'genre', FILT.genre)) return false;
+    if (FILT.arch && !nodeHas(n, 'arch', FILT.arch)) return false;
     // tags are AND: picking two means "has both", which is how you narrow down
     if (FILT.tags.length && !FILT.tags.every(t => (n.tags || []).includes(t))) return false;
     if (playlistHashes && !playlistHashes.has(n.hash)) return false;
@@ -3146,10 +3153,13 @@
      come out of the taxonomy, which the user can edit and only the server holds
      -- and always sends, filing an unplaceable track under its own style. */
   function genreTiers(n){
+    // Each tier is a chip that filters: the subgenre by style, the keystone by
+    // genre (a fusion's label is two keystones -- the primary is what the chip
+    // filters on), the archgenre by itself.
     const tiers = [
-      { cls:'is-sub',  txt: n.ksub || '',   why:'subgenre' },
-      { cls:'is-key',  txt: n.klabel,       why:'genre' },
-      { cls:'is-arch', txt: n.karch,        why:'archgenre' },
+      { cls:'is-sub',  txt: n.ksub || '',   why:'subgenre',  kind:'style', v: n.ksub || '' },
+      { cls:'is-key',  txt: n.klabel,       why:'genre',     kind:'genre', v: (n.keystones || [])[0] || n.klabel },
+      { cls:'is-arch', txt: n.karch,        why:'archgenre', kind:'arch',  v: n.karch },
     ];
     const seen = new Set(), out = [];
     for (let i = tiers.length - 1; i >= 0; i--){       // widest first, so it wins the name
@@ -3189,7 +3199,8 @@
     popEl.innerHTML = `
       <button class="pop-x" title="close">close ✕</button>
       <div class="pop-fams" style="${famChipVars(n)}">${genreTiers(n).map(t =>
-        `<span class="pop-fam ${t.cls}" title="${t.why}">${escapeHtml(t.txt)}</span>`).join('')}</div>
+        `<button class="pop-fam ${t.cls}" data-kind="${t.kind}" data-v="${escapeHtml(t.v)}"
+          title="${t.why} \u00b7 click to show only ${escapeHtml(t.txt)} \u00b7 hover to preview">${escapeHtml(t.txt)}</button>`).join('')}</div>
       <div class="pop-title">${escapeHtml(n.artist ? stripArtist(n.title, n.artist) : n.title)}</div>
       ${artistsOf(n).length ? `<div class="pop-artist">${artistsOf(n).map(a =>
         `<button class="pop-artchip" data-kind="artist" data-v="${escapeHtml(a)}"
@@ -3502,6 +3513,10 @@
           FILT.artist = FILT.artist === v ? '' : v;
         } else if (kind === 'style') {
           FILT.style = FILT.style === value ? '' : value;
+        } else if (kind === 'genre') {
+          FILT.genre = FILT.genre === value ? '' : value;
+        } else if (kind === 'arch') {
+          FILT.arch = FILT.arch === value ? '' : value;
         }
         markChips(root);
         syncFilterUI();
@@ -3517,7 +3532,9 @@
       const k = b.dataset.kind, v = b.dataset.v;
       const on = k === 'tag' ? FILT.tags.includes(v)
         : k === 'artist' ? FILT.artist === v.toLowerCase()
-        : k === 'style' ? FILT.style === v : false;
+        : k === 'style' ? FILT.style === v
+        : k === 'genre' ? FILT.genre === v
+        : k === 'arch' ? FILT.arch === v : false;
       b.classList.toggle('on', on);
     }
   }
@@ -3872,7 +3889,8 @@
       const asel = $f('flt-artist'); if (asel && asel.value.trim().toLowerCase() !== FILT.artist) asel.value = FILT.artist;
       const ssel2 = $f('flt-style'); if (ssel2 && ssel2.value !== FILT.style) ssel2.value = FILT.style;
       const pchk = $f('flt-playable'); if (pchk && pchk.checked !== !!FILT.playable) pchk.checked = !!FILT.playable;
-      setTxtF('flt-gen-v', FILT.hidden.length ? `${FILT.hidden.length} hidden` : 'all');
+      setTxtF('flt-gen-v', [FILT.arch, FILT.genre].filter(Boolean).join(' \u203a ')
+        || (FILT.hidden.length ? `${FILT.hidden.length} hidden` : 'all'));
       for (const b2 of (($f('flt-tags') || {}).querySelectorAll ? $f('flt-tags').querySelectorAll('.flt-tag') : []))
         b2.classList.toggle('on', FILT.tags.includes(b2.dataset.t));
       filtBtn.classList.toggle('on', filtActive());

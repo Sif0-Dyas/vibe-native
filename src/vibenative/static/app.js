@@ -240,7 +240,7 @@ const PREFS_DEFAULTS = {
   defaultMap: 'regions',    // the map view the Map tab opens on
   uiScale: 100,             // whole-app zoom, percent
   theme: 'neon',            // see THEMES at the end of app.css
-  eqStyle: 'bars',          // the header's animated spectrum: bars | blocks | dots | glow | off
+  eqStyle: 'bars',          // the header graphic: bars | blocks | dots | glow | wave | stars | vinyl | off
   analyzerIdentity: 'v2',   // the Analyzer's default lenses (see GLOBAL)
   analyzerSeg: 'hysteresis',
 };
@@ -1915,30 +1915,54 @@ clearB.addEventListener('click', () => {
   refreshFooter();
 });
 
-/* ---- EQ bars: build the header signature element ---- */
-const EQ_STYLES = [['bars', 'bars'], ['blocks', 'LED blocks'], ['dots', 'bubbles'], ['glow', 'soft glow'], ['off', 'off']];
+/* ---- the header graphic: the strip behind the app's name ----------------
+   One of several small scenes, chosen under Options -> Appearance. The bar
+   styles share one set of 48 animated spans and differ only in the paint; the
+   wave, starfield and record are their own markup. Rebuilt on every change,
+   so a style is never a leftover of the one before it. */
+const EQ_STYLES = [['bars', 'bars'], ['blocks', 'LED blocks'], ['dots', 'bubbles'], ['glow', 'soft glow'],
+                   ['wave', 'waveform'], ['stars', 'starfield'], ['vinyl', 'vinyl'], ['off', 'off']];
+const EQ_COLORS = ['#22D3EE','#5DE9FF','#38BDF8','#7C5CFF','#67E8F9','#818CF8','#22D3EE'];
 function applyEqStyle(){
   const el = document.getElementById('eq-bars');
   if (!el) return;
   const s = EQ_STYLES.some(([k]) => k === PREFS.eqStyle) ? PREFS.eqStyle : 'bars';
   el.className = 'eq-bars eq-' + s;
-}
-(function(){
-  const el = document.getElementById('eq-bars');
-  if (!el) return;
-  applyEqStyle();
-  const COLORS = ['#22D3EE','#5DE9FF','#38BDF8','#7C5CFF','#67E8F9','#818CF8','#22D3EE'];
-  for (let i = 0; i < 48; i++){
-    const s = document.createElement('span');
-    const lo = Math.round(8 + Math.random()*20);
-    const hi = Math.round(35 + Math.random()*60);
-    const dur = (0.5 + Math.random()*1.2).toFixed(2);
-    const del = (Math.random()*1.0).toFixed(2);
-    s.style.cssText = `--lo:${lo}%;--hi:${hi}%;--d:${dur}s;--dl:${del}s;` +
-      `background:${COLORS[i % COLORS.length]}`;
-    el.appendChild(s);
+  el.innerHTML = '';
+  // Seeded, so the scene is the same one every time the header is built.
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  if (s === 'bars' || s === 'blocks' || s === 'dots' || s === 'glow'){
+    for (let i = 0; i < 48; i++){
+      const b = document.createElement('span');
+      const lo = Math.round(8 + rnd()*20), hi = Math.round(35 + rnd()*60);
+      b.style.cssText = `--lo:${lo}%;--hi:${hi}%;--d:${(0.5 + rnd()*1.2).toFixed(2)}s;` +
+        `--dl:${rnd().toFixed(2)}s;--c:${EQ_COLORS[i % EQ_COLORS.length]}`;
+      el.appendChild(b);
+    }
+  } else if (s === 'wave'){
+    // Two periods of a sine across half the width; the CSS slides it by one.
+    let d = '';
+    for (let i = 0; i <= 400; i++){
+      const x = i / 400 * 2000, y = 27 + Math.sin(i / 400 * Math.PI * 8) * 14 + Math.sin(i / 400 * Math.PI * 26) * 4;
+      d += (i ? ' L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    el.innerHTML = `<svg viewBox="0 0 2000 54" preserveAspectRatio="none">
+      <defs><linearGradient id="eq-wave-grad" x1="0" x2="1"><stop offset="0" stop-color="${EQ_COLORS[0]}"/>
+      <stop offset=".5" stop-color="${EQ_COLORS[3]}"/><stop offset="1" stop-color="${EQ_COLORS[0]}"/></linearGradient></defs>
+      <path d="${d}"/></svg>`;
+  } else if (s === 'stars'){
+    for (let i = 0; i < 70; i++){
+      const st = document.createElement('i');
+      st.style.cssText = `left:${(rnd()*100).toFixed(1)}%;top:${(rnd()*100).toFixed(1)}%;` +
+        `--d:${(1.5 + rnd()*3).toFixed(2)}s;--dl:${(rnd()*3).toFixed(2)}s;--c:${EQ_COLORS[i % EQ_COLORS.length]};` +
+        `transform:scale(${(0.6 + rnd()).toFixed(2)})`;
+      el.appendChild(st);
+    }
+  } else if (s === 'vinyl'){
+    el.appendChild(document.createElement('i'));
   }
-})();
+}
+applyEqStyle();
 
 /* ---- Batch folder analysis ---- */
 const batchBtn = document.getElementById('batch-btn');
