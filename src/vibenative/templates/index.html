@@ -7,6 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
+<script>
+  // The chosen theme, applied before the first paint so the page never flashes
+  // the default. app.js owns the preference (PREFS.theme); this only reads it.
+  try {
+    var p = JSON.parse(localStorage.getItem('vibePrefs') || '{}') || {};
+    if (p.theme && p.theme !== 'neon') document.documentElement.dataset.theme = p.theme;
+  } catch (e) { /* private mode */ }
+</script>
 </head>
 <body>
 <!-- genre vocabulary backing the override input's dropdown; filled by map.js -->
@@ -66,7 +74,6 @@
   <div class="eq-bars" id="eq-bars"></div>
   <div class="hd-left">
     <h1>Vibe<em>dentify</em></h1>
-    <span class="sub">Scan and Sort!</span>
   </div>
   <nav class="tabs" id="tabs">
     <button class="tab active" data-view="library" type="button" title="Your whole collection: every track that has been analysed, searchable and sortable">&#8803; Library</button>
@@ -185,6 +192,7 @@
 <!-- interactive genre constellation of the whole library -->
 <section id="map-view" hidden aria-label="Genre map">
   <div class="map-top">
+    <div class="mt-row">
     <div class="map-search-wrap">
       <input id="map-search" type="text" autocomplete="off" spellcheck="false"
              placeholder="Search a track, artist, or genre&hellip;">
@@ -314,24 +322,17 @@
       </div>
     </div>
     </div>
+    </div>
+    <div class="mt-row">
     <div class="mt-group" role="group" aria-label="Motion">
       <button id="map-play" class="map-toggle on" type="button" title="pause / play the orbit (Space)">&#9208;</button>
       <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
         <input type="range" id="map-spin" min="0" max="100" value="10">
       </label>
     </div>
-    <div class="mt-tail">
-    <span class="map-hint" id="map-count">loading&hellip;</span>
-    <div class="mt-group" role="group" aria-label="Actions">
-      <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
-      <button id="map-rebuild" type="button" title="rebuild the map from the library (after analysing new music elsewhere)">&#8635; rebuild</button>
-      <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
-    </div>
-    </div>
-  </div>
-  <!-- the active view's own controls: shown under the toolbar only while that
-       view is the one on screen, so the bar above stays the same in every mode -->
-  <div id="map-modebar" class="map-modebar" hidden>
+    <!-- the active view's own controls: only while that view is on screen, so
+         the toolbar reads the same in every mode -->
+    <div id="map-modebar" class="mt-group map-modebar" hidden>
     <span class="mb-cap" id="map-modebar-cap"></span>
     <div class="mode-only" data-for="universe">
     <select id="uni-by" class="map-filter"
@@ -378,6 +379,16 @@
     <div class="mode-only" data-for="tree">
       <label class="mp-row mb-row" title="Keep only the genres the taxonomy recognises as electronic">
         <input type="checkbox" id="tree-edm"><span>EDM only</span></label>
+    </div>
+    </div>
+    <div class="mt-tail">
+    <span class="map-hint" id="map-count">loading&hellip;</span>
+    <div class="mt-group" role="group" aria-label="Actions">
+      <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
+      <button id="map-rebuild" type="button" title="rebuild the map from the library (after analysing new music elsewhere)">&#8635; rebuild</button>
+      <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
+    </div>
+    </div>
     </div>
   </div>
   <div id="map-stage">

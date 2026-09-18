@@ -234,7 +234,7 @@ input[type=file]{display:none}
   padding:12px clamp(14px,3vw,24px); border-bottom:1px solid var(--line);
   transition:background .1s;
 }
-.row:hover{background:rgba(255,255,255,.015)}
+.row:hover{background:var(--ov-1)}
 .row > div:nth-child(1){grid-area:track; min-width:0}
 .row > div:nth-child(2){grid-area:meta;  min-width:0}
 .row > div:nth-child(3){grid-area:genre; min-width:0}
@@ -332,7 +332,7 @@ input[type=file]{display:none}
   padding:4px 10px; border-radius:4px; cursor:pointer; white-space:nowrap;
 }
 .ovr-save{
-  background:var(--accent-a); color:#080B10; border:none; font-weight:600;
+  background:var(--accent-a); color:var(--on-accent); border:none; font-weight:600;
 }
 .ovr-cancel{
   background:none; border:1px solid var(--line); color:var(--dim);
@@ -467,7 +467,7 @@ footer, .actionbar{
 #count{color:var(--dim); font-size:11px; font-family:'JetBrains Mono',monospace}
 #export{
   padding:9px 20px; border:none; border-radius:var(--r-sm);
-  background:var(--grad); color:#080B10; font-weight:700; font-size:12.5px;
+  background:var(--grad); color:var(--on-accent); font-weight:700; font-size:12.5px;
   cursor:pointer; font-family:'JetBrains Mono',monospace; letter-spacing:.03em;
 }
 #export:disabled{opacity:.3; cursor:default}
@@ -554,7 +554,7 @@ footer, .actionbar{
 .vibe-create input:focus{border-color:var(--accent-b)}
 .vibe-create button{
   font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:5px 12px;
-  background:var(--accent-b); color:#080B10; border:none; border-radius:4px;
+  background:var(--accent-b); color:var(--on-accent); border:none; border-radius:4px;
   font-weight:600; cursor:pointer;
 }
 .vibe-playlist{margin:8px 0 4px; padding-left:4px}
@@ -658,7 +658,6 @@ header h1 em{
   background:none; -webkit-text-fill-color:var(--lcd);
   color:var(--lcd); text-shadow:0 0 6px rgba(0,232,0,.55), 1px 1px 0 #000;
 }
-header .sub{color:#E4E7EF; text-shadow:1px 1px 0 #000}
 /* --- spectrum analyzer: green base -> yellow -> red peaks --- */
 .eq-bars{opacity:.30}
 .eq-bars span{
@@ -945,6 +944,10 @@ body.view-library .lensbar{ display:none; }
   color:var(--text); font-size:12px; padding:6px 8px; cursor:pointer;
   font-family:'DM Sans',system-ui,sans-serif; }
 #lib-sort:focus{ outline:none; border-color:var(--accent-a); }
+#lib-group{ background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  color:var(--text); font-size:12px; padding:6px 8px; cursor:pointer;
+  font-family:'DM Sans',system-ui,sans-serif; }
+#lib-group:focus{ outline:none; border-color:var(--accent-a); }
 #lib-dir{ font-family:'JetBrains Mono',monospace; font-size:12px; padding:6px 11px;
   background:none; border:1px solid var(--line); border-radius:var(--r-sm); color:var(--dim); cursor:pointer; }
 #lib-dir:hover{ color:var(--text); border-color:var(--accent-a); }
@@ -1000,6 +1003,14 @@ body.view-options .lensbar{ display:none; }
 .opt-card{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
   padding:18px 20px; margin-bottom:16px; }
 .opt-card h3{ font-family:'Syne',sans-serif; font-size:15px; margin-bottom:12px; color:var(--text); }
+/* "How this works" opens on demand: its heading is the switch, and while it is
+   closed the card is one line -- the explanation is there for the first visit
+   and out of the way on every visit after. */
+.gen-how > h3{ cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; }
+.gen-how > h3::before{ content:'\25BE'; font-size:11px; color:var(--dim); transition:transform .15s; }
+.gen-how.collapsed > h3{ margin-bottom:0; }
+.gen-how.collapsed > h3::before{ transform:rotate(-90deg); }
+.gen-how.collapsed > :not(h3){ display:none; }
 .opt-row{ display:flex; justify-content:space-between; align-items:center; gap:12px;
   padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .opt-row:last-child{ border-bottom:none; }
@@ -1016,7 +1027,7 @@ body.view-options .lensbar{ display:none; }
   padding:5px 11px; transition:color .12s, background .12s;
 }
 .opt-seg button:last-child{ border-right:none; }
-.opt-seg button:hover{ color:var(--text); background:rgba(255,255,255,.04); }
+.opt-seg button:hover{ color:var(--text); background:var(--ov-2); }
 .opt-seg button.on{ color:var(--accent-a); background:rgba(86,180,233,.14); }
 
 /* A preference slider with its readout, sitting in a row's value slot. */
@@ -1047,8 +1058,8 @@ body.view-options .lensbar{ display:none; }
   padding-bottom:5px; border-bottom:1px solid var(--line); }
 .guide-body h3{ font-family:'Syne',sans-serif; font-size:15px; font-weight:700; margin:20px 0 6px; color:var(--text); }
 .guide-body h4{ font-size:13px; margin:14px 0 4px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
-.guide-body p{ margin:9px 0; color:#c7cfdd; }
-.guide-body ul, .guide-body ol{ margin:8px 0 8px 4px; padding-left:22px; color:#c7cfdd; }
+.guide-body p{ margin:9px 0; color:var(--text-2); }
+.guide-body ul, .guide-body ol{ margin:8px 0 8px 4px; padding-left:22px; color:var(--text-2); }
 .guide-body li{ margin:4px 0; }
 .guide-body li > ul, .guide-body li > ol{ margin:3px 0; }
 .guide-body a{ color:var(--accent-a); text-decoration:none; }
@@ -1080,10 +1091,15 @@ body.view-options .lensbar{ display:none; }
    instead of crushing its contents. Nothing here shrinks except the search box,
    which is the only control with slack to give. */
 .map-top{
-  display:flex; align-items:center; flex-wrap:wrap; gap:8px 15px;
+  display:flex; flex-direction:column; gap:8px;
   padding:9px clamp(14px,3vw,28px); border-bottom:1px solid var(--line);
   background:var(--panel);
 }
+/* Two rows, stated rather than left to wrapping: the first is what you are
+   looking at and how it is filtered, the second is motion, the active view's
+   own controls, and the readout with its actions. A row still wraps if the
+   window is narrower than its contents. */
+.mt-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px 15px; }
 /* Grouping is done with proximity and a faint plate, not with dividers. A rule
    between groups is the obvious answer and the wrong one here: the bar wraps, so
    any given divider lands mid-row on one window width and at the start of a line
@@ -1092,7 +1108,7 @@ body.view-options .lensbar{ display:none; }
    background to show where one ends. */
 .mt-group{
   display:flex; align-items:center; gap:5px; flex:none;
-  background:rgba(255,255,255,.03); border-radius:9px; padding:3px 7px;
+  background:var(--ov-1); border-radius:9px; padding:3px 7px;
 }
 /* The count is a readout, not a control: it never shrinks and never wraps. */
 .map-top .map-hint{ flex:none; white-space:nowrap; }
@@ -1105,7 +1121,7 @@ body.view-options .lensbar{ display:none; }
   display:flex; align-items:center; gap:11px; flex:none; margin-left:auto;
 }
 /* Everything in the bar holds its size; only the search box gives ground. */
-.map-top > button, .map-top > select, .map-top > label{ flex:none; }
+.mt-row > button, .mt-row > select, .mt-row > label{ flex:none; }
 .map-search-wrap{ position:relative; flex:1 1 200px; min-width:160px; max-width:320px; }
 #map-search{
   width:100%; background:var(--panel-2); border:1px solid var(--line);
@@ -1199,7 +1215,7 @@ body.view-options .lensbar{ display:none; }
 .mp-hint{ color:var(--dim); font-size:9px; line-height:1.4; opacity:.85; margin-top:2px; }
 /* --- facet filter panel --- */
 .mp-text{
-  width:100%; background:rgba(255,255,255,.05); border:1px solid var(--line);
+  width:100%; background:var(--ov-2); border:1px solid var(--line);
   border-radius:5px; color:var(--text); font-size:11px; padding:4px 7px;
 }
 .mp-text:focus{ outline:none; border-color:var(--accent-a); }
@@ -1210,7 +1226,7 @@ body.view-options .lensbar{ display:none; }
 .flt-tags{ display:flex; flex-wrap:wrap; gap:4px; }
 .flt-tag{
   cursor:pointer; font-size:10px; padding:2px 7px; border-radius:10px;
-  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--dim);
+  background:var(--ov-2); border:1px solid var(--line); color:var(--dim);
 }
 .flt-tag:hover{ color:var(--text); border-color:var(--dimmer); }
 .flt-tag.on{ color:var(--accent-a); border-color:var(--accent-a);
@@ -1270,8 +1286,8 @@ body.view-options .lensbar{ display:none; }
 }
 .leg-fam{ color:var(--text); }                 /* overarching genre = brighter + bold */
 .leg-fam b{ font-weight:700; }
-.leg-fam.active{ background:rgba(255,255,255,.09); }
-.leg:hover{ color:var(--text); background:rgba(255,255,255,.06); }
+.leg-fam.active{ background:var(--ov-3); }
+.leg:hover{ color:var(--text); background:var(--ov-3); }
 .leg .dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
 /* Subgenres stack vertically under their family: one per line reads as a list
    you can scan down, where wrapping them inline made a paragraph of names. */
@@ -1281,7 +1297,7 @@ body.view-options .lensbar{ display:none; }
   font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--dim);
   cursor:pointer; padding:0 2px; border-radius:3px;
 }
-.leg-sub:hover{ color:var(--text); background:rgba(255,255,255,.06); }
+.leg-sub:hover{ color:var(--text); background:var(--ov-3); }
 .leg-sub .sdot{ width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
 .leg-more{ font-size:9px; color:#7a8496; align-self:center; }
 
@@ -1419,7 +1435,7 @@ body.view-options .lensbar{ display:none; }
 .ovr-cand{
   display:inline-flex; align-items:center; gap:5px; cursor:pointer;
   font-size:11px; padding:3px 8px; border-radius:11px;
-  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--text);
+  background:var(--ov-2); border:1px solid var(--line); color:var(--text);
 }
 .ovr-cand:hover{ border-color:var(--accent-a); color:var(--accent-a); }
 .ovr-cand i{ font-style:normal; font-family:'JetBrains Mono',monospace;
@@ -1458,7 +1474,7 @@ body.view-options .lensbar{ display:none; }
    the popup can't afford a separate bar and still show the genre. */
 .adj-meter{
   position:relative; display:flex; align-items:baseline; gap:5px; min-width:0;
-  padding:3px 6px; border-radius:5px; background:rgba(255,255,255,.05); overflow:hidden;
+  padding:3px 6px; border-radius:5px; background:var(--ov-2); overflow:hidden;
 }
 .adj-meter i{
   position:absolute; left:0; top:0; bottom:0; background:rgba(86,180,233,.20);
@@ -1548,7 +1564,7 @@ body.view-options .lensbar{ display:none; }
   display:flex; align-items:center; gap:6px; cursor:pointer; padding:2px 3px;
   color:var(--dim); border-radius:4px;
 }
-.flt-gen:hover{ color:var(--text); background:rgba(255,255,255,.04); }
+.flt-gen:hover{ color:var(--text); background:var(--ov-2); }
 .flt-gen input{ accent-color:var(--accent-a); cursor:pointer; flex:none; }
 .flt-gen span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .flt-gen i{ font-style:normal; font-size:9.5px; color:var(--dimmer); flex:none; }
@@ -1615,6 +1631,12 @@ body.view-options .lensbar{ display:none; }
   --lcd-bg:#03141B;                 /* dark cyan-tinted readout well           */
   --gold:#FFC46B;                   /* warm amber — kept for "match"/compare   */
   --bev-lt:#1E2632; --bev-dk:#05070B;
+  /* Theme tokens the skins below override (see THEMES at the end of the file):
+     the faint overlays every plate and hover is built from, the text that sits
+     on an accent-coloured button, and the secondary body-text tone. */
+  --ov-1:rgba(255,255,255,.03); --ov-2:rgba(255,255,255,.05); --ov-3:rgba(255,255,255,.08);
+  --on-accent:#03141B; --text-2:#c7cfdd;
+  color-scheme:dark;
 }
 body{ font-family:'DM Sans',system-ui,sans-serif; }
 
@@ -1675,7 +1697,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
   border-radius:6px; padding:2px 10px; cursor:pointer; text-shadow:none; transition:.15s;
 }
 .playbtn:hover:not(:disabled){ border-color:var(--accent-a); box-shadow:var(--glow-sm); }
-.playbtn.playing{ background:var(--accent-a); color:#03141B;
+.playbtn.playing{ background:var(--accent-a); color:var(--on-accent);
   border-color:var(--accent-a); box-shadow:var(--glow-sm); }
 .playbtn:disabled{ opacity:.55; color:var(--dim); background:none; border-color:var(--line); }
 .playtime{ color:var(--dim); }
@@ -1699,7 +1721,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 #export, #clear, #batch-btn, #vibe-btn, #an-more-btn, .sib-btn, .browse, .sib-add{ padding:6px 14px; }
 #export:active, #clear:active, #batch-btn:active, #vibe-btn:active,
 .sib-btn:active, .browse:active{ transform:translateY(1px); }
-#export{ background:var(--grad); color:#03141B; font-weight:700; text-shadow:none;
+#export{ background:var(--grad); color:var(--on-accent); font-weight:700; text-shadow:none;
   box-shadow:var(--glow-sm); border:0; }
 #export:hover:not(:disabled){ box-shadow:var(--glow); }
 #export:disabled{ background:var(--panel-2); color:var(--dimmer); box-shadow:none; }
@@ -1770,7 +1792,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 }
 .nb-btn:hover{ border-color:var(--accent-a); box-shadow:var(--glow-sm); }
 .nb-btn:active{ transform:scale(.94); }
-.nb-play{ background:var(--accent-a); color:#03141B; border-color:var(--accent-a); width:38px; height:38px; font-size:14px; }
+.nb-play{ background:var(--accent-a); color:var(--on-accent); border-color:var(--accent-a); width:38px; height:38px; font-size:14px; }
 .nb-play:hover{ box-shadow:var(--glow); }
 .nb-time{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim);
   font-variant-numeric:tabular-nums; flex:none; min-width:34px; text-align:center; }
@@ -1841,7 +1863,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
   transition:color .15s, border-color .15s, box-shadow .15s;
 }
 .sb-lsn:hover{ color:var(--text); border-color:var(--accent-a); }
-.sb-lsn.on{ color:#03141B; background:var(--accent-a); border-color:var(--accent-a);
+.sb-lsn.on{ color:var(--on-accent); background:var(--accent-a); border-color:var(--accent-a);
   box-shadow:var(--glow-sm); }
 
 /* --- Map popup: play + add-to-playlist actions --- */
@@ -1925,7 +1947,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .pl-act:disabled{ opacity:.35; cursor:default; }
 /* toggle-button count badges */
 .pl-badge{
-  font-family:'JetBrains Mono',monospace; font-size:9px; color:#03141B;
+  font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--on-accent);
   background:var(--dimmer); border-radius:10px; padding:0 5px; margin-left:3px; display:inline-block;
 }
 .pl-badge.has{ background:var(--accent-a); }
@@ -1942,7 +1964,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .pop-tags{ display:flex; flex-wrap:wrap; gap:4px; }
 .pop-tag{
   cursor:pointer; font-size:10px; padding:2px 8px; border-radius:10px;
-  background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--dim);
+  background:var(--ov-2); border:1px solid var(--line); color:var(--dim);
 }
 .pop-tag:hover{ color:var(--text); border-color:var(--dimmer); }
 .pop-tag.on{ color:var(--accent-a); border-color:var(--accent-a);
@@ -1953,7 +1975,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
    which on a library with no tags meant every chip you could see did nothing. */
 .chip-act{
   cursor:pointer; font-family:inherit; font-size:10px; padding:2px 8px;
-  border-radius:10px; background:rgba(255,255,255,.05);
+  border-radius:10px; background:var(--ov-2);
   border:1px solid var(--line); color:var(--dim);
 }
 .chip-act:hover{ color:var(--text); border-color:var(--dimmer); }
@@ -1966,7 +1988,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 .opt-edit{ display:flex; gap:6px; margin-top:8px; }
 .opt-edit[hidden]{ display:none; }
 .opt-input{
-  flex:1; min-width:0; background:rgba(255,255,255,.05); border:1px solid var(--line);
+  flex:1; min-width:0; background:var(--ov-2); border:1px solid var(--line);
   border-radius:5px; color:var(--text); font-size:12px; padding:5px 8px;
   font-family:'JetBrains Mono',monospace;
 }
@@ -1990,11 +2012,11 @@ header .sub{ color:var(--dim); text-shadow:none; }
 }
 .rate-clear:hover{ color:#ffb03b; }
 .rate-grade{
-  background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:5px;
+  background:var(--ov-2); border:1px solid var(--line); border-radius:5px;
   color:var(--text); font-size:11px; padding:3px 5px;
 }
 .rate-note{
-  flex:1; min-width:120px; background:rgba(255,255,255,.05);
+  flex:1; min-width:120px; background:var(--ov-2);
   border:1px solid var(--line); border-radius:5px; color:var(--text);
   font-size:11px; padding:4px 7px;
 }
@@ -2019,7 +2041,7 @@ body.view-genres .lensbar{ display:none; }
 .gen-fam h3 .gen-n{ font-family:'JetBrains Mono',monospace; font-size:11px;
   color:var(--dim); font-weight:400; margin-left:8px; }
 .gen-keys{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; }
-.gen-key{ background:rgba(255,255,255,.03); border:1px solid var(--line);
+.gen-key{ background:var(--ov-1); border:1px solid var(--line);
   border-radius:7px; padding:9px 11px; }
 .gen-key-head{ display:flex; align-items:center; gap:7px; margin-bottom:4px; }
 .gen-key-head b{ font-family:'Syne',sans-serif; font-size:13px; }
@@ -2035,7 +2057,7 @@ body.view-genres .lensbar{ display:none; }
 .gen-warn{ color:#ffb03b; border:1px solid rgba(255,176,59,.4); border-radius:8px;
   padding:0 5px; font-size:9px; }
 .gen-subs{ display:flex; flex-wrap:wrap; gap:3px; margin-bottom:6px; }
-.gen-sub{ font-size:10px; color:var(--dim); background:rgba(255,255,255,.05);
+.gen-sub{ font-size:10px; color:var(--dim); background:var(--ov-2);
   border:1px solid var(--line); border-radius:9px; padding:1px 7px; }
 .gen-sub i{ color:var(--dimmer); font-style:normal; margin-left:4px; }
 .gen-toph{ font-size:9px; letter-spacing:.07em; text-transform:uppercase;
@@ -2051,7 +2073,7 @@ body.view-genres .lensbar{ display:none; }
 .vibe-note[hidden]{ display:none; }
 .vibe-note-in{
   width:100%; box-sizing:border-box; resize:vertical; min-height:64px;
-  background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:6px;
+  background:var(--ov-2); border:1px solid var(--line); border-radius:6px;
   color:var(--text); font-size:12px; line-height:1.5; padding:7px 9px;
   font-family:'DM Sans',sans-serif;
 }
@@ -2069,7 +2091,7 @@ body.view-vibes .lensbar{ display:none; }
 .vib-card h3{ display:flex; align-items:baseline; gap:10px; }
 .vib-note{
   width:100%; box-sizing:border-box; resize:vertical; min-height:70px;
-  background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:6px;
+  background:var(--ov-2); border:1px solid var(--line); border-radius:6px;
   color:var(--text); font-size:12.5px; line-height:1.55; padding:8px 10px;
   font-family:'DM Sans',sans-serif; margin-top:4px;
 }
@@ -2167,7 +2189,7 @@ body.view-vibes .lensbar{ display:none; }
 .gen-card-top{ display:flex; align-items:center; gap:10px; margin-bottom:7px; }
 .gen-wavebox{
   flex:0 0 auto; width:62px; height:26px; border-radius:5px;
-  border:1px solid var(--line); background:rgba(255,255,255,.04);
+  border:1px solid var(--line); background:var(--ov-2);
   display:flex; align-items:center; justify-content:center;
 }
 .gen-wave{ width:54px; height:20px; fill:currentColor; opacity:.9; }
@@ -2244,8 +2266,8 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
   grid-template-areas:"wave title meta" "subs subs subs" "foot foot foot";
   background:none; border:none; padding:10px 11px; color:inherit; align-items:center;
 }
-.gen-tile:hover{ background:rgba(255,255,255,.04); }
-.gen-key.open .gen-tile{ background:rgba(255,255,255,.05); }
+.gen-tile:hover{ background:var(--ov-2); }
+.gen-key.open .gen-tile{ background:var(--ov-2); }
 .gen-wavebox{ grid-area:wave; }
 .gen-titles{ grid-area:title; min-width:0; display:block; }
 .gen-name{
@@ -2378,7 +2400,7 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
 .gen-stat-dot{ width:9px; height:9px; border-radius:2px; flex:0 0 auto; }
 .gen-stat-name .gen-level{ margin-top:0; font-size:8px; padding:0 4px; flex:0 0 auto; }
 .gen-stat-bar{
-  height:9px; border-radius:5px; background:rgba(255,255,255,.05); overflow:hidden;
+  height:9px; border-radius:5px; background:var(--ov-2); overflow:hidden;
 }
 .gen-stat-bar > span{ display:block; height:100%; border-radius:5px; opacity:.82; }
 .gen-stat-n,
@@ -2455,14 +2477,10 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    Map: universe / solar controls, and the artist rating block.
    ========================================================================== */
 
-/* The mode bar: the active view's own controls, on a row of their own under
-   the toolbar. Shown only while a view that has controls is on screen, so
-   the toolbar itself reads the same in every mode. */
-.map-modebar{
-  display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px;
-  padding:6px clamp(14px,3vw,28px); border-bottom:1px solid var(--line);
-  background:var(--panel);
-}
+/* The active view's own controls: a group on the toolbar's second row, shown
+   only while a view that has controls is on screen, so the toolbar reads the
+   same in every mode. */
+.map-modebar{ gap:6px 10px; }
 .map-modebar[hidden]{ display:none; }
 .mb-cap{
   font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--dim);
@@ -2541,7 +2559,7 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
   font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim);
   margin:7px 0 10px; min-height:1.3em;
 }
-.ml-bar{ height:5px; border-radius:3px; background:rgba(255,255,255,.07); overflow:hidden; }
+.ml-bar{ height:5px; border-radius:3px; background:var(--ov-3); overflow:hidden; }
 .ml-fill{
   height:100%; width:0; border-radius:3px; background:var(--grad);
   transition:width .18s linear;
@@ -2572,7 +2590,7 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
 .tc-head{
   display:flex; align-items:center; gap:8px;
   padding:8px 10px; border-bottom:2px solid var(--line);
-  background:rgba(255,255,255,.03);
+  background:var(--ov-1);
 }
 .tc-branch{ font-family:'Syne',sans-serif; font-weight:800; font-size:13px; min-width:0;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -2625,7 +2643,7 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    archgenre's only keystone is itself and its subgenres ARE the genres it
    holds. Visually subordinate to a keystone card -- lighter surface, no solid
    fill -- so the tier is legible without reading the chip. */
-.gen-subcard{ background:rgba(255,255,255,.012); }
+.gen-subcard{ background:var(--ov-1); }
 .gen-subcard .gen-name{ font-size:12px; }
 .gen-subcard .gen-bpmbig{ font-size:16px; }
 .gen-sub-parent{
@@ -2674,7 +2692,7 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
   background:none; border:0; border-radius:var(--r-sm);
   padding:7px 8px; color:var(--text);
 }
-.an-moreitem:hover{ background:rgba(255,255,255,.05); }
+.an-moreitem:hover{ background:var(--ov-2); }
 .an-moreitem b{ display:block; font-size:12px; font-weight:600; }
 .an-moreitem i{
   display:block; font-style:normal; font-size:11px; color:var(--dim);
@@ -2703,3 +2721,65 @@ p.gen-blurb{ margin:0 0 7px; font-size:12px; line-height:1.5; color:var(--dim); 
    except that there was a setting somewhere they had not found. */
 .rowlens{ display:none; }
 body.rowlens-on .rowlens{ display:flex; }
+
+
+/* ============================================================================
+   THEMES
+   Each theme is a set of the tokens the Neon skin declared on :root; the skin
+   itself is the default and needs no attribute. Applied by data-theme on the
+   root element, set from the Options tab (PREFS.theme) and, before the first
+   paint, by the inline script in the page head. The map's sky stays dark in
+   every theme -- it is a sky.
+   ========================================================================== */
+:root[data-theme="light"]{
+  --bg:#F3F5F9; --panel:#FFFFFF; --panel-2:#EDF0F5; --line:#D7DDE7;
+  --text:#151A22; --text-2:#2F3745; --dim:#5B6577; --dimmer:#8B95A8;
+  --accent-a:#0284C7; --accent-b:#6D4AFF;
+  --grad:linear-gradient(90deg,#0284C7,#6D4AFF);
+  --glow:0 0 14px rgba(2,132,199,.25); --glow-sm:0 0 8px rgba(2,132,199,.2);
+  --lcd:#0369A1; --lcd-bg:#E3F1FA; --gold:#B45309;
+  --bev-lt:#FFFFFF; --bev-dk:#C9D0DB;
+  --ov-1:rgba(0,0,0,.03); --ov-2:rgba(0,0,0,.05); --ov-3:rgba(0,0,0,.08);
+  --on-accent:#FFFFFF;
+  color-scheme:light;
+}
+:root[data-theme="midnight"]{
+  --bg:#060A18; --panel:#0C1226; --panel-2:#121A34; --line:#1E2A4A;
+  --text:#E6ECFF; --text-2:#C3CCE8; --dim:#8B97BF; --dimmer:#4A567F;
+  --accent-a:#7AA2FF; --accent-b:#C084FC;
+  --grad:linear-gradient(90deg,#7AA2FF,#C084FC);
+  --glow:0 0 20px rgba(122,162,255,.4); --glow-sm:0 0 10px rgba(122,162,255,.3);
+  --lcd:#9DBBFF; --lcd-bg:#0A1230; --gold:#F8C76B;
+  --bev-lt:#1E2A4A; --bev-dk:#040814;
+}
+:root[data-theme="synthwave"]{
+  --bg:#12081F; --panel:#1A0B2E; --panel-2:#24113D; --line:#3A1D5E;
+  --text:#FDE7FF; --text-2:#E4C4F2; --dim:#B78FD0; --dimmer:#6E4A8F;
+  --accent-a:#FF4FD8; --accent-b:#00E5FF;
+  --grad:linear-gradient(90deg,#FF4FD8,#00E5FF);
+  --glow:0 0 20px rgba(255,79,216,.45); --glow-sm:0 0 10px rgba(255,79,216,.35);
+  --lcd:#FF7AE6; --lcd-bg:#1E0A33; --gold:#FFD166;
+  --bev-lt:#3A1D5E; --bev-dk:#0A0414;
+}
+:root[data-theme="forest"]{
+  --bg:#0A120C; --panel:#101B13; --panel-2:#16241A; --line:#24382A;
+  --text:#E8F2EA; --text-2:#C6D8CA; --dim:#8FA896; --dimmer:#4C6653;
+  --accent-a:#4ADE80; --accent-b:#F59E0B;
+  --grad:linear-gradient(90deg,#4ADE80,#F59E0B);
+  --glow:0 0 20px rgba(74,222,128,.35); --glow-sm:0 0 10px rgba(74,222,128,.25);
+  --lcd:#7EF2A5; --lcd-bg:#08160C; --gold:#F59E0B;
+  --bev-lt:#24382A; --bev-dk:#050A06;
+}
+:root[data-theme="ember"]{
+  --bg:#140C0A; --panel:#1E120F; --panel-2:#2A1914; --line:#42271F;
+  --text:#FBEDE6; --text-2:#E8CFC3; --dim:#C09484; --dimmer:#7A5548;
+  --accent-a:#FB923C; --accent-b:#F43F5E;
+  --grad:linear-gradient(90deg,#FB923C,#F43F5E);
+  --glow:0 0 20px rgba(251,146,60,.4); --glow-sm:0 0 10px rgba(251,146,60,.3);
+  --lcd:#FFB27A; --lcd-bg:#241108; --gold:#FBBF24;
+  --bev-lt:#42271F; --bev-dk:#0A0503;
+}
+/* The header wordmark is painted in the accents, not in fixed cyan/violet, so
+   it follows the theme. */
+:root[data-theme] header h1{ background:var(--grad); -webkit-background-clip:text; background-clip:text; }
+:root[data-theme="light"] header h1{ filter:none; }

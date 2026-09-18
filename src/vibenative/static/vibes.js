@@ -37,7 +37,7 @@
   }
 
   function howCard() {
-    return '<div class="opt-card gen-how"><h3>How this works</h3>' +
+    return '<div class="opt-card gen-how collapsed"><h3>How this works</h3>' +
       '<div class="opt-note">' +
       'A <b>vibe</b> is a category you invent. Genres are decided for you by the ' +
       'analysis; a vibe is decided by you &mdash; and it can be anything a genre ' +

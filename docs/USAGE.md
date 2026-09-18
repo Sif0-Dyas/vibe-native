@@ -198,7 +198,7 @@ The **✷ Map** tab plots your entire analyzed library in 3-D. **Tracks that sou
 
 ### Four layouts — and which to use
 
-Switch between them with the buttons at the top. Each view's own controls appear on a bar under the toolbar while that view is showing, so the toolbar itself stays the same wherever you are. They answer different questions:
+Switch between them with the buttons at the top. Each view's own controls appear on the toolbar's second row, under the view buttons, while that view is showing — so the first row reads the same wherever you are. They answer different questions:
 
 - **◎ regions** *(default)* — organized by genre: each family forms its own cluster, and within a family tracks group by subgenre (Dubstep and Drum n Bass sit apart). As you zoom in, big family labels give way to subgenre labels. **Use this to** see your library laid out by genre and find where a style lives.
 - **✦ universe** — your library as a sky of **galaxies**. Each galaxy is a group of tracks, and you choose what a galaxy means with the dropdown next to the buttons: **by genre** (one galaxy per archgenre) or **by vibe** (one galaxy per vibe you've made, with everything unfiled drifting as background stars). Inside a galaxy, position is still pure sonic similarity. **Use this to** see how your own categories sit relative to each other, and to spot surprising neighbours the genre labels miss.
@@ -426,12 +426,15 @@ if something ever looks out of step.
 
 ### Map controls
 
-The toolbar is grouped: **layout** (which of the five views, plus whatever that
-view needs), **what is shown** (the genre picker, harmonic, the connection lines,
-and the filter / recently-viewed / text panels), **motion** (pause and speed),
-and **actions** (playlist, rebuild, view reset), with the track count sitting
-with the actions at the far end. On a narrow window the bar wraps a whole group
-at a time rather than squashing what is in it.
+The toolbar is two rows. The first is **what you are looking at**: search, the
+four views, and **what is shown** (the genre picker, harmonic, the connection
+lines, and the filter / recently-viewed / text panels). The second is **motion**
+(pause and speed), then **the active view's own controls** — the Universe's
+galaxy dropdown and ⊙⋮ sliders, Solar's playlist and rings pickers, the tree's
+EDM-only switch — which appear only while that view is showing, and at the far
+end the track count with the **actions** (playlist, rebuild, view reset). On a
+narrow window a row wraps a whole group at a time rather than squashing what is
+in it.
 
 - **Search** — jump to any track, artist, or genre.
 - **Click a genre or subgenre name** — on the map, or in the legend — to fly to that cluster and orbit around it (subgenres zoom in a little tighter than their overarching genre).
@@ -463,7 +466,7 @@ The **⚙ Options** tab is a quick status-and-settings dashboard. Each item show
 - **Engine** — whether **GPU acceleration** (DirectML) is active and whether **ffmpeg** (used to decode audio) was found. If ffmpeg shows ⚠ *missing*, some formats won't decode — see the README's setup notes.
 - **Database** — where your library file lives on disk. Everything you build — analyses, tags, vibes, saved playlists — lives in this one file. Point the **`GENRE_DB`** environment variable at another path to move or share it.
 - **Manage** — shortcuts to Browse library, Vibes, Playlists, and this Guide.
-- **Appearance** — **Key notation** picks how keys are written: **Camelot** (`8A`), **musical** (`A min`), or **both**. Camelot is what you mix by, the musical name is what you read; both together is fine on one row and noise across a whole library. It applies to the Analyzer, the Map and the exported list (the Library tab keeps its own Key and Camelot columns, chosen under **columns**). **Size** scales the whole app, for a small laptop screen or a monitor across the room. The app is dark-themed for now; a light mode is planned for a future update.
+- **Appearance** — **Theme**: **Neon** is the app's own look; **Light** is for daylight; **Midnight**, **Synthwave**, **Forest** and **Ember** are the same dark layout in a different key. The map's sky stays dark in every theme — it is a sky. **Key notation** picks how keys are written: **Camelot** (`8A`), **musical** (`A min`), or **both**. Camelot is what you mix by, the musical name is what you read; both together is fine on one row and noise across a whole library. It applies to the Analyzer, the Map and the exported list (the Library tab keeps its own Key and Camelot columns, chosen under **columns**). **Size** scales the whole app, for a small laptop screen or a monitor across the room. The app is dark-themed for now; a light mode is planned for a future update.
 - **Playback** — how long a preview **sample** runs, where it starts (**the drop** — the first sustained loud section — **the middle**, or **the beginning**), and whether selecting a star on the map plays one automatically or waits for you to press play.
 - **Map** — which view the Map tab **opens on**, and **reset map settings**, which puts every map control (labels, glow, the Universe and Solar sliders, recoloured genres) back to its default without touching your library.
 - **Analyzer** — the two lenses every row starts with: **overall genre** (weight the loud, characteristic parts of a track more, or take a plain average) and **genre over time** (how the coloured bands along the waveform are smoothed). The Analyzer's **advanced** panel sets the same two and can override them per track.
@@ -473,6 +476,7 @@ The **⚙ Options** tab is a quick status-and-settings dashboard. Each item show
 
 ## 11. Good to know
 
+- **"How this works" folds away.** The explanation card at the top of the Genres and Vibes tabs is closed by default — click its heading to open it, and again to close it.
 - **Your files are safe.** Analyzing only reads your audio; it's never modified or moved, and nothing is uploaded anywhere — it all stays on your machine.
 - **Nothing is analyzed twice.** Results are remembered by the audio itself, so the same track returns instantly even if you rename or move the file, and re-scanning a big folder only works on what's new.
 - **The Analyzer is temporary; your library is permanent.** Reloading the page clears the on-screen Analyzer list, but every analysis is saved — it's all still on the **Library** and **Map**, and re-dropping files repopulates the Analyzer instantly from memory.

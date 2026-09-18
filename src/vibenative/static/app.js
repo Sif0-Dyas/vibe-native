@@ -68,6 +68,13 @@ function wireTileToggle(body, tiles, onOpen){
 }
 window.wireTileToggle = wireTileToggle;
 
+/* "How this works" cards open when their heading is clicked. Wired once, on
+   the document, so a card re-rendered by its tab needs nothing further. */
+document.addEventListener('click', e => {
+  const h = e.target.closest('.gen-how > h3');
+  if (h) h.parentElement.classList.toggle('collapsed');
+});
+
 /* The counter card's ranked bars, shared by the Genres and Vibes tabs so the
    two read as one product. `rows` is [{name, count, color, badge?, title?}],
    biggest first; the bar is scaled against the BIGGEST row, not against 100%,
@@ -209,6 +216,7 @@ const PREFS_DEFAULTS = {
   autoSample: true,         // cue a clip when a star is selected on the map
   defaultMap: 'regions',    // the map view the Map tab opens on
   uiScale: 100,             // whole-app zoom, percent
+  theme: 'neon',            // see THEMES at the end of app.css
   analyzerIdentity: 'v2',   // the Analyzer's default lenses (see GLOBAL)
   analyzerSeg: 'hysteresis',
 };
@@ -220,6 +228,7 @@ function setPref(key, value){
   PREFS[key] = value;
   try { localStorage.setItem('vibePrefs', JSON.stringify(PREFS)); } catch (_) { /* private mode */ }
   if (key === 'uiScale') applyUiScale();
+  if (key === 'theme') applyTheme();
   for (const fn of PREF_LISTENERS) fn(key, value);
 }
 /* UI scale is a CSS zoom on the body: the app is laid out in pixels, so a
@@ -230,6 +239,16 @@ function applyUiScale(){
   document.body.style.zoom = z === 100 ? '' : (z / 100);
 }
 applyUiScale();
+/* The theme is a data attribute on the root; the stylesheet does the rest.
+   The page head applies it before the first paint from the same preference. */
+const THEMES = [['neon', 'Neon'], ['light', 'Light'], ['midnight', 'Midnight'],
+                ['synthwave', 'Synthwave'], ['forest', 'Forest'], ['ember', 'Ember']];
+function applyTheme(){
+  const t = THEMES.some(([k]) => k === PREFS.theme) ? PREFS.theme : 'neon';
+  if (t === 'neon') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+}
+applyTheme();
 
 /* ===================== ANALYZER LENSES ===========================
    Two independent switches, both recomputed from the per-frame top-k data:

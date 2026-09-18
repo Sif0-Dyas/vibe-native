@@ -342,7 +342,7 @@
   /* Plain-language opener. This is the first thing a new user reads on the tab,
      so it explains the words the rest of the page uses before using them. */
   function howCard() {
-    return '<div class="opt-card gen-how"><h3>How this works</h3>' +
+    return '<div class="opt-card gen-how collapsed"><h3>How this works</h3>' +
       '<div class="opt-note">' +
       'Vibedentify listens to each track and works out what <b>genre</b> it is. ' +
       'Genres are arranged in a tree, from broadest to most specific:' +

@@ -86,6 +86,11 @@
         '<div class="opt-note" id="fp-msg"></div>' +
       '</div>' +
       '<div class="opt-card"><h3>Appearance</h3>' +
+        '<div class="opt-row"><span class="k">Theme</span>' +
+          '<span class="v">' + seg('theme', THEMES) + '</span></div>' +
+        '<div class="opt-note"><b>Neon</b> is the app&rsquo;s own look. <b>Light</b> ' +
+        'is for daylight; the others are the same dark layout in a different key. The ' +
+        'map&rsquo;s sky stays dark in every theme &mdash; it is a sky.</div>' +
         '<div class="opt-row"><span class="k">Key notation</span>' +
           '<span class="v"><span class="opt-seg" id="keyview">' +
             '<button data-k="both">both</button>' +
@@ -101,8 +106,6 @@
           '<span class="v">' + slider('uiScale', 70, 150, 5, '%') + '</span></div>' +
         '<div class="opt-note">Scales the whole app. Useful on a small laptop screen or a ' +
         'big monitor across the room.</div>' +
-        '<div class="opt-note">Light mode is planned for a future update; the app is ' +
-        'dark-themed for now.</div>' +
       '</div>' +
       '<div class="opt-card"><h3>Playback</h3>' +
         '<div class="opt-row"><span class="k">Sample length</span>' +

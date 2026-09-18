@@ -34,6 +34,7 @@ module.exports = [
         nameHue: "writable", //     app.js -> used by map.js, vibes.js (name -> hue)
         PREFS: "writable", //       app.js -> used by map.js, options.js (app-wide preferences)
         setPref: "writable", //     app.js -> used by options.js
+        THEMES: "writable", //      app.js -> used by options.js
         familyOf: "writable", //   app.js  -> used by map.js
         fmtTime: "writable", //    app.js  -> used by player.js
         PLAYER: "writable", //     player.js -> used by app.js, panels.js
