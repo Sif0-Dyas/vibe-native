@@ -203,7 +203,7 @@ Switch between them with the buttons at the top. Each view's own controls appear
 - **◎ regions** *(default)* — organized by genre: each family forms its own cluster, and within a family tracks group by subgenre (Dubstep and Drum n Bass sit apart). As you zoom in, big family labels give way to subgenre labels. **Use this to** see your library laid out by genre and find where a style lives.
 - **✦ universe** — your library as a sky of **galaxies**. Each galaxy is a group of tracks, and you choose what a galaxy means with the dropdown next to the buttons: **by genre** (one galaxy per archgenre) or **by vibe** (one galaxy per vibe you've made, with everything unfiled drifting as background stars). Inside a galaxy, position is still pure sonic similarity. **Use this to** see how your own categories sit relative to each other, and to spot surprising neighbours the genre labels miss.
 - **☼ solar** — a saved **playlist** as a solar system. The dropdown on the view's bar picks which playlist is the sun — or **all playlists**, which lays every saved playlist out as its own system so the whole collection is in view at once (a track in several playlists orbits the first that claims it). The list keeps up with the playlist panel: **save a playlist while the Map is open and it appears right away.** The playlist's name is the sun, and every track orbits it. The **rings** dropdown decides what distance means: *fit* (how close a track is to the playlist's overall sound — the core hugs the sun, the odd ones out orbit far away), *tempo*, or *genre*. **Use this to** sanity-check a set: anything way out on the last ring probably doesn't belong.
-- **⊢ tree** — your library as a branching **taxonomy**: root → genres → subgenres, with bigger branches for the parts of your collection you have more of. Tick **EDM only** on the view's bar to drop the rock, pop and spoken-word a DJ library picks up, so the diagram is the electronic taxonomy and nothing else. **Use this to** understand the make-up of your library at a glance (hover a branch to reveal its track count).
+- **⊢ tree** — your library as a branching **taxonomy**: root → genres → subgenres, with bigger branches for the parts of your collection you have more of. Tick **EDM only** on the view's bar to drop the rock, pop and spoken-word a DJ library picks up, so the diagram is the electronic taxonomy and nothing else, and **☵ genres** opens a checklist of every branch so you can take any single genre off the tree. **Use this to** understand the make-up of your library at a glance (hover a branch to reveal its track count).
 
 **At a glance** — the same library, arranged four ways:
 
@@ -302,7 +302,8 @@ Three controls behind **⊙⋮**:
   evenly and ignore each other; turn it up and the related ones clump and swirl.
 - **Spread** — how far apart the stars inside each galaxy sit. The galaxies stay
   where they are and grow or shrink into the space between them, so past about
-  1.5× neighbours can start to touch — raise Separation with it.
+  1.5× neighbours can start to touch — raise Separation with it. Both go a long
+  way (Separation to 10×, Spread to 8×) for a truly empty sky.
 
 Galaxy names are sized by how big the galaxy is, and only the biggest sixteen
 are shown at once — naming seventy galaxies at the same time means naming none of
@@ -345,12 +346,9 @@ They're deliberately separate: a favourite artist still puts out the odd weak tr
 
 ### Getting around
 
-You can **orbit** (rotate), **pan** (slide), and **zoom** independently. A small **nav legend in the top-left corner** always lists the controls (click its header to collapse it):
+You can **orbit** (rotate), **pan** (slide), and **zoom** independently. The **⌨ nav** button beside the speed control lists every control; the **◤ genres** legend at the bottom-left starts closed — it sits on top of the map, and what you came for is behind it.
 
-The **⌨ nav** legend and the **◤ genres** legend both start **closed**. They sit
-on top of the map, and what you came to the map for is behind them — reference
-material is useful when you go looking for it and in the way when you don't.
-Open either one and it stays open until you close it again.
+**🚀 fly** (or `V`) puts you *in* the field instead of looking at it: a first-person camera you walk with **W A S D**, rise and sink with **Q / E**, look around by dragging (or the arrow keys), with **Shift** for speed and the **scroll wheel** to set your pace. Stars grow as you approach them, so a galaxy is a place you move through rather than a picture. Click a star to open its panel as usual — the camera stays yours. **F**, view reset, or `V` again lands you back in the orbit view.
 
 The camera also backs off as the map gets bigger, so the perspective stays the
 same whatever the layout is measuring. It used to sit at a fixed distance, which
@@ -476,7 +474,9 @@ The **⚙ Options** tab is a quick status-and-settings dashboard. Each item show
 
 ## 11. Good to know
 
-- **"How this works" folds away.** The explanation card at the top of the Genres and Vibes tabs is closed by default — click its heading to open it, and again to close it.
+- **Cards fold.** On the Genres and Vibes tabs, "How this works", the totals card and every archgenre section close and open from their heading; "How this works" starts closed, the rest open, and the app remembers what you folded.
+- **Training data lives on the Genres tab** (under *Library actions*): what the app has collected from your genre corrections, and how ready each genre is for training.
+- **Sound bars**: the animated spectrum behind the app's name has styles (bars, LED blocks, bubbles, soft glow, or off) under Options → Appearance.
 - **Your files are safe.** Analyzing only reads your audio; it's never modified or moved, and nothing is uploaded anywhere — it all stays on your machine.
 - **Nothing is analyzed twice.** Results are remembered by the audio itself, so the same track returns instantly even if you rename or move the file, and re-scanning a big folder only works on what's new.
 - **The Analyzer is temporary; your library is permanent.** Reloading the page clears the on-screen Analyzer list, but every analysis is saved — it's all still on the **Library** and **Map**, and re-dropping files repopulates the Analyzer instantly from memory.

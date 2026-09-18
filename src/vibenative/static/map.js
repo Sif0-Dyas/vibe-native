@@ -36,7 +36,7 @@
   /* The tree's own settings. `edmOnly` drops every family the taxonomy files
      as "Other" -- the rock, pop and spoken-word a DJ library picks up -- so
      the diagram is the electronic taxonomy and nothing else. */
-  let TREE_OPTS = { edmOnly:false };
+  let TREE_OPTS = { edmOnly:false, hidden:[] };   // hidden: family names taken off the tree
   try { TREE_OPTS = Object.assign(TREE_OPTS, JSON.parse(localStorage.getItem('vibeTree') || '{}') || {}); } catch(_){}
   const saveTree = () => { try{ localStorage.setItem('vibeTree', JSON.stringify(TREE_OPTS)); }catch(_){} };
   // A node the tree shows. n.family is the server's coarse tier, which is the
@@ -1097,7 +1097,7 @@
        (system orbits, star orbits, the scatter, the gas) is a multiple of its
        radius, so this one number is the whole control. Past ~1.5 neighbouring
        galaxies can start to touch; that is what separation is for. */
-    const spread = clamp(UNI.spread, 0.3, 3);
+    const spread = clamp(UNI.spread, 0.3, 8);
     for (const g of names) G[g].radius *= spread;
     return G;
   }
@@ -1764,12 +1764,23 @@
       parentOf[s] = best;
     }
 
+    // Every family the tree COULD show, for the genre switches: counted
+    // before the per-genre hiding so a switched-off family stays in the list
+    // to be switched back on.
+    const allFams = {};
+    for (const n of NODES){
+      if (!treeShows(n)) continue;
+      const fam = parentOf[n.style || n.fam] || n.fam;
+      allFams[fam] = (allFams[fam] || 0) + 1;
+    }
+    const hiddenFam = new Set(TREE_OPTS.hidden || []);
     const groups = {};
     for (const n of NODES){
       n.treeFam = null;                  // not on the diagram unless placed below
       if (!treeShows(n)) continue;
       const sub = n.style || n.fam;
       const fam = parentOf[sub] || n.fam;
+      if (hiddenFam.has(fam)) continue;
       // Stash the resolved parent on the node: the tree card looks branches up
       // by it, and recomputing the resolution there could disagree with what
       // was actually drawn.
@@ -1821,7 +1832,9 @@
     for (const nd of nodes) nd.y -= off;
     for (const l of links){ l[1] -= (l[0]===0 ? 0 : off); l[3] -= off; }
     nodes.push({ kind:'root', fam:null, x:0, y:0, count:NODES.length });
-    TREE = { nodes, links, rows: row, maxX, rowPx: 0 };
+    TREE = { nodes, links, rows: row, maxX, rowPx: 0,
+             fams: Object.keys(allFams).sort((a, b) => allFams[b] - allFams[a]).map(f => [f, allFams[f]]) };
+    buildTreeGenres();
   }
   function fitTree(){
     if (!TREE) return;
@@ -2034,9 +2047,12 @@
     // panning moves this target, and easing a pan makes the map rubber-band
     // behind the cursor instead of sticking to it.
     const ease = dragging ? 1 : 0.12;
-    pivot.x += (tx - pivot.x) * ease;
-    pivot.y += (ty - pivot.y) * ease;
-    pivot.z += (tz - pivot.z) * ease;
+    if (FLY) flyTick(now);
+    else {
+      pivot.x += (tx - pivot.x) * ease;
+      pivot.y += (ty - pivot.y) * ease;
+      pivot.z += (tz - pivot.z) * ease;
+    }
     const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
     const DISP = Math.min(W,H)*0.40*view.zoom;
     const cxp = W/2 + view.panx, cyp = H/2 + view.pany;
@@ -2071,7 +2087,10 @@
       // a flat map is the one that is readable for picking. `depth` is still
       // carried on the projection because the rings and labels fade by it.
       const depth = 1;
-      const r = clamp(4.2*Math.sqrt(view.zoom)*ratingBoost(n), 1.2, 46);
+      // Flying, a star's size is its distance: that is the whole sensation of
+      // moving through a field rather than looking at a picture of one.
+      const r = FLY ? clamp(0.9 * MAXR / dist * ratingBoost(n), 1.0, 60)
+                    : clamp(4.2*Math.sqrt(view.zoom)*ratingBoost(n), 1.2, 46);
       // Cull anything whose glow cannot reach the viewport. At high zoom most
       // of the library sits off-screen, and blitting it was pure waste.
       const reach = r * GLOW_SCALE + 2;
@@ -2163,8 +2182,11 @@
           // Bigger systems hold more of it, and depth fades it like everything
           // else. Capped low: dozens of these overlap inside one galaxy.
           const depth = clamp((z2+1.15)/2.3, 0, 1);
+          // Scaled by the glow slider the same way the coronas are, so turning
+          // the stars' light down turns the gas down with it -- it used to sit
+          // at full strength whatever the slider said.
           ctx.globalAlpha = clamp(0.14 + 0.34 * Math.sqrt(sys.n / 260), 0.10, 0.62)
-                          * (0.45 + 0.55*depth) * LBL.opacity;
+                          * (0.45 + 0.55*depth) * LBL.opacity * clamp(LBL.shine / 1.4, 0, 1.2);
           ctx.drawImage(nebulaSprite(sys.hue, sys.sat), sxp-gr, syp-gr, gr*2, gr*2);
         }
       }
@@ -2744,6 +2766,85 @@
     if (snap){ pivot.x += wx; pivot.y += wy; pivot.z += wz; }
   }
 
+  /* ---- fly: a first-person camera ------------------------------------
+     The orbit camera sits CAM world units behind the pivot, looking at it, and
+     everything is projected relative to the pivot. So a first-person camera
+     needs no second projection: keep a camera POSITION, and every frame put
+     the pivot CAM units ahead of it along the look direction. Turning then
+     turns the camera on the spot instead of swinging it round a centre, and
+     walking moves the position. The look direction is the same rot.x / rot.y
+     the orbit uses; the vector below is that rotation read backwards (see
+     panBy for the other two axes). */
+  let FLY = false;
+  const fly = { x:0, y:0, z:0, speed:1, keys:new Set(), lastT:0 };
+  function flyForward(){
+    const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
+    return { x: sy*cx, y: -sx, z: -cy*cx };
+  }
+  const flyBtn = document.getElementById('map-fly');
+  function setFly(on){
+    if (on === FLY || mapMode === 'tree') return;
+    FLY = on;
+    if (flyBtn) flyBtn.classList.toggle('on', on);
+    canvas.classList.toggle('fly', on);
+    document.body.classList.toggle('map-fly', on);
+    fly.keys.clear();
+    if (on){
+      anim = null; famPivot = null;
+      // Start exactly where the orbit camera is, so nothing jumps.
+      const f = flyForward();
+      fly.x = pivot.x - f.x*CAM; fly.y = pivot.y - f.y*CAM; fly.z = pivot.z - f.z*CAM;
+      // A comfortable walking pace for this library's size; the wheel adjusts it.
+      fly.speed = Math.max(0.3, MAXR * 0.35);
+      // The zoom sets the focal length (CAM x DISP). The orbit's zoom is a
+      // telephoto from CAM units away; standing in the field wants a normal
+      // lens, about the frame's own size.
+      view.zoom = (0.9 * Math.min(W, H)) / (CAM * Math.min(W, H) * 0.40);
+      view.panx = view.pany = 0;
+      fly.lastT = performance.now();
+      hint('\ud83d\ude80 flying \u00b7 WASD + Q/E move \u00b7 drag looks \u00b7 wheel = speed \u00b7 V lands', 6000);
+    } else {
+      fitView();
+      countMap.textContent = mapCountText();
+    }
+  }
+  flyBtn && flyBtn.addEventListener('click', () => { setFly(!FLY); flyBtn.blur(); });
+  /* Move the camera by (dx, dy, dz) world units along its own axes. */
+  function flyMove(f, r, u, df, dr, du){
+    fly.x += f.x*df + r.x*dr + u.x*du;
+    fly.y += f.y*df + r.y*dr + u.y*du;
+    fly.z += f.z*df + r.z*dr + u.z*du;
+  }
+  /* Called every frame while flying: integrate the held keys, then aim the
+     pivot CAM units ahead so the projection is a camera standing at `fly`. */
+  function flyTick(now){
+    const dt = Math.min(0.05, Math.max(0, (now - fly.lastT) / 1000));
+    fly.lastT = now;
+    const k = fly.keys;
+    const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
+    const f = flyForward();
+    const r = { x: cy, y: 0, z: sy };                 // right, as panBy has it
+    const u = { x: -sy*sx, y: -cx, z: cy*sx };        // up = -down
+    const v = fly.speed * (k.has('shift') ? 3 : 1) * dt;
+    const LOOK = 1.6 * dt;
+    if (k.has('w')) flyMove(f, r, u, v, 0, 0);
+    if (k.has('s')) flyMove(f, r, u, -v, 0, 0);
+    if (k.has('d')) flyMove(f, r, u, 0, v, 0);
+    if (k.has('a')) flyMove(f, r, u, 0, -v, 0);
+    if (k.has('e')) flyMove(f, r, u, 0, 0, v);
+    if (k.has('q')) flyMove(f, r, u, 0, 0, -v);
+    if (k.has('arrowleft'))  rot.y -= LOOK;
+    if (k.has('arrowright')) rot.y += LOOK;
+    if (k.has('arrowup'))    rot.x = clamp(rot.x - LOOK, -1.5, 1.5);
+    if (k.has('arrowdown'))  rot.x = clamp(rot.x + LOOK, -1.5, 1.5);
+    const f2 = flyForward();
+    pivot.x = fly.x + f2.x*CAM; pivot.y = fly.y + f2.y*CAM; pivot.z = fly.z + f2.z*CAM;
+  }
+  // Held keys, so movement is continuous rather than one step per repeat.
+  const FLY_KEYS = new Set(['w','a','s','d','q','e','shift','arrowleft','arrowright','arrowup','arrowdown']);
+  document.addEventListener('keyup', e => { fly.keys.delete(e.key.toLowerCase()); });
+  window.addEventListener('blur', () => fly.keys.clear());
+
   /* ---- interaction: orbit / pan / zoom / click --------------------- */
   // left-drag orbits; right / middle / Shift+left-drag pans (translate); wheel
   // zooms toward the cursor. Panning lets you fly through the 3-D scene.
@@ -2759,8 +2860,15 @@
     if (dragging){
       const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
       if (Math.abs(dx)+Math.abs(dy) > 2) moved=true;
-      if (mapMode === 'tree' || panning){ panBy(dx, dy); }
-      else { rot.y += dx*0.006; rot.x = clamp(rot.x + dy*0.006, -1.3, 1.3); }
+      if (FLY && panning){
+        // Right-drag strafes: the same world step panBy would take, applied
+        // to the camera itself.
+        const cy=Math.cos(rot.y), sy=Math.sin(rot.y), cx=Math.cos(rot.x), sx=Math.sin(rot.x);
+        const s = -1 / (Math.min(W,H) * 0.40 * view.zoom);
+        fly.x += (dx*cy + dy*sy*sx) * s; fly.y += (dy*cx) * s; fly.z += (dx*sy - dy*cy*sx) * s;
+      }
+      else if (mapMode === 'tree' || panning){ panBy(dx, dy); }
+      else { rot.y += dx*0.006; rot.x = clamp(rot.x + dy*0.006, FLY ? -1.5 : -1.3, FLY ? 1.5 : 1.3); }
       return;
     }
     const rr = canvas.getBoundingClientRect();
@@ -2837,6 +2945,11 @@
   canvas.addEventListener('pointercancel', endDrag);
   canvas.addEventListener('wheel', e => {
     e.preventDefault(); anim=null;
+    if (FLY){
+      fly.speed = clamp(fly.speed * (e.deltaY < 0 ? 1.2 : 1/1.2), 0.05, MAXR * 4);
+      hint(`\ud83d\ude80 speed ${(fly.speed / Math.max(0.3, MAXR * 0.35)).toFixed(1)}\u00d7`, 1200);
+      return;
+    }
     const r = canvas.getBoundingClientRect();
     const mx = e.clientX - r.left, my = e.clientY - r.top;
     // The floor was 0.3, which on a sky that now sizes its galaxies by mass was
@@ -2979,6 +3092,12 @@
      through nothing to reach the star you asked for by name. */
   function selectNode(hash, cut){
     const n = byHash.get(hash); if (!n) return;
+    if (FLY){
+      // You are standing in the field: the panel opens, the camera stays yours.
+      selHash = hash; pushRecent(n); openPopup(n);
+      if (PREFS.autoSample) previewTrack(n, cut);
+      return;
+    }
     selHash = hash; famPivot = null; focusedFam = null;   // orbit this track, not a genre
     panOff.x = panOff.y = panOff.z = 0;   // picking a track means "centre it", not "keep my pan"
     if (mapMode !== 'tree'){
@@ -3577,6 +3696,7 @@
      tab entry used to carry its own one-line copy of this, which silently
      skipped the solar branch. */
   function fitView(){
+    if (FLY) setFly(false);                  // framing the map means landing first
     view.panx=0; view.pany=0; rot.x=-0.15; anim=null;
     panOff.x = panOff.y = panOff.z = 0;      // "view reset" also un-flies the camera
     if (mapMode === 'tree'){ fitTree(); return; }
@@ -3661,18 +3781,15 @@
   playBtn && playBtn.addEventListener('click', () => { toggleSpin(); playBtn.blur(); });
   applySpin();
 
-  // navigation key legend: collapsible, state remembered
-  const keysEl = document.getElementById('map-keys');
+  // navigation key legend: a popover beside the motion controls
   const keysHead = document.getElementById('map-keys-head');
-  if (keysEl && keysHead){
-    // Closed unless you have opened it before -- see the legend above.
-    let navOpen = false;
-    try{ navOpen = localStorage.getItem('vibeNavKeys') === 'on'; }catch(_){}
-    keysEl.classList.toggle('collapsed', !navOpen);
-    keysHead.addEventListener('click', () => {
-      const off = keysEl.classList.toggle('collapsed');
-      try{ localStorage.setItem('vibeNavKeys', off ? 'off' : 'on'); }catch(_){}
+  const keysBody = document.getElementById('map-keys-body');
+  if (keysHead && keysBody){
+    keysHead.addEventListener('click', e => {
+      e.stopPropagation(); closeMapPanels(keysBody); keysBody.hidden = !keysBody.hidden;
     });
+    keysBody.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => { keysBody.hidden = true; });
   }
 
   const filterEl = document.getElementById('map-filter');
@@ -3689,7 +3806,19 @@
   const harmonicBtn = document.getElementById('map-harmonic');
   harmonicBtn && harmonicBtn.addEventListener('click', () => {
     harmonic = !harmonic; harmonicBtn.classList.toggle('on', harmonic);
+    // It only has something to show once a track is selected; say so, or the
+    // press looks like it did nothing.
+    if (harmonic && !selHash) hint('\ud83c\udfa7 harmonic: select a track to light up what mixes with it');
+    else countMap.textContent = mapCountText();
   });
+  /* A one-line message in the readout, replaced by the count again after a
+     moment. For presses whose effect is not on screen yet. */
+  let hintT = null;
+  function hint(text, ms){
+    countMap.textContent = text;
+    clearTimeout(hintT);
+    hintT = setTimeout(() => { countMap.textContent = mapCountText(); }, ms || 3500);
+  }
 
   /* ---- facet filter popover ---------------------------------------- */
   const filtBtn   = document.getElementById('map-filt-btn');
@@ -3884,7 +4013,8 @@
      stops its own click from reaching the document handler that closes them,
      which meant opening a second panel left the first stacked behind it. */
   function closeMapPanels(except){
-    for (const id of ['map-filt-panel', 'map-recent-panel', 'map-lbl-panel', 'uni-panel']){
+    for (const id of ['map-filt-panel', 'map-recent-panel', 'map-lbl-panel', 'uni-panel',
+                      'map-keys-body', 'tree-gen-panel']){
       const el = document.getElementById(id);
       if (el && el !== except) el.hidden = true;
     }
@@ -4034,6 +4164,8 @@
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     const PAN = 45, ROT = 0.12;
     const k = e.key.toLowerCase();
+    if (k === 'v' && mapMode !== 'tree'){ setFly(!FLY); return; }
+    if (FLY && FLY_KEYS.has(k)){ fly.keys.add(k); if (k.startsWith('arrow')) e.preventDefault(); return; }
     switch (k){
       case '+': case '=': case 'w': view.zoom = clamp(view.zoom*1.15, 0.04, 60); anim=null; break;
       case '-': case '_': case 's': view.zoom = clamp(view.zoom/1.15, 0.04, 60); anim=null; break;
@@ -4137,6 +4269,41 @@
     UNI.by = uniBy.value; saveUni();
     if (NODES.length && mapMode === 'universe'){ layout(); resetView(); }
   });
+
+  // Tree: which families are on the diagram -- a checklist, rebuilt from the
+  // families the tree found, so it lists what you actually have.
+  const treeGenBtn = document.getElementById('tree-gen-btn');
+  const treeGenPanel = document.getElementById('tree-gen-panel');
+  const treeGenList = document.getElementById('tree-gen-list');
+  function buildTreeGenres(){
+    if (!treeGenList || !TREE) return;
+    const hidden = new Set(TREE_OPTS.hidden || []);
+    treeGenList.innerHTML = TREE.fams.map(([f, n]) =>
+      `<label class="flt-gen"><input type="checkbox" data-g="${escapeHtml(f)}" ${hidden.has(f) ? '' : 'checked'}>
+        <span>${escapeHtml(f)}</span><i>${n}</i></label>`).join('');
+    for (const cb of treeGenList.querySelectorAll('input')){
+      cb.onchange = () => {
+        const set = new Set(TREE_OPTS.hidden || []);
+        if (cb.checked) set.delete(cb.dataset.g); else set.add(cb.dataset.g);
+        TREE_OPTS.hidden = [...set]; saveTree();
+        if (NODES.length && mapMode === 'tree'){ layout(); resetView(); }
+      };
+    }
+    if (treeGenBtn) treeGenBtn.classList.toggle('on', hidden.size > 0);
+  }
+  if (treeGenBtn && treeGenPanel){
+    treeGenBtn.addEventListener('click', e => {
+      e.stopPropagation(); closeMapPanels(treeGenPanel); treeGenPanel.hidden = !treeGenPanel.hidden;
+    });
+    treeGenPanel.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => { treeGenPanel.hidden = true; });
+    const setAll = on => {
+      TREE_OPTS.hidden = on ? [] : TREE.fams.map(([f]) => f); saveTree();
+      if (NODES.length && mapMode === 'tree'){ layout(); resetView(); }
+    };
+    document.getElementById('tree-gen-all').addEventListener('click', () => setAll(true));
+    document.getElementById('tree-gen-none').addEventListener('click', () => setAll(false));
+  }
 
   // Tree: keep only the electronic families.
   const treeEdm = document.getElementById('tree-edm');

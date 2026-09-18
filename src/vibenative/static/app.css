@@ -1006,11 +1006,11 @@ body.view-options .lensbar{ display:none; }
 /* "How this works" opens on demand: its heading is the switch, and while it is
    closed the card is one line -- the explanation is there for the first visit
    and out of the way on every visit after. */
-.gen-how > h3{ cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; }
-.gen-how > h3::before{ content:'\25BE'; font-size:11px; color:var(--dim); transition:transform .15s; }
-.gen-how.collapsed > h3{ margin-bottom:0; }
-.gen-how.collapsed > h3::before{ transform:rotate(-90deg); }
-.gen-how.collapsed > :not(h3){ display:none; }
+.opt-fold > h3{ cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; }
+.opt-fold > h3::before{ content:'\25BE'; font-size:11px; color:var(--dim); transition:transform .15s; flex:none; }
+.opt-fold.collapsed > h3{ margin-bottom:0; }
+.opt-fold.collapsed > h3::before{ transform:rotate(-90deg); }
+.opt-fold.collapsed > :not(h3){ display:none; }
 .opt-row{ display:flex; justify-content:space-between; align-items:center; gap:12px;
   padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .opt-row:last-child{ border-bottom:none; }
@@ -1147,12 +1147,14 @@ body.view-options .lensbar{ display:none; }
 .sug .sa{ color:var(--dim); }
 .map-mode{ display:flex; gap:3px; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:2px; }
 .mm{
-  background:none; border:none; color:var(--dim); cursor:pointer;
+  background:none; border:1px solid transparent; color:var(--dim); cursor:pointer;
   font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.02em;
   padding:4px 10px; border-radius:5px; transition:.15s;
 }
 .mm:hover{ color:var(--text); }
-.mm.active{ color:var(--text); background:var(--bg); }
+/* Lit the same way an enabled toggle is (see .map-toggle.on), so "this view
+   is on" and "this option is on" read as the same statement. */
+.mm.active{ color:var(--text); background:var(--bg); border-color:var(--accent-a); }
 /* genre filter dropdown */
 .map-filter{
   background:var(--panel-2); border:1px solid var(--line); border-radius:7px;
@@ -1301,22 +1303,11 @@ body.view-options .lensbar{ display:none; }
 .leg-sub .sdot{ width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
 .leg-more{ font-size:9px; color:#7a8496; align-self:center; }
 
-/* ---- navigation key legend (top-left) ---- */
-/* Same rule for the on-canvas overlays: never taller than the window. */
-#map-keys{
-  max-height:calc(100vh - 190px); overflow-y:auto;
-  position:absolute; top:12px; left:12px; z-index:13;
-  background:rgba(13,15,20,.78); border:1px solid var(--line); border-radius:8px;
-  backdrop-filter:blur(3px); overflow:hidden; max-width:190px;
-}
-#map-keys-head{
-  display:block; width:100%; text-align:left; background:none; border:none;
-  color:var(--dim); cursor:pointer; padding:5px 9px;
-  font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.04em;
-}
-#map-keys-head:hover{ color:var(--text); }
-#map-keys.collapsed #map-keys-body{ display:none; }
-#map-keys-body{ padding:2px 9px 7px; }
+/* ---- navigation key legend: a popover beside the motion controls ---- */
+#map-keys-body{ min-width:210px; }
+#map-keys-head{ font-size:10.5px; font-family:'JetBrains Mono',monospace; }
+#map-fly{ font-size:10.5px; font-family:'JetBrains Mono',monospace; }
+#map-canvas.fly{ cursor:crosshair; }
 .mk-row{
   display:flex; justify-content:space-between; gap:14px;
   font-family:'JetBrains Mono',monospace; font-size:9.5px; line-height:1.7;
@@ -2783,3 +2774,26 @@ body.rowlens-on .rowlens{ display:flex; }
    it follows the theme. */
 :root[data-theme] header h1{ background:var(--grad); -webkit-background-clip:text; background-clip:text; }
 :root[data-theme="light"] header h1{ filter:none; }
+
+
+/* ============================================================================
+   HEADER SPECTRUM STYLES (Options -> Appearance -> Sound bars)
+   The bars are the same 48 animated spans whatever the style; these change
+   only how each one is painted.
+   ========================================================================== */
+.eq-bars.eq-off{ display:none; }
+/* LED blocks: each bar is a stack of lit segments with dark gaps. */
+.eq-bars.eq-blocks{ gap:3px; opacity:.2; }
+.eq-bars.eq-blocks span{
+  border-radius:1px;
+  background:repeating-linear-gradient(to top, var(--accent-a) 0 3px, transparent 3px 5px);
+}
+/* Bubbles: a column of dots that rises and falls. */
+.eq-bars.eq-dots{ gap:4px; opacity:.22; }
+.eq-bars.eq-dots span{
+  border-radius:0;
+  background:radial-gradient(circle at 50% 50%, var(--accent-b) 0 38%, transparent 44%) 0 100% / 100% 7px repeat-y;
+}
+/* Soft glow: wide, blurred pills, more aurora than analyser. */
+.eq-bars.eq-glow{ gap:0; opacity:.16; filter:blur(4px); }
+.eq-bars.eq-glow span{ border-radius:6px 6px 0 0; }

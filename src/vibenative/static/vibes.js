@@ -37,7 +37,7 @@
   }
 
   function howCard() {
-    return '<div class="opt-card gen-how collapsed"><h3>How this works</h3>' +
+    return '<div class="opt-card gen-how opt-fold collapsed"><h3>How this works</h3>' +
       '<div class="opt-note">' +
       'A <b>vibe</b> is a category you invent. Genres are decided for you by the ' +
       'analysis; a vibe is decided by you &mdash; and it can be anything a genre ' +
@@ -72,7 +72,7 @@
       return { name: v.name, count: v.count, color: vibeColor(v.name) };
     }), total);
 
-    return '<div class="opt-card"><h3>Total vibes</h3>' +
+    return '<div class="opt-card opt-fold"><h3>Total vibes</h3>' +
       '<div class="gen-bigstats">' +
         '<div class="gen-bigstat"><b>' + vibes.length + '</b><i>vibes you have made</i></div>' +
         '<div class="gen-bigstat"><b>' + total + '</b><i>tracks filed into a vibe</i></div>' +
@@ -138,32 +138,6 @@
     '</div>';
   }
 
-  function trainingCard(t) {
-    if (!t) return '';
-    var rows = (t.genres || []).map(function (g) {
-      var bar = g.state === 'ready' ? 'ok' : (g.state === 'thin' ? 'warn' : 'bad');
-      var need = g.needs ? ' · needs ' + g.needs + ' more' : '';
-      return '<div class="opt-row">' +
-        '<span class="k">' + esc(g.genre) + '</span>' +
-        '<span class="v"><span class="vib-state ' + bar + '">' + g.state + '</span> ' +
-          g.files + ' file' + (g.files === 1 ? '' : 's') + need + '</span>' +
-      '</div>';
-    }).join('');
-    return '<div class="opt-card"><h3>Training data</h3>' +
-      '<div class="opt-note">This is separate from vibes, and it is about ' +
-      '<b>genres</b>. Whenever you correct a track’s genre by hand, Vibedentify keeps ' +
-      'a copy of that audio as an example to learn from. This is what it has so far.</div>' +
-      (rows || '<div class="opt-note">Nothing yet. Correcting a track’s genre files its ' +
-        'audio here automatically.</div>') +
-      '<div class="opt-note">It needs <b>variety</b> more than volume, but one or two tracks ' +
-      'cannot represent a genre &mdash; it would learn those particular recordings, not the ' +
-      'sound. <b>' + t.thresholds.ready + '+</b> files reads as ready, <b>' +
-      t.thresholds.thin + '–' + (t.thresholds.ready - 1) + '</b> as thin. Guidance, not ' +
-      'a gate: you can train with less, it just will not generalise.<br><br>' +
-      'Custom model: <b>' + (t.custom_head ? 'trained' : 'not trained yet — using the ' +
-      'built-in one') + '</b>. Files live in <code>' + esc(t.folder) + '</code>.</div></div>';
-  }
-
   function backupCard() {
     return '<div class="opt-card"><h3>Back up or move your vibes</h3>' +
       '<div class="opt-note">Vibes are yours and nothing else recreates them, so they are ' +
@@ -180,7 +154,7 @@
     '</div>';
   }
 
-  function render(vibes, training) {
+  function render(vibes) {
     body.innerHTML =
       howCard() +
       statsCard(vibes) +
@@ -200,11 +174,10 @@
         ? '<div class="opt-card"><div class="gen-keys">' + vibes.map(card).join('') + '</div></div>'
         : '<div class="opt-card"><div class="opt-note">No vibes yet. Make one above, then add ' +
           'tracks to it from the <b>Map</b> or the <b>Analyzer</b>.</div></div>') +
-      '<h2 class="gen-sechd">Library actions<span>backups, and what the app has learned so ' +
-        'far</span></h2>' +
-      backupCard() +
-      trainingCard(training);
+      '<h2 class="gen-sechd">Library actions<span>backups</span></h2>' +
+      backupCard();
     wire();
+    window.applyFolds(body);
   }
 
   function wire() {
@@ -345,12 +318,8 @@
     body = document.getElementById('vib-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
-    Promise.all([
-      fetch('/vibes').then(function (r) { return r.json(); }),
-      fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; })
-        .catch(function () { return null; })
-    ]).then(function (out) {
-      render(out[0] || [], out[1]);
+    fetch('/vibes').then(function (r) { return r.json(); }).then(function (vibes) {
+      render(vibes || []);
       if (!keep) return;
       var tiles = body.querySelectorAll('.vib-key');
       for (var i = 0; i < tiles.length; i++) {

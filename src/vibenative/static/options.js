@@ -102,6 +102,10 @@
         'row, noise across a library. Applies to the Analyzer, the map and the exported ' +
         'list. The Library tab keeps its own Key and Camelot columns, which you pick ' +
         'under <b>columns</b>.</div>' +
+        '<div class="opt-row"><span class="k">Sound bars</span>' +
+          '<span class="v">' + seg('eqStyle', EQ_STYLES) + '</span></div>' +
+        '<div class="opt-note">The animated spectrum behind the name at the top of the ' +
+        'window.</div>' +
         '<div class="opt-row"><span class="k">Size</span>' +
           '<span class="v">' + slider('uiScale', 70, 150, 5, '%') + '</span></div>' +
         '<div class="opt-note">Scales the whole app. Useful on a small laptop screen or a ' +

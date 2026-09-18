@@ -68,12 +68,35 @@ function wireTileToggle(body, tiles, onOpen){
 }
 window.wireTileToggle = wireTileToggle;
 
-/* "How this works" cards open when their heading is clicked. Wired once, on
-   the document, so a card re-rendered by its tab needs nothing further. */
+/* Folding cards. Any .opt-fold card closes and opens from its heading; the
+   state is remembered per heading so a tab comes back the way you left it.
+   "How this works" starts closed (the class is in its markup), everything
+   else starts open. Wired once, on the document, so a card re-rendered by its
+   tab needs nothing further -- the tab calls applyFolds() after rendering. */
+let FOLDS = {};
+try { FOLDS = JSON.parse(localStorage.getItem('vibeFolds') || '{}') || {}; } catch (_) { /* private mode */ }
+// Keyed on the heading's own words, not its count badge: "House 2472 · 40%"
+// changes with the library, and the fold should survive that.
+const foldKey = card => {
+  const h = card.querySelector('h3');
+  if (!h) return '';
+  const t = h.firstChild && h.firstChild.nodeType === 3 ? h.firstChild.textContent : h.textContent;
+  return t.trim();
+};
 document.addEventListener('click', e => {
-  const h = e.target.closest('.gen-how > h3');
-  if (h) h.parentElement.classList.toggle('collapsed');
+  const h = e.target.closest('.opt-fold > h3');
+  if (!h) return;
+  const card = h.parentElement;
+  const closed = card.classList.toggle('collapsed');
+  FOLDS[foldKey(card)] = closed;
+  try { localStorage.setItem('vibeFolds', JSON.stringify(FOLDS)); } catch (_) { /* private mode */ }
 });
+window.applyFolds = root => {
+  for (const card of root.querySelectorAll('.opt-fold')){
+    const k = foldKey(card);
+    if (k in FOLDS) card.classList.toggle('collapsed', !!FOLDS[k]);
+  }
+};
 
 /* The counter card's ranked bars, shared by the Genres and Vibes tabs so the
    two read as one product. `rows` is [{name, count, color, badge?, title?}],
@@ -217,6 +240,7 @@ const PREFS_DEFAULTS = {
   defaultMap: 'regions',    // the map view the Map tab opens on
   uiScale: 100,             // whole-app zoom, percent
   theme: 'neon',            // see THEMES at the end of app.css
+  eqStyle: 'bars',          // the header's animated spectrum: bars | blocks | dots | glow | off
   analyzerIdentity: 'v2',   // the Analyzer's default lenses (see GLOBAL)
   analyzerSeg: 'hysteresis',
 };
@@ -229,6 +253,7 @@ function setPref(key, value){
   try { localStorage.setItem('vibePrefs', JSON.stringify(PREFS)); } catch (_) { /* private mode */ }
   if (key === 'uiScale') applyUiScale();
   if (key === 'theme') applyTheme();
+  if (key === 'eqStyle') applyEqStyle();
   for (const fn of PREF_LISTENERS) fn(key, value);
 }
 /* UI scale is a CSS zoom on the body: the app is laid out in pixels, so a
@@ -1891,9 +1916,17 @@ clearB.addEventListener('click', () => {
 });
 
 /* ---- EQ bars: build the header signature element ---- */
+const EQ_STYLES = [['bars', 'bars'], ['blocks', 'LED blocks'], ['dots', 'bubbles'], ['glow', 'soft glow'], ['off', 'off']];
+function applyEqStyle(){
+  const el = document.getElementById('eq-bars');
+  if (!el) return;
+  const s = EQ_STYLES.some(([k]) => k === PREFS.eqStyle) ? PREFS.eqStyle : 'bars';
+  el.className = 'eq-bars eq-' + s;
+}
 (function(){
   const el = document.getElementById('eq-bars');
   if (!el) return;
+  applyEqStyle();
   const COLORS = ['#22D3EE','#5DE9FF','#38BDF8','#7C5CFF','#67E8F9','#818CF8','#22D3EE'];
   for (let i = 0; i < 48; i++){
     const s = document.createElement('span');

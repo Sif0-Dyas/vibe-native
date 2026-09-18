@@ -342,7 +342,7 @@
   /* Plain-language opener. This is the first thing a new user reads on the tab,
      so it explains the words the rest of the page uses before using them. */
   function howCard() {
-    return '<div class="opt-card gen-how collapsed"><h3>How this works</h3>' +
+    return '<div class="opt-card gen-how opt-fold collapsed"><h3>How this works</h3>' +
       '<div class="opt-note">' +
       'Vibedentify listens to each track and works out what <b>genre</b> it is. ' +
       'Genres are arranged in a tree, from broadest to most specific:' +
@@ -392,7 +392,7 @@
     });
     var list = window.statRowsHtml(rows, total);
 
-    return '<div class="opt-card"><h3>Total genres</h3>' +
+    return '<div class="opt-card opt-fold"><h3>Total genres</h3>' +
       '<div class="gen-bigstats">' +
         '<div class="gen-bigstat"><b>' + rows.length + '</b><i>genres in your library</i></div>' +
         '<div class="gen-bigstat"><b>' + total + '</b><i>tracks analysed</i></div>' +
@@ -409,7 +409,33 @@
     '</div>';
   }
 
-  function render(families) {
+  function trainingCard(t) {
+    if (!t) return '';
+    var rows = (t.genres || []).map(function (g) {
+      var bar = g.state === 'ready' ? 'ok' : (g.state === 'thin' ? 'warn' : 'bad');
+      var need = g.needs ? ' · needs ' + g.needs + ' more' : '';
+      return '<div class="opt-row">' +
+        '<span class="k">' + esc(g.genre) + '</span>' +
+        '<span class="v"><span class="vib-state ' + bar + '">' + g.state + '</span> ' +
+          g.files + ' file' + (g.files === 1 ? '' : 's') + need + '</span>' +
+      '</div>';
+    }).join('');
+    return '<div class="opt-card"><h3>Training data</h3>' +
+      '<div class="opt-note">This is separate from vibes, and it is about '  +
+      '<b>genres</b>. Whenever you correct a track’s genre by hand, Vibedentify keeps ' +
+      'a copy of that audio as an example to learn from. This is what it has so far.</div>' +
+      (rows || '<div class="opt-note">Nothing yet. Correcting a track’s genre files its ' +
+        'audio here automatically.</div>') +
+      '<div class="opt-note">It needs <b>variety</b> more than volume, but one or two tracks ' +
+      'cannot represent a genre &mdash; it would learn those particular recordings, not the ' +
+      'sound. <b>' + t.thresholds.ready + '+</b> files reads as ready, <b>' +
+      t.thresholds.thin + '–' + (t.thresholds.ready - 1) + '</b> as thin. Guidance, not ' +
+      'a gate: you can train with less, it just will not generalise.<br><br>' +
+      'Custom model: <b>' + (t.custom_head ? 'trained' : 'not trained yet — using the ' +
+      'built-in one') + '</b>. Files live in <code>' + esc(t.folder) + '</code>.</div></div>';
+  }
+
+  function render(families, training) {
     body.innerHTML =
       // Order: explain it, then summarise it, then show it, then let them change
       // it. Actions and appearance sit at the bottom because they are the rarest
@@ -417,7 +443,7 @@
       howCard() +
       statsCard(families) +
       '<h2 class="gen-sechd">Genres<span>every genre found in your library, grouped by ' +
-        'archgenre</span></h2>' +
+        'archgenre \u00b7 click a heading to fold it</span></h2>' +
       families.map(function (f) {
         var name = f.archgenre || f.family;
         var solo = f.standalone && f.keystones.length === 1;
@@ -425,7 +451,7 @@
         // repeats the single card beneath it. But that heading is the ONLY place
         // the archgenre tier is stated, so House and Trance read as ordinary
         // genres. Keep it, and say plainly why the name appears twice.
-        return '<div class="opt-card gen-fam">' +
+        return '<div class="opt-card gen-fam opt-fold">' +
           '<h3>' + esc(name) + ' <span class="gen-n">' + f.count +
             ' \u00b7 ' + Math.round(f.share * 100) + '% \u00b7 archgenre' +
             (solo ? ' &amp; genre' : '') + '</span></h3>' +
@@ -446,7 +472,8 @@
         '</div>';
       }).join('') +
       '<h2 class="gen-sechd">Library actions &amp; taxonomy edits' +
-        '<span>re-run the classifier, and keep your own corrections</span></h2>' +
+        '<span>re-run the classifier, keep your own corrections, and what it has learned</span></h2>' +
+      trainingCard(training) +
       '<div class="opt-card"><h3>Re-label your library</h3>' +
         '<div class="opt-row"><span class="k">Status</span>' +
           '<span class="v" id="gen-rl-stat">—</span></div>' +
@@ -683,7 +710,8 @@
           k.tier = grp.standalone ? 'archgenre' : 'keystone';
         });
       });
-      render(groups);
+      render(groups, st);
+      window.applyFolds(body);
       if (keep) {
         var card = body.querySelector('.gen-key[data-g="' + keep.replace(/"/g, '\\"') + '"]');
         if (card) {

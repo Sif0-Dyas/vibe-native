@@ -329,6 +329,31 @@
       <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
         <input type="range" id="map-spin" min="0" max="100" value="10">
       </label>
+      <button id="map-fly" class="map-toggle" type="button"
+              title="fly: stand in the field and move through it (V)">&#128640; fly</button>
+      <div class="map-lblwrap">
+        <button id="map-keys-head" class="map-toggle" type="button" title="navigation controls">&#9000; nav</button>
+        <div id="map-keys-body" class="map-panel" hidden>
+          <div class="mp-head">Orbit</div>
+          <div class="mk-row"><span>drag</span><b>orbit</b></div>
+          <div class="mk-row"><span>right-drag</span><b>pan</b></div>
+          <div class="mk-row"><span>scroll</span><b>zoom</b></div>
+          <div class="mk-row"><span>w / s</span><b>zoom</b></div>
+          <div class="mk-row"><span>a / d</span><b>orbit</b></div>
+          <div class="mk-row"><span>arrows</span><b>pan</b></div>
+          <div class="mk-row"><span>space</span><b>play / pause</b></div>
+          <div class="mk-row"><span>f / esc</span><b>fit / close</b></div>
+          <div class="mp-sep"></div>
+          <div class="mp-head">Fly (V)</div>
+          <div class="mk-row"><span>w / s</span><b>forward / back</b></div>
+          <div class="mk-row"><span>a / d</span><b>left / right</b></div>
+          <div class="mk-row"><span>q / e</span><b>down / up</b></div>
+          <div class="mk-row"><span>shift</span><b>faster</b></div>
+          <div class="mk-row"><span>drag / arrows</span><b>look</b></div>
+          <div class="mk-row"><span>scroll</span><b>speed</b></div>
+          <div class="mk-row"><span>f</span><b>land</b></div>
+        </div>
+      </div>
     </div>
     <!-- the active view's own controls: only while that view is on screen, so
          the toolbar reads the same in every mode -->
@@ -347,7 +372,7 @@
       <div id="uni-panel" class="map-panel" hidden>
         <div class="mp-head">Galaxies</div>
         <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
-          <input type="range" id="uni-sep" min="30" max="400" value="100"></div>
+          <input type="range" id="uni-sep" min="30" max="1000" value="100"></div>
         <div class="mp-hint">How much empty space the sky is made of. Bigger genres take
           proportionally more room, so this stretches the gaps, not the galaxies.</div>
         <div class="mp-sep"></div>
@@ -359,7 +384,7 @@
         <div class="mp-sep"></div>
         <div class="mp-head">Stars</div>
         <div class="mp-field"><span>Spread <i id="uni-spread-v">1.0&times;</i></span>
-          <input type="range" id="uni-spread" min="30" max="300" value="100"></div>
+          <input type="range" id="uni-spread" min="30" max="800" value="100"></div>
         <div class="mp-hint">How far apart the stars inside each galaxy sit. The galaxies stay
           where they are and grow or shrink into the space between them &mdash; past about
           1.5&times; neighbours can start to touch, so raise Separation with it.</div>
@@ -379,6 +404,19 @@
     <div class="mode-only" data-for="tree">
       <label class="mp-row mb-row" title="Keep only the genres the taxonomy recognises as electronic">
         <input type="checkbox" id="tree-edm"><span>EDM only</span></label>
+      <div class="map-lblwrap">
+        <button id="tree-gen-btn" class="map-toggle" type="button" title="choose which genres are on the tree">&#9781; genres</button>
+        <div id="tree-gen-panel" class="map-panel" hidden>
+          <div class="mp-head">Genres on the tree</div>
+          <div class="flt-genbtns">
+            <button id="tree-gen-all" type="button">all</button>
+            <button id="tree-gen-none" type="button">none</button>
+          </div>
+          <div id="tree-gen-list" class="flt-genres"></div>
+          <div class="mp-hint">Untick a genre to take its branch off the tree. Counts are how
+            many tracks it holds.</div>
+        </div>
+      </div>
     </div>
     </div>
     <div class="mt-tail">
@@ -394,20 +432,6 @@
   <div id="map-stage">
     <canvas id="map-canvas"></canvas>
     <div id="map-legend"></div>
-    <div id="map-keys">
-      <button id="map-keys-head" type="button" title="show / hide navigation controls">&#9000; nav</button>
-      <div id="map-keys-body">
-        <div class="mk-row"><span>drag</span><b>orbit</b></div>
-        <div class="mk-row"><span>right-drag</span><b>pan</b></div>
-        <div class="mk-row"><span>scroll</span><b>zoom</b></div>
-        <div class="mk-sep"></div>
-        <div class="mk-row"><span>w / s</span><b>zoom</b></div>
-        <div class="mk-row"><span>a / d</span><b>orbit</b></div>
-        <div class="mk-row"><span>arrows</span><b>pan</b></div>
-        <div class="mk-row"><span>space</span><b>play / pause</b></div>
-        <div class="mk-row"><span>f / esc</span><b>fit / close</b></div>
-      </div>
-    </div>
     <div id="map-tip" hidden></div>
     <div id="map-pop" hidden></div>
     <!-- tree mode: clicking a branch samples a track from it -->
