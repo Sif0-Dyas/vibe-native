@@ -13,7 +13,7 @@ from ..db import (
     _db_lock,
     db,
 )
-from ._shared import _artist_of, _dominant_style, _second_style, bp
+from ._shared import _artist_of, _dominant_style, _ranked_read, _second_style, bp
 
 # A runner-up needs at least this share before it's worth offering as a fix.
 # Measured against the library: at 3% about 91% of tracks still keep at least one
@@ -31,10 +31,12 @@ def _override_candidates(p, top_style, limit=5):
     Sending the weights with the node means correcting it is a click instead of
     remembering how to spell it.
 
-    Prefers the salience read (the energy/confidence/recurrence-weighted identity)
-    over the flat scores, matching what ``_dominant_style`` decides from.
+    The same ranked read ``_dominant_style`` decides from (``_ranked_read``), so
+    the candidates are the runners-up of the read the label actually came from:
+    a relabelled track offers the relabel's runners-up, and a genre you removed
+    by hand is not offered back as a one-click correction.
     """
-    ranked = p.get("salience") or p.get("styles") or []
+    ranked = _ranked_read(p)
     out = []
     for entry in ranked:
         style = (entry or {}).get("style")

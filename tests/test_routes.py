@@ -319,6 +319,28 @@ def test_second_style_falls_back_to_styles():
     assert _second_style({}, "Techno", 0.5) is None  # neither key present
 
 
+def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
+    """The label, the colour blend and the override candidates all come from one
+    ranked read. A relabel used to move the label but leave the blend and the
+    candidates on the pre-relabel salience, so the dot argued with its own name."""
+    from vibenative.routes import _second_style
+    from vibenative.routes._shared import _dominant_style
+    from vibenative.routes.map import _override_candidates
+
+    payload = {
+        "salience": [{"style": "Techno", "score": 0.6}, {"style": "House", "score": 0.4}],
+        "relabel": {"styles": [{"style": "Trance", "score": 0.7}, {"style": "Progressive House", "score": 0.3}]},
+    }
+    style, score = _dominant_style(payload)
+    assert style == "Trance"
+    assert _second_style(payload, style, score) == ["Progressive House", 0.3]
+    assert [c["style"] for c in _override_candidates(payload, style)] == ["Progressive House"]
+    # ...and a genre removed by hand is not offered back as a one-click correction.
+    payload["drops"] = ["Progressive House"]
+    style, score = _dominant_style(payload)
+    assert style == "Trance" and _override_candidates(payload, style) == []
+
+
 def test_second_style_zero_top_score_no_zero_division():
     # a zero/None top_score must not raise: denom = (top_score or 0) + sc is always
     # >= sc > 0 here, so the division is safe. With a zero top the weight comes out

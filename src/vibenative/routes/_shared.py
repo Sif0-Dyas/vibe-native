@@ -86,21 +86,25 @@ def _dominant_style(payload):
     # Manual weight adjustments outrank any automatic read: they ARE the reads,
     # nudged by hand. They sit below a full override only because an override is
     # the blunter, more explicit statement -- "it is this", not "it leans this".
-    from ..weights import read_with_steps
-
-    adj = read_with_steps(payload)
-    if adj:
-        return adj[0].get("style"), round(float(adj[0].get("score", 0)), 4)
-    rel = (payload.get("relabel") or {}).get("styles") or []
-    if rel:
-        return rel[0].get("style"), round(float(rel[0].get("score", 0)), 4)
-    sal = payload.get("salience") or []
-    if sal:
-        return sal[0].get("style"), round(float(sal[0].get("score", 0)), 4)
-    st = payload.get("styles") or []
-    if st:
-        return st[0].get("style"), round(float(st[0].get("score", 0)), 4)
+    ranked = _ranked_read(payload)
+    if ranked:
+        return ranked[0].get("style"), round(float(ranked[0].get("score", 0)), 4)
     return None, 0.0
+
+
+def _ranked_read(payload):
+    """The one ranked read every per-track derivation shares.
+
+    The hand-adjusted blend if the track has one, else ``weights.base_read``
+    (relabel, then salience, then the flat styles). The label, the colour
+    blend and the override candidates all come from this, so a track you have
+    relabelled or nudged cannot be labelled from one read and coloured from
+    another -- which is what happened when each of them spelled out its own
+    chain and two of them left the relabel tier out.
+    """
+    from ..weights import base_read, read_with_steps
+
+    return read_with_steps(payload) or base_read(payload)
 
 
 def _second_style(payload, top_style, top_score):
@@ -109,15 +113,12 @@ def _second_style(payload, top_style, top_score):
     colour). Returns [style2, weight2] with weight2 in [0, 0.5], or None when
     there's an override or no distinct runner-up.
 
-    Reads the same adjusted blend ``_dominant_style`` does, so a track you've
-    hand-weighted leans toward the colour you gave it. Reading raw salience here
-    would have left the dot's blend arguing with its own label."""
+    Reads the same ranked read ``_dominant_style`` does, so a track you've
+    hand-weighted or relabelled leans toward the colour you gave it. Reading raw
+    salience here left the dot's blend arguing with its own label."""
     if payload.get("override"):
         return None
-    from ..weights import read_with_steps
-
-    ranked = read_with_steps(payload) or payload.get("salience") or payload.get("styles") or []
-    for s in ranked:
+    for s in _ranked_read(payload):
         st, sc = s.get("style"), float(s.get("score", 0) or 0)
         if st and st != top_style and sc > 0:
             denom = (top_score or 0) + sc
