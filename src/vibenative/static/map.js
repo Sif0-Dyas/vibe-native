@@ -758,10 +758,12 @@
      UNI.by is 'vibe' or 'arch'. Vibe membership is fetched once per map load
      (see loadOverlays) because it lives in the database, not on the node. */
   const UNI_FIELD = '\u2014 not in a vibe \u2014';        // where unassigned tracks drift
-  /* `by`   what a galaxy is: 'arch' (keystone genre), 'fam' (family), 'vibe'.
-     `sep`  how big the sky is -- see the relaxation, where it sets the balance.
-     `grav` how hard related galaxies pull on each other; 0 is a plain even shell.
-     `v`    which meaning those numbers have.
+  /* `by`     what a galaxy is: 'arch' (keystone genre), 'fam' (family), 'vibe'.
+     `sep`    how big the sky is -- see the relaxation, where it sets the balance.
+     `grav`   how hard related galaxies pull on each other; 0 is a plain even shell.
+     `spread` how far apart the stars inside a galaxy sit -- see uniGalaxies,
+              where it scales each galaxy after the sky has been laid out.
+     `v`      which meaning those numbers have.
 
      `sep` used to scale the starting positions and nothing else, so a stored 1
      from that version does not mean what a 1 means now. Rather than silently
@@ -769,10 +771,11 @@
      the current defaults -- the alternative is a saved preference that quietly
      becomes a different preference under the user. */
   const UNI_V = 2;
-  let UNI = { by: 'arch', sep: 1.6, grav: 1, v: UNI_V };
+  let UNI = { by: 'arch', sep: 1.6, grav: 1, spread: 1, v: UNI_V };
   try {
     const saved = JSON.parse(localStorage.getItem('vibeUniverse') || '{}') || {};
     if (saved.v === UNI_V) UNI = Object.assign(UNI, saved);
+    if (!(UNI.spread > 0)) UNI.spread = 1;     // a v2 blob saved before spread existed
     else if (saved.by) UNI.by = saved.by;      // that one still means what it did
   } catch(_){}
   const saveUni = () => {
@@ -1047,6 +1050,15 @@
     // opens on the busiest music rather than on wherever the relaxation drifted.
     const c = G[names[0]];
     for (const g of names){ G[g].x -= c.x; G[g].y -= c.y; G[g].z -= c.z; }
+    /* Star spread: how far apart the stars inside each galaxy sit. Applied
+       AFTER the sky is laid out, so it grows or shrinks the galaxies into the
+       gaps the separation control left, rather than moving the galaxies --
+       scaling both together would just be zoom. Every distance inside a galaxy
+       (system orbits, star orbits, the scatter, the gas) is a multiple of its
+       radius, so this one number is the whole control. Past ~1.5 neighbouring
+       galaxies can start to touch; that is what separation is for. */
+    const spread = clamp(UNI.spread, 0.3, 3);
+    for (const g of names) G[g].radius *= spread;
     return G;
   }
 
@@ -4004,15 +4016,19 @@
   if (uniBtn && uniPanel){
     const sepIn = document.getElementById('uni-sep');
     const gravIn = document.getElementById('uni-grav');
+    const spreadIn = document.getElementById('uni-spread');
     const sepV = document.getElementById('uni-sep-v');
     const gravV = document.getElementById('uni-grav-v');
+    const spreadV = document.getElementById('uni-spread-v');
     let relayoutT = null;
     const showVals = () => {
       sepV.textContent = UNI.sep.toFixed(1) + '\u00d7';
       gravV.textContent = UNI.grav.toFixed(1) + '\u00d7';
+      spreadV.textContent = UNI.spread.toFixed(1) + '\u00d7';
     };
     sepIn.value = String(Math.round(UNI.sep * 100));
     gravIn.value = String(Math.round(UNI.grav * 100));
+    spreadIn.value = String(Math.round(UNI.spread * 100));
     showVals();
     const relayoutSoon = () => {
       clearTimeout(relayoutT);
@@ -4026,6 +4042,9 @@
     });
     gravIn.addEventListener('input', () => {
       UNI.grav = Math.max(0, Number(gravIn.value) / 100); showVals(); relayoutSoon();
+    });
+    spreadIn.addEventListener('input', () => {
+      UNI.spread = Math.max(0.3, Number(spreadIn.value) / 100); showVals(); relayoutSoon();
     });
     uniBtn.addEventListener('click', e => {
       e.stopPropagation(); closeMapPanels(uniPanel); uniPanel.hidden = !uniPanel.hidden;

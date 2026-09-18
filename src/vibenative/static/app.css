@@ -1223,12 +1223,12 @@ body.view-options .lensbar{ display:none; }
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px; }
 #map-tip span{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); }
 .map-hint{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--dim); }
-#map-reset{
+#map-reset, #map-rebuild{
   background:var(--panel-2); border:1px solid var(--line); color:var(--dim);
   font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:5px 11px;
   border-radius:6px; cursor:pointer;
 }
-#map-reset:hover{ color:var(--text); border-color:var(--dimmer); }
+#map-reset:hover, #map-rebuild:hover{ color:var(--text); border-color:var(--dimmer); }
 
 /* ---- stage + svg ---- */
 #map-stage{

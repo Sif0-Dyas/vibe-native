@@ -205,7 +205,7 @@
     </select>
     <div class="map-lblwrap mode-only" data-for="universe">
       <button id="uni-btn" class="map-toggle" type="button"
-              title="how far apart the galaxies sit, and how hard they pull on each other">&#9737;&#8942;</button>
+              title="how far apart the galaxies sit, how hard they pull on each other, and how far apart the stars inside them are">&#9737;&#8942;</button>
       <div id="uni-panel" class="map-panel" hidden>
         <div class="mp-head">Galaxies</div>
         <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
@@ -218,6 +218,13 @@
         <div class="mp-hint">How hard genres that share tracks pull on each other. At 0 the
           galaxies just spread out evenly; turn it up and the ones whose tracks are actually
           each other&rsquo;s nearest neighbours drift together and start to swirl.</div>
+        <div class="mp-sep"></div>
+        <div class="mp-head">Stars</div>
+        <div class="mp-field"><span>Spread <i id="uni-spread-v">1.0&times;</i></span>
+          <input type="range" id="uni-spread" min="30" max="300" value="100"></div>
+        <div class="mp-hint">How far apart the stars inside each galaxy sit. The galaxies stay
+          where they are and grow or shrink into the space between them &mdash; past about
+          1.5&times; neighbours can start to touch, so raise Separation with it.</div>
       </div>
     </div>
     <select id="solar-pl" class="map-filter mode-only" data-for="solar"

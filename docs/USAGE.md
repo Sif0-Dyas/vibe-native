@@ -293,13 +293,16 @@ sky is built rather than laid out on a grid.
   another's tide, with the outer stars streaming toward the neighbour. None of
   that is hardcoded — take the bridge tracks out and the pull goes with them.
 
-Two controls behind **⊙⋮**:
+Three controls behind **⊙⋮**:
 
 - **Separation** — how much empty space sits between galaxies. It widens the
   gaps, not the galaxies: scaling both would just be zoom, which is why the old
   version of this control appeared to do nothing.
 - **Gravity** — how hard related genres pull on each other. At 0 they spread out
   evenly and ignore each other; turn it up and the related ones clump and swirl.
+- **Spread** — how far apart the stars inside each galaxy sit. The galaxies stay
+  where they are and grow or shrink into the space between them, so past about
+  1.5× neighbours can start to touch — raise Separation with it.
 
 Galaxy names are sized by how big the galaxy is, and only the biggest sixteen
 are shown at once — naming seventy galaxies at the same time means naming none of
