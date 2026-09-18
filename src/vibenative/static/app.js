@@ -36,6 +36,17 @@ function vibeWaveSvg(color, seed){
 }
 window.vibeWaveSvg = vibeWaveSvg;
 
+/* A stable hue (0..359) from a name. Anything with no palette entry -- a
+   genre family the palette does not slot, a vibe -- is coloured by this, and
+   it is one function so a vibe's swatch on the Vibes tab and its galaxy in
+   the Universe are the same colour by construction, not by coincidence. */
+/* exported nameHue */ // used by map.js and vibes.js (shared scope)
+function nameHue(name){
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return ((h % 360) + 360) % 360;
+}
+
 /* The Genres and Vibes tabs share one card grid: select a tile to expand its
    card, one at a time -- an open card spans the full grid row, so several at
    once undoes the grid. `onOpen(cardEl)` runs for the card that just opened. */

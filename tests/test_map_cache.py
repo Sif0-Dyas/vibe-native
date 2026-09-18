@@ -15,6 +15,7 @@ much as of the machine -- only that the second request is served from the store.
 
 import json
 
+from conftest import seed_track
 from vibenative import weights as W
 
 REAL = [
@@ -24,10 +25,7 @@ REAL = [
 
 
 def seed(client, h="mc1", payload=None):
-    from vibenative.db import cache_put
-
-    cache_put(h, f"{h}.mp3", "", h, payload or {"salience": REAL}, None)
-    return h
+    return seed_track(h, payload or {"salience": REAL})
 
 
 def build(client):

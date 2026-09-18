@@ -13,6 +13,7 @@ defensible against the case that motivated it.
 
 import pytest
 
+from conftest import seed_track
 from vibenative import weights as W
 
 # The read that motivated the tuning, from a real track.
@@ -189,11 +190,7 @@ def test_an_adjustment_bends_a_confident_read_without_overruling_it():
 
 # --- the HTTP surface ---------------------------------------------------------
 def seed(payload, h="wt1"):
-    """Put one analysed track in the scratch DB."""
-    from vibenative.db import cache_put
-
-    cache_put(h, f"{h}.mp3", "", h, payload, None)
-    return h
+    return seed_track(h, payload)
 
 
 def test_get_returns_the_read_and_the_vocabulary(client):

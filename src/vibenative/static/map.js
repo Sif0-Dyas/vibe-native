@@ -240,10 +240,7 @@
       return ((t ^ (t>>>14)) >>> 0) / 4294967296;
     };
   }
-  function hueOf(fam){
-    let h = 0; for (let i=0;i<fam.length;i++) h = (h*31 + fam.charCodeAt(i)) | 0;
-    return ((h % 360) + 360) % 360;
-  }
+  const hueOf = nameHue;               // app.js: shared with the Vibes tab's swatches
   // user-customisable per-family base hue (persisted); falls back to the hash hue
   let FAM_HUE = {};
   try { FAM_HUE = JSON.parse(localStorage.getItem('vibeFamHue') || '{}') || {}; } catch(_){ FAM_HUE = {}; }

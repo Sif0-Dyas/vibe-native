@@ -22,12 +22,10 @@
   }
 
   /* A vibe has no palette entry the way a keystone does -- nothing external
-     assigns it a colour -- so derive a stable one from the name. Same name,
-     same colour, on every machine and after every reload. */
+     assigns it a colour -- so derive a stable one from the name (nameHue,
+     app.js: the same hue its galaxy gets on the map). */
   function vibeColor(name) {
-    var h = 0, i;
-    for (i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-    return 'hsl(' + (((h % 360) + 360) % 360) + ' 58% 60%)';
+    return 'hsl(' + nameHue(name) + ' 58% 60%)';
   }
 
   /* How full a vibe is. A one-track vibe is a note to self, not a category, and
