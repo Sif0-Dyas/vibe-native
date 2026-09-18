@@ -295,11 +295,6 @@
        maxSub     0 = all, else cap the number of subgenre labels             */
   const LBL_DEFAULTS = { showFam:true, showSub:true, subAlways:false, onlyFam:'',
     colorFam:false, counts:false, opacity:1, dist:1, size:1, maxFam:0, maxSub:0,
-    // flat: draw nodes and links as plain 2-D marks -- no depth shading on the
-    // dots, no depth fade on the links. The layout still comes from the 3-D
-    // positions (that's what the clustering means); only the *rendering* of
-    // depth is dropped, which is what makes a flat map readable for picking.
-    flat:false,
     // hideText   kill every label the canvas draws, in one switch. Distinct
     //            from unticking genre+subgenre: it also drops the leader lines
     //            and the solar ring labels, so the view is purely the stars.
@@ -308,16 +303,12 @@
     //            star actually behaves through atmosphere.
     // leaders    draw the line tying a moved label back to its cluster
     // labelStyle 'halo' (stroked outline) or 'pill' (solid rounded plate)
-    // glow       render nodes as lit spheres with a corona instead of flat
-    //            discs. Ignored in flat (2-D) mode, which is the point of it.
-    // shine      how much corona each star gets, 0 = none. UNLIKE `glow` this
-    //            applies in the flat view too: the corona is the part that
-    //            reads as light being emitted, and wanting that is separate
-    //            from wanting the shelved 3-D sphere bodies. 0 is exactly the
+    // shine      how much corona each star gets, 0 = none: the corona is the
+    //            part that reads as light being emitted. 0 is exactly the
     //            plain-disc field the map drew before it existed.
     // sizeByRating / useArtistRating / unratedScale -- see ratingBoost()
     hideText:false, twinkle:'subtle', leaders:false, labelStyle:'halo',
-    glow:true, shine:1.4, sizeByRating:false, useArtistRating:true, unratedScale:0.8,
+    shine:1.4, sizeByRating:false, useArtistRating:true, unratedScale:0.8,
     linkWidth:1 };
   let LBL = Object.assign({}, LBL_DEFAULTS);
   try { LBL = Object.assign(LBL, JSON.parse(localStorage.getItem('vibeMapLabels') || '{}') || {}); } catch(_){}
@@ -507,34 +498,7 @@
   // considered. The colour key is quantised coarsely enough that the cache
   // stays in the low hundreds of entries even at 128x128 each.
   const SPRITE_R = 64;                              // sprite half-size in px
-  const CORE_SCALE = 1.45;                          // lit body vs. the old flat dot
   const GLOW_SCALE = 2.6;                           // corona reach vs. core radius
-
-  /* ==== 3-D star rendering: SHELVED ====================================
-     Set SPHERES to true to bring it back. That is the only change needed --
-     everything it drives is still here and still works.
-
-     What it turns on: stars drawn as lit spheres with a corona, dot size
-     scaled by perspective, and brightness scaled by depth. What it costs, and
-     why it is off: it did not look the way it was meant to, and the glow and
-     per-star sprite work made a large library heavy to draw.
-
-     Deliberately a constant rather than a default, because a default loses to
-     whatever is already in localStorage -- anyone who had used the map before
-     would still get spheres, and would have no idea why. The constant wins
-     over stored preferences, so this is genuinely off for everyone.
-
-     With it off, the map draws the flat view that was always available as an
-     option: plain coloured discs, one size, positioned by the same 3-D layout.
-     The layouts, labels, filters, popups, ratings, search and the tree and
-     solar views are all untouched.
-     ==================================================================== */
-  const SPHERES = false;
-
-  // Read these instead of LBL.flat / LBL.glow anywhere that draws, so the
-  // constant above overrides whatever a returning user has stored.
-  const flatMode = () => (SPHERES ? LBL.flat : true);
-  const glowMode = () => (SPHERES ? LBL.glow : false);
 
   /* Where the light comes from, as a fraction of the body's radius.
      A sphere only reads as a sphere when it is lit from somewhere: a gradient
@@ -543,16 +507,6 @@
      and keeping that direction the same for every star makes the field look
      like one scene rather than a thousand unrelated blobs. */
   const LIGHT_X = -0.38, LIGHT_Y = -0.38;
-  // On-screen core radius (CSS pixels) past which the sprite is magnified beyond
-  // its own resolution and goes soft, so those few stars are drawn with a real
-  // gradient instead. The sprite is SPRITE_R (64px) of source, so 1:1 at DPR 2
-  // lands around 32; 26 keeps a margin.
-  //
-  // Set this low (3.2) at one point and the map ground to under a frame per
-  // second: at high zoom that is thousands of createRadialGradient calls every
-  // frame. The sprite is a clipped, hard-edged sphere itself now, so there is
-  // nothing to gain from the exact path until magnification actually softens it.
-  const CRISP_ABOVE = 26;
   // How much of the corona is added per star. Deliberately small: the corona is
   // drawn with 'lighter', which ACCUMULATES, and a dense cluster stacks hundreds
   // of them on the same pixels. At full strength that saturates to a solid white
@@ -581,16 +535,8 @@
     ctx.drawImage(glowSprite(n), p.sx - gr, p.sy - gr, gr * 2, gr * 2);
   }
 
-  /* Two sprites per colour, because they have to composite differently.
-
-     `core` is the lit body: a small sphere shaded from a white-hot centre out to
-     the genre's colour, drawn normally (source-over) so that overlapping stars
-     occlude rather than sum. This is what keeps a dense cluster legible.
-
-     `corona` is the halo, drawn additively at low alpha so that a handful of
-     nearby stars genuinely brighten each other -- the part that reads as light
-     being emitted -- without a crowd blowing out to white. */
-  /* Colour stops for a lit sphere, from the highlight out to the dark limb.
+  /* Colour stops for a lit sphere -- the Solar view's sun -- from the
+     highlight out to the dark limb.
 
      The silhouette stop is FULLY OPAQUE. That is the whole difference between
      an orb and a blur: the previous body faded from alpha 0.95 to 0 across the
@@ -625,22 +571,15 @@
   // applied as alpha at draw time, so this is only the midpoint it varies around.
   const SPRITE_LIGHT = 56;
 
-  /* The two sprites a star draws with, resolved once and kept on the node.
+  /* The corona sprite a star draws with, resolved once and kept on the node.
 
      starSprite() is cheap but not free: it rounds three numbers, builds a key
-     string and hits a Map. Calling it twice per star per frame on a 3,000-track
-     library is 6,000 key strings every frame -- around 360,000 short-lived
-     strings a second for no gain, since n.hue / n.sat / n.dl do not change
-     between layouts.
-
-     Invalidated by clearing these two fields wherever those three are assigned:
-     layout(), and the two single-node recolours (an adjusted blend, an
-     override). There are exactly three such places. */
-  function coreSprite(n){
-    return n._spCore || (n._spCore = starSprite(n.hue, n.sat || 64, n.dl, 'core'));
-  }
+     string and hits a Map. Calling it per star per frame on a 3,000-track
+     library is 3,000 key strings every frame for no gain, since n.hue / n.sat
+     / n.dl do not change between layouts. Invalidated by setShade(), the one
+     place those three are assigned. */
   function glowSprite(n){
-    return n._spGlow || (n._spGlow = starSprite(n.hue, n.sat || 64, n.dl, 'corona'));
+    return n._spGlow || (n._spGlow = starSprite(n.hue, n.sat || 64, n.dl));
   }
 
   /* Nebula gas: one very soft, very faint blob per system.
@@ -677,13 +616,16 @@
     return cv;
   }
 
-  function starSprite(hue, sat, dl, kind){
+  /* The halo, drawn additively at low alpha so that a handful of nearby stars
+     genuinely brighten each other -- the part that reads as light being
+     emitted -- without a crowd blowing out to white. */
+  function starSprite(hue, sat, dl){
     const h = Math.round(hueOk(hue) / 6) * 6;
     const sa = Math.round(pctOk(sat, 64) / 8) * 8;
     // dl is the subgenre's lightness offset -- stable for the whole layout, so
     // it is safe in the key. Depth and twinkle deliberately are NOT.
     const li = Math.round(clamp(SPRITE_LIGHT + (Number.isFinite(dl) ? dl : 0), 20, 84) / 6) * 6;
-    const key = kind + '|' + h + '|' + sa + '|' + li;
+    const key = h + '|' + sa + '|' + li;
     let cv = STAR_SPRITES.get(key);
     if (cv) return cv;
     // Backstop. The key is bounded by the palette and the subgenre list, so this
@@ -693,27 +635,12 @@
     cv = document.createElement('canvas');
     cv.width = cv.height = SPRITE_R * 2;
     const g = cv.getContext('2d');
-    if (kind === 'core'){
-      // The same lit sphere as drawSphere, baked once. Clipped to the circle so
-      // the sprite carries a hard edge (one pixel of antialiasing, not a 38%
-      // fade), which is what keeps a blitted star looking solid.
-      const R = SPRITE_R - 1;
-      const grd = g.createRadialGradient(
-        SPRITE_R + R * LIGHT_X, SPRITE_R + R * LIGHT_Y, R * 0.03,
-        SPRITE_R, SPRITE_R, R);
-      sphereStops(grd, h, sa, li);
-      g.beginPath();
-      g.arc(SPRITE_R, SPRITE_R, R, 0, 6.2832);
-      g.fillStyle = grd;
-      g.fill();
-    } else {
-      const grd = g.createRadialGradient(SPRITE_R, SPRITE_R, 0, SPRITE_R, SPRITE_R, SPRITE_R);
-      grd.addColorStop(0.00, `hsla(${h} ${Math.min(100, sa + 14)}% ${clamp(li + 20, 34, 90)}% / 0.85)`);
-      grd.addColorStop(0.35, `hsla(${h} ${sa}% ${li}% / 0.34)`);
-      grd.addColorStop(1.00, `hsla(${h} ${sa}% ${li}% / 0)`);
-      g.fillStyle = grd;
-      g.fillRect(0, 0, SPRITE_R * 2, SPRITE_R * 2);
-    }
+    const grd = g.createRadialGradient(SPRITE_R, SPRITE_R, 0, SPRITE_R, SPRITE_R, SPRITE_R);
+    grd.addColorStop(0.00, `hsla(${h} ${Math.min(100, sa + 14)}% ${clamp(li + 20, 34, 90)}% / 0.85)`);
+    grd.addColorStop(0.35, `hsla(${h} ${sa}% ${li}% / 0.34)`);
+    grd.addColorStop(1.00, `hsla(${h} ${sa}% ${li}% / 0)`);
+    g.fillStyle = grd;
+    g.fillRect(0, 0, SPRITE_R * 2, SPRITE_R * 2);
     STAR_SPRITES.set(key, cv);
     return cv;
   }
@@ -1387,7 +1314,7 @@
      the one place the colour can change, rather than rebuilt per frame. */
   function setShade(n, sh){
     n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
-    n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
+    n._spGlow = null;               // colour changed -> re-resolve its sprite
     n._css = null;
     n.sk = `${n.fam}||${n.style || n.fam}`;
   }
@@ -2076,13 +2003,13 @@
       const persp = CAM / dist;
       const sxp = cxp + x*persp*DISP;
       const syp = cyp + y2*persp*DISP;
-      // Depth drives dot brightness, alpha, size and the label fade. Pinning it
-      // to 1 in flat mode neutralises all of those from one place, instead of
-      // special-casing every draw site. Layout still comes from the 3-D
-      // positions -- only the depth *cues* go away.
-      const depth = flatMode() ? 1 : clamp((z2+1.15)/2.3, 0, 1);
-      const rp = flatMode() ? 1 : persp;        // flat: every dot the same size
-      const r = clamp(4.2*rp*Math.sqrt(view.zoom)*ratingBoost(n), 1.2, 46);
+      // Every dot the same size and the same brightness at every depth: the
+      // layout comes from the 3-D positions (that is what the clustering
+      // means), but the depth *cues* were dropped with the sphere renderer --
+      // a flat map is the one that is readable for picking. `depth` is still
+      // carried on the projection because the rings and labels fade by it.
+      const depth = 1;
+      const r = clamp(4.2*Math.sqrt(view.zoom)*ratingBoost(n), 1.2, 46);
       // Cull anything whose glow cannot reach the viewport. At high zoom most
       // of the library sits off-screen, and blitting it was pure waste.
       const reach = r * GLOW_SCALE + 2;
@@ -2151,10 +2078,6 @@
        One blob per system, at the system's own size, in the system's own colour.
        Skipped when the glow is off -- that switch means "no light bleeding into
        the black", and gas is nothing but light bleeding into the black. */
-    // Gated on the glow strength alone. NOT on flatMode(): that is true by
-    // default (the 3-D sphere renderer is shelved behind SPHERES), and it means
-    // "draw bodies as discs", not "no light in the black" -- the flat renderer
-    // draws coronas too. Gating on it meant the gas could never appear at all.
     if (mapMode === 'universe' && LBL.shine > 0 && GALAXIES){
       const wp = { x:0, y:0, z:0 };
       ctx.globalCompositeOperation = 'lighter';
@@ -2255,41 +2178,23 @@
       const { alpha, compatible, lit, flash } = p.lit || starLight(p, n);
       ctx.globalAlpha = alpha;
       if (!Number.isFinite(n.hue)) warnShade('node', n);
-      if (glowMode() && !flatMode()){
-        // A lit sphere, not a flat disc -- this is what actually separates the
-        // 3-D view from the 2-D one, which previously differed only in size and
-        // transparency. The coronas were drawn in the pass above, so every core
-        // here lands on top of every halo and a crowded cluster keeps its shape.
-        const cr = p.r * CORE_SCALE;
-        if (cr > CRISP_ABOVE){
-          // Only when the sprite would be magnified past its own resolution.
-          // Setting this threshold low is what dropped the map to a crawl once:
-          // it is a fresh gradient object per star per frame.
-          drawSphere(p.sx, p.sy, cr, hueOk(n.hue), pctOk(n.sat, 64),
-                     clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84));
-        } else {
-          ctx.drawImage(coreSprite(n), p.sx-cr, p.sy-cr, cr*2, cr*2);
-        }
-      } else {
-        // Flat (2-D): a plain disc over the corona already laid down above. The
-        // disc is what keeps a dense cluster legible -- it is opaque, so
-        // neighbours occlude instead of summing -- and the halo under it is what
-        // makes the field read as a sky rather than dots printed on black.
-        // Depth and twinkle are already in globalAlpha.
-        ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
-        ctx.fillStyle = discCss(n);
-        ctx.fill();
-      }
+      // A plain disc over the corona already laid down above. The disc is what
+      // keeps a dense cluster legible -- it is opaque, so neighbours occlude
+      // instead of summing -- and the halo under it is what makes the field
+      // read as a sky rather than dots printed on black. Twinkle is already in
+      // globalAlpha.
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
+      ctx.fillStyle = discCss(n);
+      ctx.fill();
       if (lit && flash > 0.02){
         /* White over the body, additively, so the star washes out to white at
            the top of the pulse instead of merely getting brighter in its own
            colour -- which on a map where colour IS the genre reads as "slightly
            more House", not as "this one". Drawn at the body's size so it is the
            star that flashes and not a blob around it. */
-        const wr = (glowMode() && !flatMode()) ? p.r * CORE_SCALE : p.r;
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = flash * 0.85;
-        ctx.beginPath(); ctx.arc(p.sx, p.sy, wr, 0, 6.2832);
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
         ctx.fillStyle = '#ffffff'; ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = alpha;
@@ -3982,10 +3887,8 @@
       setChk('lbl-subalways', LBL.subAlways);
       setChk('lbl-color', LBL.colorFam);
       setChk('lbl-counts', LBL.counts);
-      setChk('lbl-flat', flatMode());
       setChk('lbl-hidetext', LBL.hideText);
       setChk('lbl-leaders', LBL.leaders);
-      setChk('lbl-glow', glowMode());
       setChk('lbl-rate', LBL.sizeByRating);
       setChk('lbl-rate-artist', LBL.useArtistRating);
       setVal('lbl-shine', Math.round(LBL.shine * 100));
@@ -4008,20 +3911,8 @@
       lblBtn.classList.toggle('on',
         !LBL.showFam || !LBL.showSub || !!LBL.onlyFam || !!LBL.maxFam || !!LBL.maxSub
         || LBL.linkWidth !== 1 || LBL.hideText || LBL.sizeByRating
-        || LBL.twinkle !== 'subtle' || LBL.labelStyle !== 'halo' || LBL.shine !== 1.4
-        // Only count these while the 3-D path is live; otherwise the button
-        // would read as "settings changed" on a fresh install.
-        || (SPHERES && (LBL.flat || !LBL.glow)));
+        || LBL.twinkle !== 'subtle' || LBL.labelStyle !== 'halo' || LBL.shine !== 1.4);
     };
-    // Hide what the shelved switch now decides. Left in the DOM rather than
-    // deleted from the template so restoring SPHERES needs no HTML change.
-    if (!SPHERES){
-      for (const id of ['lbl-flat', 'lbl-glow']){
-        const el = $(id);
-        const row = el && el.closest('.mp-row');
-        if (row) row.hidden = true;
-      }
-    }
     syncLbl();
     lblBtn.addEventListener('click', e => {
       closeMapPanels(lblPanel);
@@ -4036,10 +3927,8 @@
     bind('lbl-subalways', el => LBL.subAlways = el.checked);
     bind('lbl-color',     el => LBL.colorFam  = el.checked);
     bind('lbl-counts',    el => LBL.counts    = el.checked);
-    bind('lbl-flat',      el => LBL.flat      = el.checked);
     bind('lbl-hidetext',  el => LBL.hideText  = el.checked);
     bind('lbl-leaders',   el => LBL.leaders   = el.checked);
-    bind('lbl-glow',      el => LBL.glow      = el.checked);
     bind('lbl-shine',     el => LBL.shine     = +el.value / 100);
     bind('lbl-twinkle',   el => LBL.twinkle   = el.value);
     bind('lbl-lblstyle',  el => LBL.labelStyle = el.value);
