@@ -84,6 +84,17 @@ def test_tags_for_track_none(client):
     assert client.get("/tags/for/nobody").get_json() == []
 
 
+def test_tags_for_many_answers_every_hash_asked(client):
+    """The batch form the Analyzer uses for the rows on screen: one request, and
+    every hash asked for is a key -- "no tags" is distinguishable from "not asked"."""
+    a = _mktag(client, "Alpha")
+    client.post("/tags/toggle", json={"tag_id": a, "hash": "h1"})
+    body = client.get("/tags/for?hashes=h1,h2,,h1").get_json()
+    assert set(body) == {"h1", "h2"}
+    assert [t["name"] for t in body["h1"]] == ["Alpha"] and body["h2"] == []
+    assert client.get("/tags/for?hashes=").get_json() == {}
+
+
 # --- list with counts --------------------------------------------------------
 def test_tags_list_counts_and_order(client):
     bass = _mktag(client, "Bass")  # 2 tracks

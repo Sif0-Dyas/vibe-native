@@ -690,21 +690,19 @@ function finishRow(row, data, file){
     // the coarse envelope permanently. When the drop is what put the row here we
     // are holding the audio, so send it: one decode, cached for good, and the
     // row redraws at full detail. Without a file in hand the envelope stands.
-    if (data.hash){
-      (async () => {
-        try {
-          let r = await fetch(`/waveform/${data.hash}`);
-          if (r.status === 404 && file){
-            const fd = new FormData();
-            fd.append('file', file);
-            r = await fetch(`/waveform/${data.hash}`, {method: 'POST', body: fd});
-          }
-          if (!r.ok) return;
-          const mm = await r.json();
-          if (mm && mm.max && mm.max.length){ waveState.mm = mm; redraw(null); }
-        } catch (_) { /* offline, or the row went away -- the envelope stands */ }
-      })();
-    }
+    row._fetchWave = async () => {
+      try {
+        let r = await fetch(`/waveform/${data.hash}`);
+        if (r.status === 404 && file){
+          const fd = new FormData();
+          fd.append('file', file);
+          r = await fetch(`/waveform/${data.hash}`, {method: 'POST', body: fd});
+        }
+        if (!r.ok) return;
+        const mm = await r.json();
+        if (mm && mm.max && mm.max.length){ waveState.mm = mm; redraw(null); }
+      } catch (_) { /* offline, or the row went away -- the envelope stands */ }
+    };
 
     function showAt(clientX){
       const rect = c.getBoundingClientRect();
@@ -1076,7 +1074,7 @@ function finishRow(row, data, file){
     const res = getResult();
     if (res && res.hash){ try{ await fetch(`/forget/${res.hash}`, {method:'POST'}); }catch(_){} }
     results = results.filter(r => r.row !== row);
-    row.remove();
+    EXTRAS.forget(row); row.remove();
     if (!rowsEl.querySelector('.row')) emptyEl.style.display = '';
     refreshFooter();
   });
@@ -1327,13 +1325,55 @@ function finishRow(row, data, file){
     }
   }
 
-  /* vibe matches for this track */
-  if (data.hash) renderVibeMatches(row, data.hash);
-
-  /* manual tags for this track */
-  if (data.hash) renderTags(row, data.hash);
+  /* vibe matches, tags and the detailed waveform: asked for when the row
+     scrolls into view, batched with whatever else comes into view with it. */
+  if (data.hash) EXTRAS.want(row, data.hash);
   refreshFooter();
 }
+
+/* ---- per-row extras, fetched on sight --------------------------------------
+   Every finished row wants three things the server has to be asked for: its
+   tags, which vibes it matches, and the detailed waveform. Asked per row the
+   moment the row existed, re-dropping a folder of already-analysed tracks was
+   three requests per row -- nine thousand for a big folder -- almost all for
+   rows below the bottom of the screen. So a row registers what it wants and
+   is asked for it when it comes into view, and the rows that come into view
+   together share one /tags/for and one /vibes/match request between them. */
+const EXTRAS = (() => {
+  const pending = new Map();       // row -> hash, registered but not yet seen
+  const due = [];                  // [row, hash] seen and waiting for the next flush
+  let timer = null;
+  const io = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+    for (const e of entries){
+      if (!e.isIntersecting || !pending.has(e.target)) continue;
+      due.push([e.target, pending.get(e.target)]);
+      pending.delete(e.target); io.unobserve(e.target);
+    }
+    if (due.length && !timer) timer = setTimeout(flush, 40);   // let the scroll settle
+  }, { rootMargin: '240px 0px' }) : null;
+
+  async function flush(){
+    timer = null;
+    const batch = due.splice(0).filter(([row]) => row.isConnected);
+    if (!batch.length) return;
+    const q = encodeURIComponent([...new Set(batch.map(([, h]) => h))].join(','));
+    const grab = url => fetch(url).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    const [tags, vibes] = await Promise.all([grab(`/tags/for?hashes=${q}`), grab(`/vibes/match?hashes=${q}`)]);
+    for (const [row, h] of batch){
+      if (!row.isConnected) continue;
+      renderVibeMatches(row, h, vibes[h] || []);
+      renderTags(row, h, tags[h] || []);
+      if (row._fetchWave) row._fetchWave();
+    }
+  }
+  return {
+    want(row, hash){
+      if (!io){ due.push([row, hash]); if (!timer) timer = setTimeout(flush, 0); return; }
+      pending.set(row, hash); io.observe(row);
+    },
+    forget(row){ pending.delete(row); if (io) io.unobserve(row); },
+  };
+})();
 
 /* Every genre name the app can offer: the library's own keystones and their
    subgenres, fetched once, plus whatever the rows on screen actually read as.
@@ -1780,7 +1820,7 @@ clearB.addEventListener('click', () => {
   // still play after the list is cleared (playSrc recreates a fresh blob URL).
   results = []; queue = [];
   listKeys.clear();
-  rowsEl.querySelectorAll('.row').forEach(r => r.remove());
+  rowsEl.querySelectorAll('.row').forEach(r => { EXTRAS.forget(r); r.remove(); });
   emptyEl.style.display = '';
   refreshFooter();
 });

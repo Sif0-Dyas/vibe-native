@@ -259,6 +259,9 @@ def test_vibe_match_and_playlist(client):
     # match: the track scored against every vibe's centroid
     m = client.get(f"/vibes/match/{h}").get_json()
     assert any(x["id"] == vid and "sim" in x for x in m)
+    # the batch form answers the same for the hashes it knows and skips the rest
+    b = client.get(f"/vibes/match?hashes={h},nobody").get_json()
+    assert set(b) == {h} and b[h] == m
     # playlist: whole-DB ranking vs the vibe centroid (the lone member scores ~1.0)
     pl = client.get(f"/vibes/{vid}/playlist").get_json()
     assert isinstance(pl, list) and any(row["hash"] == h for row in pl)
