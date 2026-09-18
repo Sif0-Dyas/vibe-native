@@ -31,11 +31,53 @@ function vibeWaveSvg(color, seed){
     bars.push('<rect x="' + (i * 2.2) + '" y="' + ((22 - h) / 2).toFixed(1) +
               '" width="1.3" height="' + h.toFixed(1) + '" rx="0.6"/>');
   }
-  var safe = String(color == null ? '' : color).replace(/[&<>"]/g, '');
   return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
-         'style="color:' + safe + '">' + bars.join('') + '</svg>';
+         'style="color:' + escapeHtml(color == null ? '' : color) + '">' + bars.join('') + '</svg>';
 }
 window.vibeWaveSvg = vibeWaveSvg;
+
+/* The Genres and Vibes tabs share one card grid: select a tile to expand its
+   card, one at a time -- an open card spans the full grid row, so several at
+   once undoes the grid. `onOpen(cardEl)` runs for the card that just opened. */
+function wireTileToggle(body, tiles, onOpen){
+  tiles.forEach(function (t) {
+    t.onclick = function () {
+      var cardEl = t.closest('.gen-key');
+      var wasOpen = cardEl.classList.contains('open');
+      body.querySelectorAll('.gen-key.open').forEach(function (o) {
+        o.classList.remove('open');
+        o.querySelector('.gen-detail').hidden = true;
+      });
+      if (wasOpen) return;
+      cardEl.classList.add('open');
+      cardEl.querySelector('.gen-detail').hidden = false;
+      if (onOpen) onOpen(cardEl);
+    };
+  });
+}
+window.wireTileToggle = wireTileToggle;
+
+/* The counter card's ranked bars, shared by the Genres and Vibes tabs so the
+   two read as one product. `rows` is [{name, count, color, badge?, title?}],
+   biggest first; the bar is scaled against the BIGGEST row, not against 100%,
+   or in a library with one dominant genre every other row renders as a
+   sliver. `badge` is extra markup after the name; `title` the row's tooltip. */
+function statRowsHtml(rows, total){
+  var max = rows.length ? Math.max(1, rows[0].count) : 1;
+  return rows.map(function (r) {
+    var pct = total ? (r.count / total) * 100 : 0;
+    var title = r.title || (r.name + ' — ' + r.count + ' track' + (r.count === 1 ? '' : 's'));
+    return '<div class="gen-stat-row" title="' + escapeHtml(title) + '">' +
+      '<span class="gen-stat-name"><i class="gen-stat-dot" style="background:' +
+        escapeHtml(r.color) + '"></i>' + escapeHtml(r.name) + (r.badge || '') + '</span>' +
+      '<span class="gen-stat-bar"><span style="width:' + ((r.count / max) * 100).toFixed(1) +
+        '%;background:' + escapeHtml(r.color) + '"></span></span>' +
+      '<span class="gen-stat-n">' + r.count + '</span>' +
+      '<span class="gen-stat-pct">' + pct.toFixed(1) + '%</span>' +
+    '</div>';
+  }).join('');
+}
+window.statRowsHtml = statRowsHtml;
 
 function clientLog(msg, level){
   try {
@@ -292,13 +334,19 @@ try {
    carrying camelot / key / scale: an analysis payload, a map node, a saved row.
    Each mode falls back to the other notation rather than rendering blank -- a
    track the analyser found a key for but no Camelot code still has a key, and
-   showing nothing would read as "no key" instead of "not in that notation". */
-function keyText(t){
+   showing nothing would read as "no key" instead of "not in that notation".
+   keyParts() decides which notations to show ({cam, mus}, either may be
+   empty); keyText() joins them, and the Analyzer row marks them up. */
+function keyParts(t){
   const cam = (t && t.camelot) ? String(t.camelot) : '';
   const mus = (t && t.key) ? `${t.key} ${(t.scale || '').slice(0, 3)}`.trim() : '';
-  if (KEYVIEW.mode === 'camelot') return cam || mus;
-  if (KEYVIEW.mode === 'musical') return mus || cam;
-  return [cam, mus].filter(Boolean).join(' ');
+  if (KEYVIEW.mode === 'camelot') return { cam, mus: cam ? '' : mus };
+  if (KEYVIEW.mode === 'musical') return { cam: mus ? '' : cam, mus };
+  return { cam, mus };
+}
+function keyText(t){
+  const k = keyParts(t);
+  return [k.cam, k.mus].filter(Boolean).join(' ');
 }
 
 /* exported setKeyView */ // called from options.js's Appearance card (shared scope)
@@ -867,13 +915,11 @@ function finishRow(row, data, file){
   // Split so the notation can change under a row that is already on screen --
   // rebuilding the whole cell would take the waveform's neighbours with it.
   const keyHtmlFor = () => {
-    if (!data.key && !data.camelot) return `<div class="keyrow">no key</div>`;
-    const showCam = KEYVIEW.mode !== 'musical' && data.camelot;
-    const mus = data.key ? `${data.key} ${(data.scale || '').slice(0, 3)}`.trim() : '';
-    const showMus = (KEYVIEW.mode !== 'camelot' || !data.camelot) && mus;
+    const k = keyParts(data);              // same notation rule as keyText
+    if (!k.cam && !k.mus) return `<div class="keyrow">no key</div>`;
     return `<div class="keyrow">` +
-      (showCam ? `<span class="camelot">${escapeHtml(data.camelot)}</span>` : '') +
-      (showMus ? escapeHtml(mus) : '') + `</div>`;
+      (k.cam ? `<span class="camelot">${escapeHtml(k.cam)}</span>` : '') +
+      escapeHtml(k.mus) + `</div>`;
   };
   const paintMusical = () => {
     row.children[1].innerHTML = bpmHtml + keyHtmlFor() +
@@ -1008,17 +1054,7 @@ function finishRow(row, data, file){
   const adjBox = document.createElement('div');
   adjBox.className = 'pop-adj row-adj';
   adjBox.hidden = true;
-  adjBox.innerHTML =
-    `<div class="ovr-h">how much of each genre is this?</div>` +
-    `<div class="adj-rows"><span class="pop-bar">…</span></div>` +
-    `<div class="ovr-typed">` +
-      `<input class="adj-add-in" type="text" placeholder="add a genre it missed…"` +
-      ` list="ovr-genre-list" autocomplete="off" spellcheck="false">` +
-      `<button class="adj-add">add</button>` +
-      `<button class="adj-close" title="done">✕</button>` +
-    `</div>` +
-    `<div class="ovr-hint">Nudges the read instead of replacing it — use ` +
-      `<b>override</b> if it's flat wrong.</div>`;
+  adjBox.innerHTML = adjustPanelHtml();
 
   /* ---- manual genre override ---- */
   const overrideBtn = document.createElement('button');
@@ -1108,9 +1144,22 @@ function finishRow(row, data, file){
   tagsHolder.className = 'tagchips';
   chipsRow.append(vibesHolder, tagsHolder);
   genreCell.appendChild(chipsRow);
-  wireRowAdjust(row, adjBtn, adjBox,
-    () => data.hash || ((getResult() || {}).hash || null),
-    () => renderGenreCell());
+  /* The row's adjust panel: same widget as the map popup's (wireAdjustPanel),
+     same /weights endpoint, same stored steps, so a track nudged on either
+     screen reads the same on both. `hashOf` is a getter because a just-dropped
+     row gets its hash from the server a moment after the row exists;
+     re-rendering the genre cell is what makes the percentages move as you
+     press. */
+  const showAdjusted = state => { applyAdjusted(row, state); renderGenreCell(); };
+  wireAdjustPanel(adjBtn, adjBox, {
+    hashOf: () => data.hash || ((getResult() || {}).hash || null),
+    // Only redraw the cell when there is actually an adjustment to show.
+    // Merely opening the panel must not repaint a row -- on an overridden
+    // track that would swap the override chip for the model read nobody asked
+    // to see again.
+    onLoaded: state => { if (row._adjusted || adjustHasEdits(state)) showAdjusted(state); },
+    onSaved: showAdjusted,
+  });
 
   overrideBtn.addEventListener('click', () => {
     editor.style.display = 'flex';
@@ -1292,48 +1341,84 @@ function finishRow(row, data, file){
    the map's override box uses, so both screens complete the same names. */
 let GENRE_NAMES = null;
 async function fillGenreList(extra){
-  if (GENRE_NAMES === null){
-    GENRE_NAMES = [];                       // set first: a slow fetch shouldn't
-    try {                                   // start a second one on the next click
-      const j = await fetch('/genres?flat=1&top=0').then(r => r.json());
-      if (Array.isArray(j)){
-        const set = new Set();
-        for (const g of j){
-          if (g && g.keystone) set.add(g.keystone);
-          for (const sg of (g.subgenres || [])) if (sg && sg.style) set.add(sg.style);
-        }
-        GENRE_NAMES = [...set];
-      }
-    } catch(_){ /* offline, or an empty library -- typing a name still works */ }
-  }
   const dl = document.getElementById('ovr-genre-list');
   if (!dl) return;
-  const set = new Set([...GENRE_NAMES, ...(extra || [])]);
-  for (const r of results) for (const st of (r.styles || [])) if (st && st.style) set.add(st.style);
-  dl.innerHTML = [...set].sort((a, b) => a.localeCompare(b))
-    .map(g => `<option value="${escapeHtml(g)}"></option>`).join('');
+  // Painted twice on the first call: once now, from what is already known (the
+  // caller's names and the rows on screen), and again when the library's own
+  // list lands -- that fetch is a whole-library pass and the box should
+  // complete something while it runs.
+  const paint = () => {
+    const set = new Set([...(GENRE_NAMES || []), ...(extra || [])]);
+    for (const r of results) for (const st of (r.styles || [])) if (st && st.style) set.add(st.style);
+    dl.innerHTML = [...set].sort((a, b) => a.localeCompare(b))
+      .map(g => `<option value="${escapeHtml(g)}"></option>`).join('');
+  };
+  paint();
+  if (GENRE_NAMES !== null) return;
+  GENRE_NAMES = [];                         // set first: a slow fetch shouldn't
+  try {                                     // start a second one on the next click
+    const j = await fetch('/genres?flat=1&top=0').then(r => r.json());
+    if (Array.isArray(j)){
+      const set = new Set();
+      for (const g of j){
+        if (g && g.keystone) set.add(g.keystone);
+        for (const sg of (g.subgenres || [])) if (sg && sg.style) set.add(sg.style);
+      }
+      GENRE_NAMES = [...set];
+    }
+  } catch(_){ /* offline, or an empty library -- typing a name still works */ }
+  paint();
 }
 
 /* Hand a row its adjusted blend, or take it away again. Cleared when no step is
    left, so undoing every adjustment restores exactly what the model said rather
    than freezing the last adjusted numbers in place. */
 function applyAdjusted(row, state){
-  const has = state && ((state.steps && Object.keys(state.steps).length)
-                     || (state.drops && state.drops.length));
-  row._adjusted = (has && state.adjusted && state.adjusted.length)
+  row._adjusted = (adjustHasEdits(state) && state.adjusted && state.adjusted.length)
     ? state.adjusted.map(e => ({style: e.style, score: e.score}))
     : null;
 }
 
-/* The Analyzer's copy of the map popup's adjust panel: same /weights endpoint,
-   same stored steps, so a track nudged on either screen reads the same on both.
-   `hashOf` is a getter because a just-dropped row gets its hash from the server
-   a moment after the row exists; `rerender` redraws the row's genre cell, which
-   is what makes the percentages move as you press. */
-function wireRowAdjust(row, btn, box, hashOf, rerender){
+/* ---- the adjust panel -----------------------------------------------------
+   One widget, used by the map popup and by every Analyzer row. An override
+   answers "what is this" with one word and throws away everything the model
+   got right; this bends the read instead: each genre carries a step you raise
+   or lower, so "this is a VERY house track" and "that Tech Trance is a
+   misread" are both sayable without flattening the rest to zero. The step is
+   what's stored, never the multiplier it computes -- the server can retune
+   the curve without silently rewriting what you meant by it.
+
+   `wireAdjustPanel(btn, box, opts)`:
+     hashOf()          the track's hash, or null if it has none yet (a getter,
+                       because a just-dropped row learns its hash later)
+     genres()          extra names to offer in the "add a genre" completion
+     complete(text)    a completer for the add box (Tab / on add); optional
+     onOpen/onClose()  the panel showed / hid -- for chrome around it
+     onLoaded(state)   the track's read arrived
+     onSaved(state)    the server accepted a press; state.adjusted is current */
+function adjustPanelHtml(){
+  return `<div class="ovr-h">how much of each genre is this?</div>
+    <div class="adj-rows"><span class="pop-bar">\u2026</span></div>
+    <div class="ovr-typed">
+      <input class="adj-add-in" type="text" placeholder="add a genre it missed\u2026" list="ovr-genre-list"
+             autocomplete="off" spellcheck="false">
+      <button class="adj-add">add</button>
+      <button class="adj-close" title="done">\u2715</button>
+    </div>
+    <div class="ovr-hint">Nudges the read instead of replacing it \u2014 use <b>override</b> if it's flat wrong.</div>`;
+}
+
+/* Whether a panel state carries any edit at all. */
+function adjustHasEdits(state){
+  return !!(state && ((state.steps && Object.keys(state.steps).length)
+                   || (state.drops && state.drops.length)));
+}
+
+function wireAdjustPanel(btn, box, opts){
   const rowsEl_ = box.querySelector('.adj-rows');
   const addIn = box.querySelector('.adj-add-in');
-  let state = null;      // {steps, base, adjusted, max_step, words}
+  const call = (k, ...a) => { if (typeof opts[k] === 'function') return opts[k](...a); };
+  let state = null;      // {steps, drops, base, adjusted, max_step, words}
   let saving = null;     // in-flight POST, so rapid presses coalesce in order
 
   const wordFor = st => (state && state.words && state.words[String(st)]) || 'as read';
@@ -1421,7 +1506,7 @@ function wireRowAdjust(row, btn, box, hashOf, rerender){
   }
 
   function save(){
-    const hash = hashOf();
+    const hash = opts.hashOf();
     if (!hash) return;
     const steps = state.steps || {};
     const drops = state.drops || [];
@@ -1438,17 +1523,19 @@ function wireRowAdjust(row, btn, box, hashOf, rerender){
         state.drops = body.drops || [];
         state.adjusted = (body.adjusted && body.adjusted.length) ? body.adjusted : state.base;
         render();
-        applyAdjusted(row, state);
-        rerender();
+        call('onSaved', state);
       } catch(_){ /* the meter already moved; the next press retries */ }
     });
   }
 
-  btn.addEventListener('click', async () => {
-    if (!box.hidden){ box.hidden = true; return; }
+  const close = () => { box.hidden = true; call('onClose'); };
+
+  btn.onclick = async () => {
+    if (!box.hidden){ close(); return; }
     box.hidden = false;
-    fillGenreList(state ? Object.keys(state.steps || {}) : null);
-    const hash = hashOf();
+    call('onOpen');
+    fillGenreList([...(call('genres') || []), ...Object.keys((state && state.steps) || {})]);
+    const hash = opts.hashOf();
     if (!hash){ rowsEl_.innerHTML = `<div class="ovr-h">no hash for this track yet</div>`; return; }
     rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`;
     try { state = await (await fetch(`/weights/${hash}`)).json(); }
@@ -1458,20 +1545,13 @@ function wireRowAdjust(row, btn, box, hashOf, rerender){
       state = null; return;
     }
     render();
-    // Only redraw the cell when there is actually an adjustment to show. Merely
-    // opening the panel must not repaint a row -- on an overridden track that
-    // would swap the override chip for the model read nobody asked to see again.
-    if (row._adjusted || (state.steps && Object.keys(state.steps).length)
-        || (state.drops && state.drops.length)){
-      applyAdjusted(row, state);
-      rerender();
-    }
-  });
+    call('onLoaded', state);
+  };
+  box.querySelector('.adj-close').onclick = close;
 
-  box.querySelector('.adj-close').onclick = () => { box.hidden = true; };
-
+  const complete = text => (opts.complete ? opts.complete(text) : null);
   const addGenre = () => {
-    const g = (addIn.value || '').trim();
+    const g = complete(addIn.value) || (addIn.value || '').trim();
     if (!g || !state) return;
     addIn.value = '';
     // Enters at "moderately": a genre you had to type out is one you mean, and
@@ -1484,7 +1564,14 @@ function wireRowAdjust(row, btn, box, hashOf, rerender){
   box.querySelector('.adj-add').onclick = addGenre;
   addIn.addEventListener('keydown', e => {
     if (e.key === 'Enter'){ e.preventDefault(); addGenre(); }
-    else if (e.key === 'Escape'){ box.hidden = true; }
+    else if (e.key === 'Escape'){ close(); }
+    else if (e.key === 'Tab' && addIn.value.trim()){
+      const hit = complete(addIn.value);
+      if (hit && hit.toLowerCase() !== addIn.value.trim().toLowerCase()){
+        e.preventDefault(); addIn.value = hit;
+        addIn.setSelectionRange(hit.length, hit.length);
+      }
+    }
   });
 }
 

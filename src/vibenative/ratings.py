@@ -53,6 +53,19 @@ def get(hash_):
     return {"hash": hash_, "stars": row[0] or 0, "grade": row[1] or "", "note": row[2] or ""}
 
 
+def all_tracks():
+    """Every rated track, as {hash: rating}.
+
+    Sparse by construction -- only tracks someone actually rated have a row --
+    so this stays small even on a library of tens of thousands. The map sizes
+    stars by rating and needs the whole set before it draws a single frame;
+    fetching per-track there would be one request per point.
+    """
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute("SELECT hash, stars, grade, note FROM ratings").fetchall()
+    return {h: {"stars": st or 0, "grade": g or "", "note": n or ""} for h, st, g, n in rows}
+
+
 def get_many(hashes):
     """{hash: rating} for many tracks in one query -- the list and map views need
     every rating at once, and a per-track lookup would be thousands of queries."""
@@ -112,24 +125,27 @@ def artist_key(name):
     return " ".join(str(name or "").split()).casefold()
 
 
+def _artist_row(key, display, stars=0, grade="", note=""):
+    """The one shape every artist-rating reader returns."""
+    return {
+        "artist": display or key,
+        "key": key,
+        "stars": stars or 0,
+        "grade": grade or "",
+        "note": note or "",
+    }
+
+
 def artist_get(name):
     """One artist's rating, or the empty rating if they have none."""
     key = artist_key(name)
     if not key:
-        return {"artist": "", "key": "", "stars": 0, "grade": "", "note": ""}
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute(
-            "SELECT display, stars, grade, note FROM artist_ratings WHERE artist_key=?", (key,)
-        ).fetchone()
-    if not row:
-        return {"artist": str(name).strip(), "key": key, "stars": 0, "grade": "", "note": ""}
-    return {
-        "artist": row[0] or str(name).strip(),
-        "key": key,
-        "stars": row[1] or 0,
-        "grade": row[2] or "",
-        "note": row[3] or "",
-    }
+        return _artist_row("", "")
+    found = artist_get_many([name]).get(key)
+    if found:
+        found["artist"] = found["artist"] or str(name).strip()
+        return found
+    return _artist_row(key, str(name).strip())
 
 
 def artist_get_many(names):
@@ -158,13 +174,7 @@ def artist_get_many(names):
                 f"WHERE artist_key IN ({q})",
                 chunk,
             ):
-                out[k] = {
-                    "artist": display or k,
-                    "key": k,
-                    "stars": stars or 0,
-                    "grade": grade or "",
-                    "note": note or "",
-                }
+                out[k] = _artist_row(k, display, stars, grade, note)
     return out
 
 
@@ -199,16 +209,7 @@ def artist_all():
             "SELECT artist_key, display, stars, grade, note FROM artist_ratings "
             "ORDER BY stars DESC, display COLLATE NOCASE"
         ).fetchall()
-    return [
-        {
-            "key": r[0],
-            "artist": r[1] or r[0],
-            "stars": r[2] or 0,
-            "grade": r[3] or "",
-            "note": r[4] or "",
-        }
-        for r in rows
-    ]
+    return [_artist_row(*r) for r in rows]
 
 
 def comment_for(rating):

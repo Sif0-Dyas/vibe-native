@@ -567,6 +567,19 @@ def _tally(ranked):
     return weights, styles
 
 
+def dominant_subgenre(cls, keystone=None):
+    """The strongest subgenre entry filed under a keystone (the primary by
+    default), or None.
+
+    ``cls["subgenres"]`` is ordered keystone-first and then by score, so the
+    first entry under the keystone is its dominant read. The two places that
+    need this -- the map node and the Genres tab's per-keystone tallies -- used
+    to walk the list themselves, each leaning on that ordering guarantee.
+    """
+    k = keystone or cls["keystones"][0]
+    return next((s for s in cls["subgenres"] if s.get("keystone") == k and s.get("style")), None)
+
+
 def classify(payload):
     """Collapse a track's style read to its keystone identity.
 

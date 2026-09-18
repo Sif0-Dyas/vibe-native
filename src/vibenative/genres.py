@@ -23,6 +23,7 @@ from contextlib import closing
 
 from . import keystone as K
 from . import palette as P
+from . import taxonomy
 from .db import _db_lock, db
 
 # Conventional tempo ranges and a one-line character sketch per keystone.
@@ -210,46 +211,49 @@ def summarise(top_n=5, mode="dark"):
     track that is 100% house on a strong read outranks one that is 100% house on
     a weak one.
     """
-    buckets = {}
-    for h, title, filename, payload in _rows():
-        try:
-            p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-        except (TypeError, ValueError):
-            continue
-        cls = K.classify(p)
-        if not cls:
-            continue
-        primary = cls["keystones"][0]
-        b = buckets.setdefault(
-            primary,
-            {"bpm": [], "subgenres": {}, "tracks": [], "count": 0,
-             # Per-subgenre tempo and tracks. A standalone archgenre (House,
-             # Techno, Trance) has exactly one keystone -- itself -- so its
-             # subgenres are the only genres it has to show, and a bare count is
-             # not enough to build a card from.
-             "sub_bpm": {}, "sub_tracks": {}},
-        )
-        b["count"] += 1
-        bpm = p.get("bpm")
-        if bpm:
+    # One taxonomy overlay for the whole pass: every track classified and
+    # painted against the same file, and one stat() instead of one per lookup.
+    with taxonomy.pinned():
+        buckets = {}
+        for h, title, filename, payload in _rows():
             try:
-                b["bpm"].append(float(bpm))
+                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
             except (TypeError, ValueError):
-                pass
-        # ONE subgenre per track: the strongest read within this keystone.
-        #
-        # This used to increment every subgenre a track read as, which is a
-        # different quantity entirely -- "tracks that contain any Progressive
-        # House" rather than "tracks that ARE Progressive House". Displayed
-        # beside the keystone's track count it read as nonsense: House holds
-        # 1,437 tracks and its top five subgenres summed to 3,380. It also
-        # disagreed with the map legend, which has always counted the dominant
-        # style, so the same label carried two different numbers in one app.
-        #
-        # cls["subgenres"] is ordered by score, so the first entry belonging to
-        # this keystone is its dominant subgenre.
-        for s in cls["subgenres"]:
-            if s.get("keystone") == primary and s.get("style"):
+                continue
+            cls = K.classify(p)
+            if not cls:
+                continue
+            primary = cls["keystones"][0]
+            b = buckets.setdefault(
+                primary,
+                {"bpm": [], "subgenres": {}, "tracks": [], "count": 0,
+                 # Per-subgenre tempo and tracks. A standalone archgenre (House,
+                 # Techno, Trance) has exactly one keystone -- itself -- so its
+                 # subgenres are the only genres it has to show, and a bare count is
+                 # not enough to build a card from.
+                 "sub_bpm": {}, "sub_tracks": {}},
+            )
+            b["count"] += 1
+            bpm = p.get("bpm")
+            if bpm:
+                try:
+                    b["bpm"].append(float(bpm))
+                except (TypeError, ValueError):
+                    pass
+            # ONE subgenre per track: the strongest read within this keystone.
+            #
+            # This used to increment every subgenre a track read as, which is a
+            # different quantity entirely -- "tracks that contain any Progressive
+            # House" rather than "tracks that ARE Progressive House". Displayed
+            # beside the keystone's track count it read as nonsense: House holds
+            # 1,437 tracks and its top five subgenres summed to 3,380. It also
+            # disagreed with the map legend, which has always counted the dominant
+            # style, so the same label carried two different numbers in one app.
+            #
+            # cls["subgenres"] is ordered by score, so the first entry belonging to
+            # this keystone is its dominant subgenre.
+            s = K.dominant_subgenre(cls)
+            if s:
                 style = s["style"]
                 b["subgenres"][style] = b["subgenres"].get(style, 0) + 1
                 if bpm:
@@ -266,56 +270,55 @@ def summarise(top_n=5, mode="dark"):
                         "bpm": bpm,
                     }
                 )
-                break
-        lead = cls["subgenres"][0]["score"] if cls["subgenres"] else 0.0
-        b["tracks"].append(
-            {
-                "hash": h,
-                "title": title or (filename or h[:8]),
-                "share": cls["shares"].get(primary, 0.0),
-                "confidence": round(float(lead), 4),
-                "bpm": bpm,
-                "label": cls["label"],
-            }
-        )
+            lead = cls["subgenres"][0]["score"] if cls["subgenres"] else 0.0
+            b["tracks"].append(
+                {
+                    "hash": h,
+                    "title": title or (filename or h[:8]),
+                    "share": cls["shares"].get(primary, 0.0),
+                    "confidence": round(float(lead), 4),
+                    "bpm": bpm,
+                    "label": cls["label"],
+                }
+            )
 
-    total = sum(b["count"] for b in buckets.values()) or 1
-    out = []
-    for name, b in sorted(buckets.items(), key=lambda kv: -kv[1]["count"]):
-        meta = PROFILES.get(name, {})
-        canonical = meta.get("bpm")
-        obs = _bpm_stats(b["bpm"])
-        b["tracks"].sort(key=lambda t: (-t["share"], -t["confidence"]))
-        out.append(
-            {
-                "keystone": name,
-                "family": K.family_of(name),
-                "count": b["count"],
-                "share": round(b["count"] / total, 4),
-                "color": P.keystone_color(name, mode),
-                "slotted": name in P.KEYSTONE_SLOT,
-                "blurb": meta.get("blurb", ""),
-                # Signature is near-constant across electronic music -- almost
-                # everything here is 4/4 -- so `feel` is the field that actually
-                # separates these genres. Both are properties of the genre as
-                # conventionally played, NOT measured per track: the engine
-                # computes a single BPM and never locates beats or downbeats, so
-                # meter cannot be detected from what is stored.
-                "signature": meta.get("signature", ""),
-                "feel": meta.get("feel", ""),
-                "bpm": {
-                    "canonical": list(canonical) if canonical else None,
-                    "observed": obs,
-                    "octave_flag": _octave_flag(obs.get("median") if obs else None, canonical),
-                },
-                "subgenres": [
-                    _subgenre_profile(s, n, b, name, mode, top_n)
-                    for s, n in sorted(b["subgenres"].items(), key=lambda kv: -kv[1])
-                ],
-                "top": b["tracks"][:top_n],
-            }
-        )
-    return out
+        total = sum(b["count"] for b in buckets.values()) or 1
+        out = []
+        for name, b in sorted(buckets.items(), key=lambda kv: -kv[1]["count"]):
+            meta = PROFILES.get(name, {})
+            canonical = meta.get("bpm")
+            obs = _bpm_stats(b["bpm"])
+            b["tracks"].sort(key=lambda t: (-t["share"], -t["confidence"]))
+            out.append(
+                {
+                    "keystone": name,
+                    "family": K.family_of(name),
+                    "count": b["count"],
+                    "share": round(b["count"] / total, 4),
+                    "color": P.keystone_color(name, mode),
+                    "slotted": name in P.KEYSTONE_SLOT,
+                    "blurb": meta.get("blurb", ""),
+                    # Signature is near-constant across electronic music -- almost
+                    # everything here is 4/4 -- so `feel` is the field that actually
+                    # separates these genres. Both are properties of the genre as
+                    # conventionally played, NOT measured per track: the engine
+                    # computes a single BPM and never locates beats or downbeats, so
+                    # meter cannot be detected from what is stored.
+                    "signature": meta.get("signature", ""),
+                    "feel": meta.get("feel", ""),
+                    "bpm": {
+                        "canonical": list(canonical) if canonical else None,
+                        "observed": obs,
+                        "octave_flag": _octave_flag(obs.get("median") if obs else None, canonical),
+                    },
+                    "subgenres": [
+                        _subgenre_profile(s, n, b, name, mode, top_n)
+                        for s, n in sorted(b["subgenres"].items(), key=lambda kv: -kv[1])
+                    ],
+                    "top": b["tracks"][:top_n],
+                }
+            )
+        return out
 
 
 def _subgenre_profile(style, count, bucket, keystone, mode, top_n):

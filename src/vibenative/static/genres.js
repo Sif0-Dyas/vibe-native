@@ -51,6 +51,13 @@
      the same mark from the same seed -- see vibeWaveSvg there. */
   var waveSvg = window.vibeWaveSvg;
 
+  /* The most representative tracks of a card, as list items. */
+  function topList(tracks) {
+    return (tracks || []).map(function (t) {
+      return '<li>' + esc(t.title) + (t.bpm ? ' <i>' + Math.round(t.bpm) + '</i>' : '') + '</li>';
+    }).join('');
+  }
+
   /* Where this genre sits, and what colour it gets -- the two things the built-in
      tables decide that only the person with the library can correct.
 
@@ -127,9 +134,7 @@
           ? '<span class="gen-submore">+' + (kids.length - TILE_SUBS) + ' more</span>' : '') +
         '</span>'
       : '';
-    var top = (k.top || []).map(function (t) {
-      return '<li>' + esc(t.title) + (t.bpm ? ' <i>' + Math.round(t.bpm) + '</i>' : '') + '</li>';
-    }).join('');
+    var top = topList(k.top);
     var o = (k.bpm && k.bpm.observed) || null;
     var avg = o ? o.median : null;
     var tr = k.training || { state: 'sparse', files: 0, needs: 20 };
@@ -210,9 +215,7 @@
     var beat = avg ? (60 / avg).toFixed(3) + 's' : null;
     var col = sg.color || parent.color || '#888888';
     var pulse = beat ? ' style="--gen-beat:' + beat + ';--gen-col:' + esc(col) + '"' : '';
-    var top = (sg.top || []).map(function (t) {
-      return '<li>' + esc(t.title) + (t.bpm ? ' <i>' + Math.round(t.bpm) + '</i>' : '') + '</li>';
-    }).join('');
+    var top = topList(sg.top);
     return '<div class="gen-key gen-subcard' + (beat ? ' pulsing' : '') + '"' + pulse +
         ' data-g="' + esc(sg.style) + '">' +
       '<button class="gen-tile" type="button">' +
@@ -386,25 +389,12 @@
     var total = rows.reduce(function (a, r) { return a + r.count; }, 0);
     rows.sort(function (a, b) { return b.count - a.count; });
     var top = rows.length ? rows[0] : null;
-    var max = top ? top.count : 1;
-
-    var list = rows.map(function (r) {
-      var pct = total ? (r.count / total) * 100 : 0;
-      // The bar is scaled against the BIGGEST genre, not against 100%, or in a
-      // library with one dominant genre every other row renders as a sliver.
-      var w = max ? (r.count / max) * 100 : 0;
-      return '<div class="gen-stat-row" title="' + esc(r.name) + ' — ' + r.count +
-          ' track' + (r.count === 1 ? '' : 's') + ', ' + pct.toFixed(1) + '% of your library">' +
-        '<span class="gen-stat-name"><i class="gen-stat-dot" style="background:' +
-          esc(r.color) + '"></i>' + esc(r.name) +
-          (r.tier === 'archgenre' ? '<span class="gen-level is-arch">arch</span>' : '') +
-        '</span>' +
-        '<span class="gen-stat-bar"><span style="width:' + w.toFixed(1) + '%;background:' +
-          esc(r.color) + '"></span></span>' +
-        '<span class="gen-stat-n">' + r.count + '</span>' +
-        '<span class="gen-stat-pct">' + pct.toFixed(1) + '%</span>' +
-      '</div>';
-    }).join('');
+    rows.forEach(function (r) {
+      r.badge = r.tier === 'archgenre' ? '<span class="gen-level is-arch">arch</span>' : '';
+      r.title = r.name + ' — ' + r.count + ' track' + (r.count === 1 ? '' : 's') + ', ' +
+        (total ? (r.count / total) * 100 : 0).toFixed(1) + '% of your library';
+    });
+    var list = window.statRowsHtml(rows, total);
 
     return '<div class="opt-card"><h3>Total genres</h3>' +
       '<div class="gen-bigstats">' +
@@ -496,22 +486,8 @@
       paletteCard();
     wireActions();
     // one console per keystone card, built on demand -- each is several queries
-    // Select a tile to expand it. One at a time: several open cards each
-    // spanning the full row turns the grid back into the column this replaced.
-    body.querySelectorAll('.gen-tile').forEach(function (t) {
-      t.onclick = function () {
-        var cardEl = t.closest('.gen-key');
-        var wasOpen = cardEl.classList.contains('open');
-        body.querySelectorAll('.gen-key.open').forEach(function (o) {
-          o.classList.remove('open');
-          o.querySelector('.gen-detail').hidden = true;
-        });
-        if (!wasOpen) {
-          cardEl.classList.add('open');
-          cardEl.querySelector('.gen-detail').hidden = false;
-        }
-      };
-    });
+    // Select a tile to expand it, one at a time (wireTileToggle, app.js).
+    window.wireTileToggle(body, body.querySelectorAll('.gen-tile'));
     body.querySelectorAll('.gen-reset-top').forEach(function (b) {
       b.onclick = function () {
         var g = b.dataset.g;

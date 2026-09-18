@@ -28,6 +28,9 @@ module.exports = [
         // Keep this list in sync with the files (grep for the names) -- a REAL
         // typo/rename across the split still trips no-undef in the caller.
         escapeHtml: "writable", // app.js  -> used by map.js, panels.js
+        adjustPanelHtml: "writable", // app.js -> used by map.js (the adjust panel)
+        wireAdjustPanel: "writable", // app.js -> used by map.js
+        fillGenreList: "writable", // app.js -> used by map.js (shared genre datalist)
         familyOf: "writable", //   app.js  -> used by map.js
         fmtTime: "writable", //    app.js  -> used by player.js
         PLAYER: "writable", //     player.js -> used by app.js, panels.js

@@ -76,6 +76,18 @@ def test_edits_on_disk_are_picked_up_without_a_restart():
     assert taxonomy.family_override("Industrial") == "Chill"
 
 
+def test_a_pinned_block_holds_one_overlay_for_its_whole_length():
+    """A whole-library build classifies every track against the same file --
+    and does not stat() it once per lookup to find that out."""
+    f = taxonomy.path()
+    write(f, {"family": {"Industrial": "Bass"}})
+    with taxonomy.pinned():
+        assert taxonomy.family_override("Industrial") == "Bass"
+        f.write_text(json.dumps({"family": {"Industrial": "Chill"}}), encoding="utf-8")
+        assert taxonomy.family_override("Industrial") == "Bass"     # held
+    assert taxonomy.family_override("Industrial") == "Chill"        # released
+
+
 # --- surviving a hand-edited file ---------------------------------------------
 def test_a_broken_file_falls_back_instead_of_crashing():
     f = taxonomy.path()

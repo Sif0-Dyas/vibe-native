@@ -247,14 +247,13 @@ def vibes_membership():
             "SELECT v.id, v.name, vt.hash FROM vibes v "
             "LEFT JOIN vibe_tracks vt ON vt.vibe_id = v.id ORDER BY v.name"
         ).fetchall()
-    out, order = {}, []
+    out = {}
     for vid, name, h in rows:
         if vid not in out:
             out[vid] = {"id": vid, "name": name, "hashes": []}
-            order.append(vid)
         if h:
             out[vid]["hashes"].append(h)
-    return jsonify([out[v] for v in order])
+    return jsonify(list(out.values()))
 
 
 @bp.get("/vibes/match/<h>")

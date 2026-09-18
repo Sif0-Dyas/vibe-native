@@ -547,7 +547,7 @@ def weights_get(h):
         p = json.loads(row[0]) if row[0] else {}
     except ValueError:
         p = {}
-    base = ((p.get("relabel") or {}).get("styles")) or p.get("salience") or p.get("styles") or []
+    base = W.base_read(p)
     return jsonify(
         {
             "hash": h,
@@ -556,12 +556,27 @@ def weights_get(h):
             # name a removed genre in order to offer it back. Hiding the dropped
             # ones here would make a removal the one edit you can't undo.
             "base": base[:8],
-            "drops": p.get("drops") or [],
+            "drops": _effective_drops(p),
             "adjusted": W.read_with_steps(p) or base[:8],
             "max_step": W.MAX_STEP,
             "words": {str(k): v for k, v in W.STEP_WORDS.items()},
         }
     )
+
+
+def _effective_drops(p):
+    """The stored drops that take effect against the track's current read.
+
+    Stored verbatim, reported filtered: the drop that would empty the read is
+    refused by ``weights.apply`` at read time, and which one that is can change
+    -- a relabel can make a drop that was harmless when it was made the one
+    that empties the read. Filtering when reporting rather than when storing
+    means the panel and the star agree whenever they are looked at, not only
+    on the day the drop was made.
+    """
+    from .. import weights as W
+
+    return W.surviving_drops(W.base_read(p), p.get("drops"))
 
 
 @bp.post("/weights/<h>")
@@ -595,9 +610,6 @@ def weights_put(h):
         if s and str(style).strip():
             steps[str(style).strip()] = s
     drops = W.clean_drops(raw_drops)
-    # A genre can't be both raised and removed; the removal is the later, more
-    # explicit statement, so it takes the name and the step goes with it.
-    steps = {k: v for k, v in steps.items() if k not in drops}
 
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
@@ -613,17 +625,14 @@ def weights_put(h):
             else:
                 p.pop("weights", None)
         if raw_drops is not None:
-            # Store only the drops that take effect: the one that would empty
-            # the read is refused, and a refused drop the panel still listed as
-            # "removed" would contradict the star it never removed from.
-            base = ((p.get("relabel") or {}).get("styles")) or p.get("salience") or p.get("styles") or []
-            drops = W.surviving_drops(base, drops)
             if drops:
                 p["drops"] = drops
-                # Also clear any step already stored for a genre being removed.
-                # apply() ignores it either way, but a stored "very House" on a
-                # removed House would come back the moment House was restored --
-                # a judgement the user made before deciding it wasn't there at all.
+                # A genre can't be both raised and removed; the removal is the
+                # later, more explicit statement, so it takes the name and the
+                # step goes with it -- including one stored earlier. apply()
+                # ignores it either way, but a stored "very House" on a removed
+                # House would come back the moment House was restored: a
+                # judgement made before deciding it wasn't there at all.
                 kept = {k: v for k, v in (p.get("weights") or {}).items() if k not in drops}
                 if kept:
                     p["weights"] = kept
@@ -636,7 +645,7 @@ def weights_put(h):
         {
             "hash": h,
             "steps": p.get("weights") or {},
-            "drops": p.get("drops") or [],
+            "drops": _effective_drops(p),
             "adjusted": W.read_with_steps(p) or [],
         }
     )

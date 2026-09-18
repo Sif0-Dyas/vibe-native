@@ -236,6 +236,19 @@ def test_a_rating_leaves_the_stamp_alone(client):
     assert client.get("/map/stamp").get_json()["stamp"] == before
 
 
+def test_the_stamp_never_reads_a_track(client, monkeypatch):
+    """The stamp is the library revision, not a digest of the rows: asking "is
+    my map current" must cost the same on six thousand tracks as on six."""
+    from vibenative.routes import map as M
+
+    seed(client)
+    calls = []
+    real = M._map_fingerprint
+    monkeypatch.setattr(M, "_map_fingerprint", lambda rev, mode: calls.append(rev) or real(rev, mode))
+    assert client.get("/map/stamp").status_code == 200
+    assert calls and isinstance(calls[0], int)
+
+
 def test_the_node_carries_all_three_genre_tiers(client):
     """The popup names a track subgenre-first and widens from there, so every
     tier has to travel. Only the server has the taxonomy the wider two come out

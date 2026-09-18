@@ -36,29 +36,15 @@
     el.artist.textContent = PLAYER.now.artist || '';
     el.dot.style.background = PLAYER.now.color || 'var(--accent-a)';
     el.dot.style.color = PLAYER.now.color || 'var(--accent-a)';   // drives the glow
-    // The title is the way back to the star. A track with no hash was never in
-    // the library, so there is nothing on the map to fly to -- the affordance is
-    // withdrawn rather than left there to do nothing.
-    const findable = !!(PLAYER.now.hash && typeof window.vibeMapGoto === 'function');
-    el.title.classList.toggle('nb-goto', findable);
-    el.title.title = findable ? 'find this track on the map' : '';
-    if (findable) { el.title.tabIndex = 0; el.title.setAttribute('role', 'button'); }
-    else { el.title.removeAttribute('tabindex'); el.title.removeAttribute('role'); }
+    syncGoto();
   }
 
-  // Click the title of what's playing: the map re-centres on that star and opens
-  // its panel. Playback is untouched -- selectNode's auto-sample stands down
-  // while you are listening to a track, so you arrive at the star still hearing
-  // it rather than being cut off by a preview of the thing you already have on.
-  function gotoStar() {
-    const h = PLAYER.now && PLAYER.now.hash;
-    if (!h || typeof window.vibeMapGoto !== 'function') return;
-    window.vibeMapGoto(h);
-  }
-  el.title.addEventListener('click', gotoStar);
-  el.title.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gotoStar(); }
-  });
+  // Click the title of what's playing: the map re-centres on that star (see
+  // wireGotoTitle in audio.js). Playback is untouched -- selectNode's
+  // auto-sample stands down while you are listening to a track, so you arrive
+  // at the star still hearing it rather than being cut off by a preview of the
+  // thing you already have on.
+  const syncGoto = window.wireGotoTitle(el.title, 'nb-goto', () => PLAYER.now && PLAYER.now.hash);
   function renderPlay() {
     const playing = !PLAYER.audio.paused && !PLAYER.audio.ended && PLAYER.now;
     el.play.textContent = playing ? '❙❙' : '▶';

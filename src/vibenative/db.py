@@ -194,6 +194,37 @@ def _migration_6(c):
         note TEXT DEFAULT '', updated REAL)""")
 
 
+# The tables the map is built from. A write to any of them bumps library_rev.
+_LIBRARY_TABLES = ("tracks", "tags", "track_tags")
+
+
+def _migration_7(c):
+    """v7 -- a library revision, bumped by trigger on every write to a table the
+    map is built from.
+
+    The map cache used to be keyed on a digest of every track row, which meant
+    that even asking "is my map still current" read and hashed the whole
+    payload column -- a quarter of a gigabyte and half a second on a large
+    library, paid on every visit to the Map tab. A counter the database itself
+    maintains answers the same question in microseconds, and cannot be bypassed
+    by a write path that forgot to bump it: the triggers fire for every INSERT,
+    UPDATE and DELETE, including snapshot restores and bulk deletes.
+
+    Ratings, vibes, playlists and the waveform cache are deliberately not
+    covered -- they are overlays the map fetches separately, and a write to
+    them must not invalidate a map that is still exactly right.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS library_rev(
+        id INTEGER PRIMARY KEY CHECK (id = 1), rev INTEGER NOT NULL)""")
+    c.execute("INSERT OR IGNORE INTO library_rev(id, rev) VALUES (1, 0)")
+    for t in _LIBRARY_TABLES:
+        for op in ("INSERT", "UPDATE", "DELETE"):
+            c.execute(
+                f"CREATE TRIGGER IF NOT EXISTS {t}_rev_{op.lower()} AFTER {op} ON {t} "  # nosec B608
+                "BEGIN UPDATE library_rev SET rev = rev + 1 WHERE id = 1; END"
+            )
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -202,6 +233,7 @@ MIGRATIONS = [
     (4, _migration_4),
     (5, _migration_5),
     (6, _migration_6),
+    (7, _migration_7),
 ]
 
 
@@ -223,6 +255,12 @@ def init_db():
             c.execute("INSERT INTO schema_version(version) VALUES(?)", (current,))
         else:
             c.execute("UPDATE schema_version SET version=?", (current,))
+
+
+def library_rev(c) -> int:
+    """The current library revision (see _migration_7), on an open cursor."""
+    row = c.execute("SELECT rev FROM library_rev WHERE id = 1").fetchone()
+    return int(row[0]) if row else 0
 
 
 def file_hash(path) -> str:

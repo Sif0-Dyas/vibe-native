@@ -84,10 +84,6 @@
   // way, and they are the ones you can actually see on a library with no tags.
   let HL = null;
 
-  // The one place that answers "does this track match that chip". Both the hover
-  // preview and the filter go through it, so the twinkle can never promise a
-  // different set than the click delivers -- which was the whole point of having
-  // a preview.
   /* The artists credited on a track. The server splits the credit string (see
      vibenative/artists.py); this is the accessor everything else goes through
      so a node from an older payload without the split still behaves. */
@@ -96,6 +92,17 @@
     return n.artist ? [n.artist] : [];
   }
 
+  /* The same credits lower-cased, once: the artist filter and the chip hover
+     both test every node every frame, and lower-casing three credits per node
+     per frame was most of what those frames did. */
+  function artistsLower(n){
+    return n._al || (n._al = artistsOf(n).map(a => a.toLowerCase()));
+  }
+
+  // The one place that answers "does this track match that chip". Both the hover
+  // preview and the filter go through it, so the twinkle can never promise a
+  // different set than the click delivers -- which was the whole point of having
+  // a preview.
   function nodeHas(n, kind, value){
     if (!value) return false;
     if (kind === 'tag')    return (n.tags || []).includes(value);
@@ -103,7 +110,7 @@
     // hovering an artist chip previews exactly the tracks clicking it filters to.
     if (kind === 'artist'){
       const v = String(value).toLowerCase();
-      return artistsOf(n).some(a => a.toLowerCase().includes(v));
+      return artistsLower(n).some(a => a.includes(v));
     }
     if (kind === 'style')  return n.style === value || (n.styles || []).includes(value);
     return false;
@@ -136,7 +143,7 @@
     // Match against the SPLIT credits, so filtering to "Chris Lorenzo" finds
     // "AC Slater/Chris Lorenzo/Fly With Us" as well as his solo tracks. Falls
     // back to the raw credit for any node the server did not split.
-    if (FILT.artist && !artistsOf(n).some(a => a.toLowerCase().includes(FILT.artist))) return false;
+    if (FILT.artist && !artistsLower(n).some(a => a.includes(FILT.artist))) return false;
     if (FILT.key && n.camelot !== FILT.key) return false;
     // A track counts as its genre even when that genre is only a runner-up read,
     // so filtering to House finds the tracks that are partly House too.
@@ -422,6 +429,11 @@
      "is this producer worth my time" -- so a track can be sized by either. */
   let TRACK_RATINGS = {};              // hash -> {stars, grade, note}
   let ARTIST_RATINGS = {};             // normalised artist key -> {stars, ...}
+  /* Bumped whenever either table changes. starsFor() runs for every node every
+     frame; the lookups behind it -- a regex split per credit -- are resolved
+     once per node per revision and remembered on the node. */
+  let RATINGS_REV = 0;
+  const ratingsChanged = () => { RATINGS_REV++; };
 
   /* Must match ratings.artist_key() on the server: casefolded, whitespace
      collapsed. If these two ever disagree the map silently sizes every star as
@@ -429,19 +441,23 @@
   const artistKey = name => String(name || '').split(/\s+/).filter(Boolean).join(' ').toLowerCase();
 
   function starsFor(n){
-    const t = (TRACK_RATINGS[n.hash] || {}).stars || 0;
-    if (!LBL.useArtistRating) return t;
-    // The popup rates the split artists (artistsOf), never the raw credit, so
-    // a co-credited track has to look each of them up: rating "Chris Lorenzo"
-    // 5* must grow every "AC Slater/Chris Lorenzo" star too. The raw credit is
-    // still tried for ratings made before credits were split.
-    let a = (ARTIST_RATINGS[artistKey(n.artist)] || {}).stars || 0;
-    for (const name of artistsOf(n)){
-      a = Math.max(a, (ARTIST_RATINGS[artistKey(name)] || {}).stars || 0);
+    if (n._starsRev !== RATINGS_REV){
+      n._starsT = (TRACK_RATINGS[n.hash] || {}).stars || 0;
+      // The popup rates the split artists (artistsOf), never the raw credit, so
+      // a co-credited track has to look each of them up: rating "Chris Lorenzo"
+      // 5* must grow every "AC Slater/Chris Lorenzo" star too. The raw credit
+      // is still tried for ratings made before credits were split.
+      let a = (ARTIST_RATINGS[artistKey(n.artist)] || {}).stars || 0;
+      for (const name of artistsOf(n)){
+        a = Math.max(a, (ARTIST_RATINGS[artistKey(name)] || {}).stars || 0);
+      }
+      n._starsA = a;
+      n._starsRev = RATINGS_REV;
     }
+    if (!LBL.useArtistRating) return n._starsT;
     // The better of the two, not the average: a 5-star track by an unrated
     // artist is still a 5-star track, and averaging would bury it.
-    return Math.max(t, a);
+    return Math.max(n._starsT, n._starsA);
   }
 
   /* Radius multiplier from the rating. Unrated stays visible rather than
@@ -527,14 +543,10 @@
      and keeping that direction the same for every star makes the field look
      like one scene rather than a thousand unrelated blobs. */
   const LIGHT_X = -0.38, LIGHT_Y = -0.38;
-  // Above this on-screen core radius the sprite is being magnified past its own
-  // resolution and goes soft, so those few stars are drawn with a real gradient
-  // instead. The threshold is in CSS pixels and deliberately low: at any given
-  // moment only a handful of stars are this big, so the per-frame gradient cost
-  // is negligible, while every small star still comes from the cache.
-  // On-screen core radius past which the sprite is magnified beyond its own
-  // resolution and the exact path is worth its cost. The sprite is SPRITE_R
-  // (64px) of source, so 1:1 at DPR 2 lands around 32; 26 keeps a margin.
+  // On-screen core radius (CSS pixels) past which the sprite is magnified beyond
+  // its own resolution and goes soft, so those few stars are drawn with a real
+  // gradient instead. The sprite is SPRITE_R (64px) of source, so 1:1 at DPR 2
+  // lands around 32; 26 keeps a margin.
   //
   // Set this low (3.2) at one point and the map ground to under a frame per
   // second: at high zoom that is thousands of createRadialGradient calls every
@@ -549,25 +561,19 @@
   const GLOW_ALPHA = 0.16;
 
   /* The corona: the part that reads as light being EMITTED rather than a dot
-     printed on black. Additive at low alpha, because 'lighter' ACCUMULATES and
-     a dense cluster stacks hundreds of these on the same pixels -- at full
-     strength that saturates to a solid white blob and the cluster stops showing
-     any structure at all.
+     printed on black. Additive at low alpha (see GLOW_ALPHA), and skipped on
+     the smallest, faintest stars: there it is under a pixel of visible
+     contribution but still a full blit, and on a 3000-track map that is
+     thousands of wasted draws every frame.
 
-     Skipped on the smallest, faintest stars: there it is under a pixel of
-     visible contribution but still a full blit, and on a 3000-track map that is
-     thousands of wasted draws every frame. Callers set globalAlpha to the
-     star's brightness first; the corona is a fraction OF that, so a dim star
-     glows dimly. */
-  /* One corona, assuming the caller has already put the context into additive
-     mode. It used to set 'lighter' and put it back on every single call, and
-     that is what made the glow expensive rather than the light itself: changing
-     the composite operation ends the current batch, so a 3,000-star frame paid
+     Assumes the caller has already put the context into additive mode. It used
+     to set 'lighter' and put it back on every single call, and that is what
+     made the glow expensive rather than the light itself: changing the
+     composite operation ends the current batch, so a 3,000-star frame paid
      6,000 forced flushes on top of its 6,000 blits. The blits are the work; the
-     flushes were pure tax.
-
-     The alpha each star needs still differs (depth, twinkle, harmonic dimming),
-     so it is passed in rather than read back off the context. */
+     flushes were pure tax. The alpha each star needs still differs (depth,
+     twinkle, harmonic dimming), so it is passed in rather than read back off
+     the context; the corona is a fraction OF it, so a dim star glows dimly. */
   function drawCorona(p, n, strength, alpha){
     if (!(strength > 0) || p.r <= 1.8 || alpha <= 0.12) return;
     const gr = p.r * GLOW_SCALE;
@@ -857,12 +863,13 @@
   let PLAYLISTS = [];                 // [{id, name}] saved playlists, for Solar
   let VIBES = [];                     // [{id, name, hashes}] from /vibes/membership
   let VIBE_OF = new Map();            // hash -> vibe name (first vibe wins)
+  /* What kind of thing n.grp names: 'fam' (a genre family), 'genre' (a
+     keystone), or 'vibe'. Set beside n.grp in layout(), so the legend, the
+     count line and the subgenre layer read one value instead of each
+     re-deriving it from the mode and the Universe's clustering. */
+  let GROUP_KIND = 'fam';
+  const groupNoun = () => (GROUP_KIND === 'vibe' ? 'vibe' : 'genre');
 
-  /* Which galaxy a track belongs to.
-
-     A track can sit in several vibes at once, but it can only be in one place
-     on screen, so the FIRST vibe by name owns it. Deterministic, and stated
-     rather than silently picking whichever the query returned first. */
   /* The genres a track is filed under for the genre list: its keystones, which
      is the tier that answers "what kind of track is this" without splitting
      House into nine entries you would have to untick one at a time.
@@ -893,6 +900,11 @@
     return n.style || n.kkey || 'Other';
   }
 
+  /* Which galaxy a track belongs to.
+
+     A track can sit in several vibes at once, but it can only be in one place
+     on screen, so the FIRST vibe by name owns it. Deterministic, and stated
+     rather than silently picking whichever the query returned first. */
   function uniGroupOf(n){
     if (UNI.by === 'vibe') return VIBE_OF.get(n.hash) || UNI_FIELD;
     // 'genre' is the default: one galaxy per keystone, which is the level at
@@ -1222,19 +1234,16 @@
        If a neighbour is close and strongly bound, the outer stars are dragged
        toward it. That is the swirl: two galaxies that share a lot of tracks
        reach for each other, and the reach is strongest exactly where a real
-       tidal arm would be -- at the rim, on the near side. */
-  /* Work out where a track sits inside its galaxy, once.
+       tidal arm would be -- at the rim, on the near side.
 
      Stored as an orbit rather than a point, because the stars turn: uniPlaceAt()
-     below re-places them every frame. Same split as Solar, and for the same
-     reason -- a galaxy that does not move is a spray of dots that happens to be
-     galaxy-shaped, and rotation is most of what makes a disc read as an object. */
-  /* Where a track sits inside its system, which sits inside its galaxy.
+     re-places them every frame. Same split as Solar, and for the same reason --
+     a galaxy that does not move is a spray of dots that happens to be
+     galaxy-shaped, and rotation is most of what makes a disc read as an object.
 
      Two orbits, not one. The system carries the track around the galaxy; the
      track turns inside the system, faster, the way a moon goes round faster than
-     its planet goes round the sun. Both are worked out once here and re-placed
-     every frame by uniPlaceAt(). */
+     its planet goes round the sun. Both are worked out once here. */
   function uniOrbit(n, g, e, jitter){
     const rr = jitter;
     const sys = (g.systems && g.systems[systemKeyOf(n)]) || null;
@@ -1272,7 +1281,6 @@
     uniPlaceAt(n, 0);
   }
 
-  /* One track's position at time t. */
   /* A system's own centre, in world coordinates. uniPlaceAt() works this out for
      every track; the gas needs it once per system. */
   function systemWorld(g, sys, t, out){
@@ -1374,6 +1382,20 @@
     BARY.x = cx; BARY.y = cy; BARY.z = cz;
   }
 
+  /* Give a node its colour. The three things derived from it -- the sprites,
+     the flat disc's CSS colour string, the sub-cluster key the labels and the
+     legend group by -- are remembered on the node and re-resolved here, in
+     the one place the colour can change, rather than rebuilt per frame. */
+  function setShade(n, sh){
+    n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
+    n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
+    n._css = null;
+    n.sk = `${n.fam}||${n.style || n.fam}`;
+  }
+  // The flat disc's fill: static per node, and a CSS colour parse per assignment.
+  const discCss = n => n._css || (n._css =
+    `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ${clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84)}%)`);
+
   function layout(){
     byHash.clear();
     // Harvest the server's paint first: every shade below depends on it, so it
@@ -1390,8 +1412,7 @@
         const f2 = familyOf(n.mix[0]) || n.fam;
         sh = mixShade(sh, styleShade(f2, n.mix[0]), Math.min(0.5, n.mix[1]));
       }
-      n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
-      n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
+      setShade(n, sh);
       byHash.set(n.hash, n);
     }
     /* n.grp is what the BIG labels name, which is not always the genre.
@@ -1405,6 +1426,7 @@
     // vibe, by family or by genre. Naming those galaxies after their families
     // while gravity had sorted them by genre described the wrong grouping.
     for (const n of NODES) n.grp = (mapMode === 'universe') ? uniGroupOf(n) : n.fam;
+    GROUP_KIND = (mapMode === 'universe') ? UNI.by : 'fam';
     COUNTS = {};
     for (const n of NODES) COUNTS[n.grp] = (COUNTS[n.grp]||0)+1;
     FAMS = Object.keys(COUNTS).sort((a,b)=>COUNTS[b]-COUNTS[a]);
@@ -1568,14 +1590,14 @@
       // it -- a vibe has no subgenres -- and the shade lookup below keys on the
       // genre family, which the group no longer is. Skip the layer entirely
       // rather than draw mislabelled, miscoloured text.
-      if (mapMode === 'universe' && UNI.by === 'vibe'){
+      if (GROUP_KIND === 'vibe'){
         STYLE_CENTROIDS = {};
         buildLegend();
         countMap.textContent = mapCountText();
         return;
       }
       for (const n of NODES){
-        const key = `${n.fam}||${n.style || n.fam}`;
+        const key = n.sk;
         if (!sacc[key]) sacc[key] = { x:0, y:0, z:0, c:0, style:n.style || n.fam };
         const a = sacc[key]; a.x+=n.x3; a.y+=n.y3; a.z+=n.z3; a.c++;
       }
@@ -1602,9 +1624,7 @@
       return `${n(tracks, 'track')} · ${n(SOLAR_RINGS.length, 'orbit')} · `
         + `${SOLAR_NAME || 'solar'}`;
     }
-    const byVibe = (mapMode === 'universe' && UNI.by === 'vibe');
-    return `${n(NODES.length, 'track')} · `
-      + `${byVibe ? n(FAMS.length, 'vibe') : n(FAMS.length, 'genre')} · ${mapMode}`;
+    return `${n(NODES.length, 'track')} · ${n(FAMS.length, groupNoun())} · ${mapMode}`;
   }
 
   function buildLegend(){
@@ -1618,13 +1638,13 @@
     // and what the subgenre shade (styleShade / SUB_HUE) is keyed by. In the
     // Universe the group is a keystone or a vibe, and passing that as the
     // family made every subgenre row a silent no-op and its recolour a key
-    // nothing read. A style that straddles families keeps the commoner one.
+    // nothing read. n.fam is a function of the style (familyOf), so one style
+    // has one family and the first seen is the only one.
     const subs = {};
     for (const n of NODES){ const st = n.style || n.fam;
       const g = (subs[n.grp] = subs[n.grp] || {});
-      const e = (g[st] = g[st] || { c:0, fams:{} });
-      e.c++; e.fams[n.fam] = (e.fams[n.fam] || 0) + 1; }
-    const famOf = e => Object.keys(e.fams).sort((a, b) => e.fams[b] - e.fams[a])[0];
+      const e = (g[st] = g[st] || { c:0, fam:n.fam });
+      e.c++; }
     const groups = FAMS.map(f => {
       const active = filterFam === f ? ' active' : '';
       const head = `<span class="leg leg-fam${active}" data-fam="${escapeHtml(f)}">`
@@ -1635,7 +1655,7 @@
       if (!list.length) return `<div class="leg-group">${head}</div>`;
       const shown = list.slice(0, 10), more = list.length - shown.length;
       const subHtml = shown.map(([st, e]) => {
-        const c = e.c, fam = famOf(e);
+        const c = e.c, fam = e.fam;
         const sh = styleShade(fam, st);
         const col = `hsl(${sh.h} ${clamp(sh.s, 40, 88)}% ${clamp(58 + sh.dl, 44, 70)}%)`;
         return `<span class="leg-sub" data-fam="${escapeHtml(fam)}" data-style="${escapeHtml(st)}"`
@@ -1646,7 +1666,7 @@
     }).join('');
     legendEl.innerHTML =
       `<button class="leg-toggle" type="button" title="show / hide the legend">&#9698; `
-      + `${(mapMode === 'universe' && UNI.by === 'vibe') ? 'vibes' : 'genres'}</button>`
+      + `${groupNoun()}s</button>`
       + `<div class="leg-body">${groups}</div>`;
     legendEl.classList.toggle('collapsed', legendCollapsed);
     legendEl.querySelector('.leg-toggle').onclick = () => {
@@ -2069,8 +2089,7 @@
       const reach = r * GLOW_SCALE + 2;
       if (sxp < -reach || sxp > W + reach || syp < -reach || syp > H + reach) continue;
       visFam[n.grp] = (visFam[n.grp] || 0) + 1;
-      const sk = `${n.fam}||${n.style || n.fam}`;
-      visSub[sk] = (visSub[sk] || 0) + 1;
+      visSub[n.sk] = (visSub[n.sk] || 0) + 1;
       proj.set(n.hash, { sx:sxp, sy:syp, z:z2, r, depth, node:n });
       order.push(n.hash);
     }
@@ -2169,15 +2188,6 @@
       ctx.globalAlpha = 1;
     }
 
-    /* Every corona first, in one additive pass.
-       Each star used to flip the composite operation to 'lighter' for its own
-       halo and back again for its body -- two context-state changes per star,
-       so a 3,000-star frame ended the draw batch 6,000 times. Hoisting the mode
-       out of the loop leaves the same blits and the same alphas with two state
-       changes for the whole frame.
-       It also fixes a layering accident: a near star's halo used to be painted
-       over a far star's body. Halos belong under bodies, which is what the
-       original comment said it wanted. */
     /* How bright one star is this frame, and whether it is a harmonic match.
 
        Baseline shimmer, plus a much stronger pulse for tracks matching the chip
@@ -2215,6 +2225,15 @@
       }
       return { alpha: bright * dim, compatible, lit, flash };
     };
+    /* Every corona first, in one additive pass.
+       Each star used to flip the composite operation to 'lighter' for its own
+       halo and back again for its body -- two context-state changes per star,
+       so a 3,000-star frame ended the draw batch 6,000 times. Hoisting the mode
+       out of the loop leaves the same blits and the same alphas with two state
+       changes for the whole frame.
+       It also fixes a layering accident: a near star's halo used to be painted
+       over a far star's body. Halos belong under bodies, which is what the
+       original comment said it wanted. */
     if (LBL.shine > 0){
       ctx.globalCompositeOperation = 'lighter';
       for (const h of order){
@@ -2259,8 +2278,7 @@
         // makes the field read as a sky rather than dots printed on black.
         // Depth and twinkle are already in globalAlpha.
         ctx.beginPath(); ctx.arc(p.sx, p.sy, p.r, 0, 6.2832);
-        ctx.fillStyle = `hsl(${hueOk(n.hue)} ${pctOk(n.sat, 64)}% ` +
-                        `${clamp(SPRITE_LIGHT + (n.dl || 0), 20, 84)}%)`;
+        ctx.fillStyle = discCss(n);
         ctx.fill();
       }
       if (lit && flash > 0.02){
@@ -2297,12 +2315,15 @@
 
     // Labels with semantic zoom (LOD): family names when zoomed out, subgenre
     // names fading in as you zoom in -- in BOTH regions and galaxy now.
+    // This frame's camera, as a function: used by every label and by Solar's
+    // chrome below.
+    const projPt = projPtFactory(cy,sy,cx,sx,cxp,cyp,DISP);
     if (mapMode === 'solar'){
       // Solar draws its own sun, orbits and ring labels, and then stops. The
       // genre-label section below is not merely redundant here -- it iterates
       // FAMS against CENTROIDS, which solarLayout() empties, so entering it
       // threw on undefined and took the whole render loop down with it.
-      drawSolarChrome(t, projPtFactory(cy,sy,cx,sx,cxp,cyp,DISP));
+      drawSolarChrome(t, projPt);
       rafId = requestAnimationFrame(frame);
       return;
     }
@@ -2316,13 +2337,6 @@
     // proximity gate keeps galaxy's tight ball from lighting up every subgenre at
     // once: only the clusters you've zoomed toward reveal their subgenre names.
     const zoomLod = clamp((view.zoom - 0.8) / (1.7 - 0.8), 0, 1);
-    const projPt = c => {
-      const ax = c.x-pivot.x, ay = c.y-pivot.y, az = c.z-pivot.z;
-      const x = ax*cy + az*sy, z = -ax*sy + az*cy;
-      const y2 = ay*cx - z*sx, z2 = ay*sx + z*cx;
-      const persp = CAM/(CAM - z2);
-      return { sx: cxp + x*persp*DISP, sy: cyp + y2*persp*DISP, z2, persp };
-    };
     // labels get a halo (stroke) so they stay legible over dense clusters. With
     // colour-matching on, the halo flips to white so the coloured text pops.
     ctx.lineJoin = 'round';
@@ -2373,6 +2387,19 @@
     // The biggest galaxy on the map, which every label is sized against.
     let famMax = 1;
     for (const f of FAMS) famMax = Math.max(famMax, (CENTROIDS[f] && CENTROIDS[f].n) || 0);
+    /* Declutter: keep only the N biggest genre labels.
+
+       "All" was a sane default at five families and is not at seventy -- naming
+       every galaxy at once means naming none of them, because no single one can
+       be read. So the Universe caps itself unless you have said otherwise; the
+       rest of the names are still one hover or one zoom away.
+
+       Decided up front, on the candidates, so the font is set and the text
+       measured only for the labels that will be drawn -- at seventy galaxies
+       that was four measureText calls per frame for every one kept. */
+    const famCap = LBL.maxFam > 0 ? LBL.maxFam
+                 : (mapMode === 'universe' ? 16 : 0);
+    let cands = [];
     for (const f of FAMS){
       if (!LBL.showFam) break;                          // family labels hidden
       if (LBL.onlyFam && f !== LBL.onlyFam) continue;   // isolate one genre's label
@@ -2381,6 +2408,13 @@
       // and culling all feed this, so the labels always describe what is
       // actually drawn.
       if (!visFam[f]) continue;
+      cands.push(f);
+    }
+    if (famCap > 0 && cands.length > famCap){
+      cands.sort((a,b) => (CENTROIDS[b].n||0) - (CENTROIDS[a].n||0));
+      cands.length = famCap;
+    }
+    for (const f of cands){
       const p = projPt(CENTROIDS[f]);
       if (p.persp <= 0) continue;
       const depth = clamp((p.z2+1.15)/2.3, 0, 1);
@@ -2407,18 +2441,6 @@
       ctx.font = `800 ${fs}px Syne, sans-serif`;
       fl.push({ f, text, ax:p.sx, ay:p.sy, lx:p.sx, ly:p.sy,
                 hw:ctx.measureText(text).width/2 + 5, hh:fs*0.62, fs, alpha, depth });
-    }
-    /* Declutter: keep only the N biggest genre labels.
-
-       "All" was a sane default at five families and is not at seventy -- naming
-       every galaxy at once means naming none of them, because no single one can
-       be read. So the Universe caps itself unless you have said otherwise; the
-       rest of the names are still one hover or one zoom away. */
-    const famCap = LBL.maxFam > 0 ? LBL.maxFam
-                 : (mapMode === 'universe' ? 16 : 0);
-    if (famCap > 0 && fl.length > famCap){
-      fl.sort((a,b) => (CENTROIDS[b.f].n||0) - (CENTROIDS[a.f].n||0));
-      fl.length = famCap;
     }
     let cx0 = 0, cy0 = 0;
     for (const l of fl){ cx0 += l.ax; cy0 += l.ay; }
@@ -2884,19 +2906,7 @@
   }
   if (typeof AUDIO !== 'undefined') AUDIO.registerSample({
     audio: PREV.audio,
-    restart: () => { if (PREV.node) beginSample(null); },   // ⟲ replay
-    // ▶ after a pause, or switching back to the sample: pick the clip up where
-    // it stopped. Only once it has run out (stopPreview cleared stopAt) does
-    // "play" mean "again from the drop" -- that is what ⟲ is for otherwise.
-    resume: () => {
-      if (!PREV.node) return;
-      const t = PREV.audio.currentTime;
-      if (PREV.stopAt && t >= PREV.start && t < PREV.stopAt){
-        if (typeof AUDIO !== 'undefined') AUDIO.claim('sample');
-        PREV.audio.play().catch(() => {});
-      } else beginSample(null);
-    },
-    release: () => { stopPreview(); },
+    restart: () => { if (PREV.node) beginSample(null); },   // ⟲ replay / after the clip ran out
   });
 
   // Best spot to start a preview: first sustained high-energy point (the drop),
@@ -3102,36 +3112,15 @@
       <div class="pop-h">similar tracks</div>
       <div class="pop-sim" id="pop-sim"><span class="pop-bar">…</span></div>
       <div class="pop-h">rate this track</div>
-      <div class="pop-rate">
-        <div class="rate-stars" role="group" aria-label="star rating">
-          ${[1,2,3,4,5].map(i=>`<button class="rate-star" data-s="${i}"
-            title="${i} star${i>1?'s':''}" aria-label="${i} star${i>1?'s':''}">&#9733;</button>`).join('')}
-          <button class="rate-clear" data-s="0" title="clear rating">&#10005;</button>
-        </div>
-        <select class="rate-grade" title="letter grade (exports into the Rekordbox comment)">
-          <option value="">grade</option>
-          ${['A','B','C','D','F'].map(g=>`<option value="${g}">${g}</option>`).join('')}
-        </select>
-        <input class="rate-note" type="text" placeholder="note (exports as “A - note”)"
-               autocomplete="off" spellcheck="false" maxlength="1000">
-      </div>
+      <div class="pop-rate pop-rate-track">${rateWidgetHtml({
+        what: '', grade: 'letter grade (exports into the Rekordbox comment)',
+        note: 'note (exports as “A - note”)' })}</div>
       ${artistsOf(n).length ? `<div class="pop-h">rate the artist</div>
       <div class="arate-pick">${artistsOf(n).map((a, i) =>
         `<button class="arate-who${i === 0 ? ' on' : ''}" data-a="${escapeHtml(a)}"
           >${escapeHtml(a)}</button>`).join('')}</div>
-      <div class="pop-rate pop-rate-artist">
-        <div class="arate-stars" role="group" aria-label="artist star rating">
-          ${[1,2,3,4,5].map(i=>`<button class="arate-star rate-star" data-s="${i}"
-            title="${i} star${i>1?'s':''}" aria-label="${i} star${i>1?'s':''}">&#9733;</button>`).join('')}
-          <button class="arate-clear rate-clear" data-s="0" title="clear artist rating">&#10005;</button>
-        </div>
-        <select class="arate-grade rate-grade" title="letter grade for the artist">
-          <option value="">grade</option>
-          ${['A','B','C','D','F'].map(g=>`<option value="${g}">${g}</option>`).join('')}
-        </select>
-        <input class="arate-note rate-note" type="text" placeholder="note about this artist"
-               autocomplete="off" spellcheck="false" maxlength="1000">
-      </div>
+      <div class="pop-rate pop-rate-artist">${rateWidgetHtml({
+        what: 'artist ', grade: 'letter grade for the artist', note: 'note about this artist' })}</div>
       <div class="pop-ratehint">Rates the selected artist across your whole library, not just
         this track.${artistsOf(n).length > 1 ? ' Pick which one above.' : ''}</div>` : ''}
       <div class="pop-omit-row">
@@ -3139,17 +3128,7 @@
         <button class="pop-override" title="set the genre yourself (persists + saved for training)">✎ override</button>
         <button class="pop-omit" title="delete this track's analysis (audio file untouched)">✕ omit</button>
       </div>
-      <div class="pop-adj" hidden>
-        <div class="ovr-h">how much of each genre is this?</div>
-        <div class="adj-rows"><span class="pop-bar">…</span></div>
-        <div class="ovr-typed">
-          <input class="adj-add-in" type="text" placeholder="add a genre it missed…" list="ovr-genre-list"
-                 autocomplete="off" spellcheck="false">
-          <button class="adj-add">add</button>
-          <button class="adj-close" title="done">✕</button>
-        </div>
-        <div class="ovr-hint">Nudges the read instead of replacing it — use <b>override</b> if it's flat wrong.</div>
-      </div>
+      <div class="pop-adj" hidden>${adjustPanelHtml()}</div>
       <div class="pop-ovr" hidden>
         <div class="ovr-cands"></div>
         <div class="ovr-typed">
@@ -3180,12 +3159,19 @@
       addBtn.textContent = '✓ in playlist'; addBtn.classList.add('added');
     };
     wireChips(popEl);
-    wireRating(popEl, n.hash);
+    // Keep the map's copies current so "size stars by rating" reacts now rather
+    // than at the next full map load.
+    wireRating(popEl.querySelector('.pop-rate-track'), `/ratings/${n.hash}`, j => {
+      TRACK_RATINGS[n.hash] = { stars: j.stars || 0, grade: j.grade || '', note: j.note || '' };
+      ratingsChanged();
+    });
     {
       // A collaboration has several artists and each is rated separately, so the
       // widget is bound to whichever is picked and re-bound when that changes.
       const who = [...popEl.querySelectorAll('.arate-who')];
-      const bind = name => wireArtistRating(popEl, name);
+      const bind = name => wireRating(popEl.querySelector('.pop-rate-artist'),
+        `/artist-ratings/${encodeURIComponent(name)}`,
+        j => { ARTIST_RATINGS[j.key || artistKey(name)] = j; ratingsChanged(); });
       if (who.length){
         bind(who[0].dataset.a);
         for (const b of who) b.onclick = () => {
@@ -3245,14 +3231,34 @@
      surface in Rekordbox on export -- nothing here writes to your audio files.
      Each control saves on its own so a half-filled rating is never lost, and
      sends only the field it owns, so setting stars can't wipe a note. */
-  function wireRating(root, hash){
-    // Scoped to the TRACK block. The artist widget below reuses `rate-star`,
-    // `rate-grade` and `rate-note` for styling, so an unscoped query returned
-    // ten buttons instead of five and painted both rows from one hover.
-    const box0  = root.querySelector('.pop-rate:not(.pop-rate-artist)') || root;
-    const stars = [...box0.querySelectorAll('.rate-star')];
-    const grade = box0.querySelector('.rate-grade');
-    const note  = box0.querySelector('.rate-note');
+  /* The rating widget: five stars, a letter grade and a note, each saved the
+     moment it changes (the note on blur, so one request per edit rather than
+     per keystroke). Used twice in the popup -- for the track and for the
+     artist -- against different endpoints; the two ratings answer different
+     questions and neither is derived from the other. */
+  function rateWidgetHtml({ what, grade, note }){
+    return `<div class="rate-stars" role="group" aria-label="${what}star rating">
+        ${[1,2,3,4,5].map(i=>`<button class="rate-star" data-s="${i}"
+          title="${i} star${i>1?'s':''}" aria-label="${i} star${i>1?'s':''}">&#9733;</button>`).join('')}
+        <button class="rate-clear" data-s="0" title="clear ${what}rating">&#10005;</button>
+      </div>
+      <select class="rate-grade" title="${grade}">
+        <option value="">grade</option>
+        ${['A','B','C','D','F'].map(g=>`<option value="${g}">${g}</option>`).join('')}
+      </select>
+      <input class="rate-note" type="text" placeholder="${note}"
+             autocomplete="off" spellcheck="false" maxlength="1000">`;
+  }
+
+  // `box` is the widget's own .pop-rate element -- scoped, because the popup
+  // holds two of these and an unscoped query painted both rows from one hover.
+  // `onCommit(j)` sees every answer the server gives, so the caller can keep
+  // its in-memory copy current.
+  function wireRating(box, url, onCommit){
+    if (!box) return;
+    const stars = [...box.querySelectorAll('.rate-star')];
+    const grade = box.querySelector('.rate-grade');
+    const note  = box.querySelector('.rate-note');
     if (!stars.length || !grade || !note) return;
 
     // `saved` is the value on the server; `paint` is free to show a hover
@@ -3263,14 +3269,12 @@
     const commit = j => {
       saved = j.stars || 0;
       paint(saved);
-      // Keep the map's copy current so "size stars by rating" reacts now rather
-      // than at the next full map load -- matching wireArtistRating.
-      TRACK_RATINGS[hash] = { stars: j.stars || 0, grade: j.grade || '', note: j.note || '' };
+      if (onCommit) onCommit(j);
     };
 
     const save = async body => {
       try {
-        const r = await fetch(`/ratings/${hash}`, {
+        const r = await fetch(url, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body),
         });
@@ -3278,7 +3282,7 @@
       } catch(_){ /* offline / backend down -- the UI keeps what you typed */ }
     };
 
-    fetch(`/ratings/${hash}`).then(r => r.ok ? r.json() : null).then(j => {
+    fetch(url).then(r => r.ok ? r.json() : null).then(j => {
       if (!j) return;
       commit(j); grade.value = j.grade || ''; note.value = j.note || '';
     }).catch(() => {});
@@ -3288,67 +3292,10 @@
       b.onmouseenter = () => paint(+b.dataset.s);
       b.onclick = () => save({stars: +b.dataset.s});
     }
-    const clear = box0.querySelector('.rate-clear');
+    const clear = box.querySelector('.rate-clear');
     if (clear) clear.onclick = () => save({stars: 0});
-    const box = box0.querySelector('.rate-stars');
-    if (box) box.onmouseleave = () => paint(saved);
-
-    grade.onchange = () => save({grade: grade.value});
-    // save the note on blur rather than per keystroke -- one request per edit
-    note.onblur = () => save({note: note.value});
-    note.onkeydown = e => { if (e.key === 'Enter') note.blur(); };
-  }
-
-  /* The artist rating widget. Same three fields and the same save-per-control
-     discipline as wireRating, against the artist endpoints instead of the track
-     ones -- a track rating and an artist rating answer different questions and
-     neither is derived from the other.
-
-     Kept as its own function rather than parameterising wireRating: the two
-     share a shape but not a lifetime (this one also refreshes the in-memory
-     ARTIST_RATINGS the map sizes stars from), and folding them together would
-     mean a flag argument at every line. */
-  function wireArtistRating(root, artist){
-    const stars = [...root.querySelectorAll('.arate-star')];
-    const grade = root.querySelector('.arate-grade');
-    const note  = root.querySelector('.arate-note');
-    if (!stars.length || !grade || !note) return;
-    const url = `/artist-ratings/${encodeURIComponent(artist)}`;
-
-    let saved = 0;
-    const paint = v => stars.forEach(b => b.classList.toggle('on', +b.dataset.s <= v));
-    const commit = j => {
-      saved = j.stars || 0;
-      paint(saved);
-      // Keep the map's own copy current so "size stars by rating" reflects the
-      // change immediately, instead of waiting for the next full map load.
-      ARTIST_RATINGS[j.key || artistKey(artist)] = j;
-    };
-
-    const save = async body => {
-      try{
-        const r = await fetch(url, {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(body),
-        });
-        if (r.ok) commit(await r.json());
-      }catch(_){ /* offline -- the UI keeps what you typed */ }
-    };
-
-    fetch(url).then(r => r.ok ? r.json() : null).then(j => {
-      if (!j) return;
-      saved = j.stars || 0; paint(saved);
-      grade.value = j.grade || ''; note.value = j.note || '';
-    }).catch(() => {});
-
-    for (const b of stars){
-      b.onmouseenter = () => paint(+b.dataset.s);
-      b.onclick = () => save({stars: +b.dataset.s});
-    }
-    const clear = root.querySelector('.arate-clear');
-    if (clear) clear.onclick = () => save({stars: 0});
-    const box = root.querySelector('.arate-stars');
-    if (box) box.onmouseleave = () => paint(saved);
+    const strip = box.querySelector('.rate-stars');
+    if (strip) strip.onmouseleave = () => paint(saved);
 
     grade.onchange = () => save({grade: grade.value});
     note.onblur = () => save({note: note.value});
@@ -3370,13 +3317,9 @@
     return [...set].sort((a, b) => a.localeCompare(b));
   }
 
-  // Fill the shared <datalist> that backs the override input's dropdown.
-  function refreshGenreList(){
-    const dl = document.getElementById('ovr-genre-list');
-    if (!dl) return;
-    dl.innerHTML = knownGenres()
-      .map(g => `<option value="${escapeHtml(g)}"></option>`).join('');
-  }
+  // Fill the shared <datalist> behind the override input's dropdown. app.js
+  // owns the list (the Analyzer rows fill it too); the map adds what is on it.
+  function refreshGenreList(){ fillGenreList(knownGenres()); }
 
   // First known genre starting with `prefix`; prefers an exact case-insensitive
   // hit so typing a full name doesn't get "completed" into a longer one.
@@ -3390,167 +3333,26 @@
   }
 
   // --- adjust: nudge the blend instead of replacing it ----------------------
-  // An override answers "what is this" with one word and throws away everything
-  // the model got right. This bends the read instead: each genre carries a step
-  // you raise or lower, so "this is a VERY house track" and "that Tech Trance is
-  // a misread" are both sayable without flattening the rest to zero.
-  //
-  // The step is what's stored, never the multiplier it computes -- the server
-  // can retune the curve without silently rewriting what you meant by it.
+  // The shared panel (wireAdjustPanel, app.js) with the popup's chrome around
+  // it: the omit row gives way while it is open, and the map re-clusters once,
+  // when the user is done -- doing it per-press would slide the dot away from
+  // the cursor between clicks.
   function wireAdjust(popEl, n){
     const btn  = popEl.querySelector('.pop-adjust');
     const box  = popEl.querySelector('.pop-adj');
-    const rows = popEl.querySelector('.adj-rows');
     const omitRow = popEl.querySelector('.pop-omit-row');
-    const addIn = popEl.querySelector('.adj-add-in');
     if (!btn || !box) return;
-
-    let state = null;          // {steps, base, adjusted, max_step, words}
-    let saving = null;         // in-flight POST, so rapid clicks coalesce
     let moved = false;         // did anything actually change? -> re-cluster on close
-
-    // Re-cluster once, when the user is done. Doing it per-press would slide the
-    // dot away from the cursor between clicks.
-    const done = () => {
-      box.hidden = true; omitRow.hidden = false;
-      if (moved){ moved = false; if (NODES.length) layout(); }
-    };
-
-    const wordFor = s => (state && state.words && state.words[String(s)]) || 'as read';
-
-    function render(){
-      if (!state){ rows.innerHTML = `<span class="pop-bar">…</span>`; return; }
-      const drops = state.drops || [];
-      const shown = new Map();
-      for (const e of state.adjusted || []) shown.set(e.style, e.score);
-      // A genre pushed all the way down can fall out of the top-N; keep its row
-      // visible so the press is undoable rather than stranded.
-      for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
-      for (const g of drops) shown.delete(g);        // removed: listed below instead
-      const max = state.max_step || 3;
-      const rowsHtml = [...shown.entries()].map(([style, score]) => {
-        const step = (state.steps || {})[style] || 0;
-        const pct  = Math.round((score || 0) * 100);
-        return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
-          <button class="adj-step" data-d="-1" ${step <= -max ? 'disabled' : ''} title="less">−</button>
-          <button class="adj-step" data-d="1" ${step >= max ? 'disabled' : ''} title="more">＋</button>
-          <span class="adj-meter" title="${escapeHtml(style)} — ${escapeHtml(wordFor(step))}">
-            <i style="width:${pct}%"></i>
-            <b>${escapeHtml(style)}</b>${step ? `<em>${escapeHtml(wordFor(step))}</em>` : ''}
-          </span>
-          <span class="adj-pct">${pct}%</span>
-          <button class="adj-drop" title="remove ${escapeHtml(style)} from this track">✕</button>
-        </div>`;
-      }).join('');
-      // Removed genres are named, not merely gone -- a remove you cannot see is
-      // a remove you cannot undo.
-      const dropHtml = drops.length
-        ? `<div class="adj-dropped"><span class="ovr-h">removed</span>` +
-          drops.map(g => `<button class="adj-restore" data-g="${escapeHtml(g)}"` +
-            ` title="put ${escapeHtml(g)} back on this track">${escapeHtml(g)} ↩</button>`).join('') +
-          `</div>`
-        : '';
-      if (!shown.size && !drops.length){
-        rows.innerHTML = `<div class="ovr-h">nothing read for this track</div>`; return;
-      }
-      rows.innerHTML = rowsHtml + dropHtml;
-      for (const b of rows.querySelectorAll('.adj-step')){
-        b.onclick = () => bump(b.closest('.adj-row').dataset.g, Number(b.dataset.d));
-      }
-      for (const b of rows.querySelectorAll('.adj-drop')){
-        b.onclick = () => drop(b.closest('.adj-row').dataset.g);
-      }
-      for (const b of rows.querySelectorAll('.adj-restore')){
-        b.onclick = () => restore(b.dataset.g);
-      }
-    }
-
-    // Remove a genre outright. A different statement from -3, not a stronger
-    // one: "not at all" leaves it in the read at a trace, this takes it off the
-    // track. The share it held is redistributed, so the blend closes the gap.
-    function drop(style){
-      if (!state) return;
-      const drops = state.drops || [];
-      if (drops.includes(style)) return;
-      state.drops = [...drops, style];
-      state.steps = { ...(state.steps || {}) };
-      delete state.steps[style];           // "more of this" and "none of this"
-      render();                            //  cannot both be what you meant
-      save();
-    }
-
-    function restore(style){
-      if (!state) return;
-      state.drops = (state.drops || []).filter(g => g !== style);
-      render();
-      save();
-    }
-
-    // Optimistic: the row moves on click and the server's answer replaces it a
-    // moment later. Waiting for the round-trip made the +/- feel broken.
-    function bump(style, delta){
-      if (!state) return;
-      const max = state.max_step || 3;
-      const next = Math.max(-max, Math.min(max, ((state.steps || {})[style] || 0) + delta));
-      state.steps = { ...(state.steps || {}) };
-      if (next) state.steps[style] = next; else delete state.steps[style];
-      render();
-      save();
-    }
-
-    function save(){
-      const steps = state.steps || {};
-      const drops = state.drops || [];
-      saving = (saving || Promise.resolve()).then(async () => {
-        try{
-          const r = await fetch(`/weights/${n.hash}`, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ steps, drops }) });
-          const body = await r.json();
-          // Identity, not equality: a click during the round-trip replaced both
-          // objects, and its own save is already queued behind this one.
-          if (steps !== state.steps || drops !== state.drops) return;
-          state.steps = body.steps || {};
-          state.drops = body.drops || [];
-          state.adjusted = body.adjusted && body.adjusted.length ? body.adjusted : state.base;
-          render();
-          applyToNode(n, state.adjusted);
-          moved = true;
-        }catch(_){ /* the row already moved; the next click retries */ }
-      });
-    }
-
-    btn.onclick = async () => {
-      if (!box.hidden){ done(); return; }
-      omitRow.hidden = true; box.hidden = false;
-      refreshGenreList();
-      rows.innerHTML = `<span class="pop-bar">…</span>`;
-      try{
-        state = await (await fetch(`/weights/${n.hash}`)).json();
-      }catch(_){ rows.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
-      render();
-    };
-    popEl.querySelector('.adj-close').onclick = done;
-
-    const addGenre = () => {
-      const g = completeGenre(addIn.value) || (addIn.value || '').trim();
-      if (!g || !state) return;
-      addIn.value = '';
-      // Enters at "moderately" -- a genre you had to type is one you mean, and
-      // starting at +1 read as barely-there next to what the model already found.
-      if (!(state.steps || {})[g]) { state.steps = { ...(state.steps || {}), [g]: 2 }; render(); save(); }
-    };
-    popEl.querySelector('.adj-add').onclick = addGenre;
-    addIn.addEventListener('keydown', e => {
-      if (e.key === 'Enter'){ addGenre(); return; }
-      if (e.key === 'Escape'){ done(); return; }
-      if (e.key === 'Tab' && addIn.value.trim()){
-        const hit = completeGenre(addIn.value);
-        if (hit && hit.toLowerCase() !== addIn.value.trim().toLowerCase()){
-          e.preventDefault(); addIn.value = hit;
-          addIn.setSelectionRange(hit.length, hit.length);
-        }
-      }
+    wireAdjustPanel(btn, box, {
+      hashOf: () => n.hash,
+      genres: knownGenres,
+      complete: completeGenre,
+      onOpen: () => { omitRow.hidden = true; },
+      onSaved: state => { applyToNode(n, state.adjusted); moved = true; },
+      onClose: () => {
+        omitRow.hidden = false;
+        if (moved){ moved = false; if (NODES.length) layout(); }
+      },
     });
   }
 
@@ -3569,8 +3371,7 @@
       const f2 = familyOf(n.mix[0]) || n.fam;
       sh = mixShade(sh, styleShade(f2, n.mix[0]), n.mix[1]);
     }
-    n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
-    n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
+    setShade(n, sh);
     n.flag = false; n.suggest = null;
   }
 
@@ -3628,9 +3429,7 @@
     n.style = genre;
     n.fam = familyOf(genre) || 'Other';
     n.mix = null;                          // manual override -> pure genre, no blend
-    const sh = styleShade(n.fam, genre);
-    n.hue = sh.h; n.sat = sh.s; n.dl = sh.dl;
-    n._spCore = n._spGlow = null;   // colour changed -> re-resolve its sprites
+    setShade(n, styleShade(n.fam, genre));
     n.flag = false; n.suggest = null;
     closePopup();
     if (NODES.length) layout();          // re-cluster with the new genre
@@ -4074,14 +3873,8 @@
     $f('flt-playable').addEventListener('change', e => { FILT.playable = e.target.checked; onFilt(); });
     $f('flt-pl').addEventListener('change', async e => {
       FILT.playlist = e.target.value || null;
-      playlistHashes = null;
-      if (FILT.playlist){
-        try {
-          const d = await (await fetch(`/playlists/${FILT.playlist}`)).json();
-          const hs = d.tracks || d.hashes || [];
-          playlistHashes = new Set(hs.map(x => (typeof x === 'string' ? x : x && x.hash)).filter(Boolean));
-        } catch(_) { playlistHashes = null; }
-      }
+      const got = FILT.playlist ? await playlistHashSet(FILT.playlist) : null;
+      playlistHashes = got ? got.hashes : null;
       onFilt();
     });
     for (const id of ['flt-bpm-lo','flt-bpm-hi']) $f(id).addEventListener('input', () => {
@@ -4390,8 +4183,8 @@
      ratings table is unreachable would be a bad trade. */
   async function loadOverlays(){
     const grab = url => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
-    const [mem, tr, ar, pls] = await Promise.all([
-      grab('/vibes/membership'), grab('/ratings'), grab('/artist-ratings'), grab('/playlists'),
+    const [mem, tr, ar] = await Promise.all([
+      grab('/vibes/membership'), grab('/ratings'), grab('/artist-ratings'), refreshPlaylists(),
     ]);
 
     VIBES = Array.isArray(mem) ? mem : [];
@@ -4414,9 +4207,8 @@
       const alt = artistKey(a.artist);
       if (alt && alt !== a.key) ARTIST_RATINGS[alt] = a;
     }
+    ratingsChanged();
 
-    PLAYLISTS = Array.isArray(pls) ? pls : (pls && pls.playlists) || [];
-    fillPlaylistPickers();
     const uby = document.getElementById('uni-by');
     if (uby) uby.value = UNI.by;
     const sby = document.getElementById('solar-by');
@@ -4486,26 +4278,34 @@
      before NODES is swapped and the state half inside the swap -- see loadMap. */
   let solarPayload = null;
 
+  /* One saved playlist's tracks, as {name, hashes: Set} -- or null if it no
+     longer exists. r.ok first: a 404 body is still valid JSON ({"error": ...}),
+     so parsing it blindly yielded an empty Set for a playlist that was gone,
+     indistinguishable from an empty one. Tolerates both shapes the endpoint
+     has used (`tracks` of objects, or bare `hashes`). */
+  async function playlistHashSet(id){
+    try{
+      const r = await fetch(`/playlists/${id}`);
+      if (!r.ok) return null;
+      const d = await r.json();
+      const hs = d.tracks || d.hashes || [];
+      return { name: d.name || '',
+               hashes: new Set(hs.map(x => (typeof x === 'string' ? x : x && x.hash)).filter(Boolean)) };
+    }catch(_){ return null; }
+  }
+
   async function fetchSolarPayload(){
     solarPayload = null;
     if (!SOLAR.playlist) return;
     const pl = PLAYLISTS.find(x => String(x.id) === String(SOLAR.playlist));
-    try{
-      // r.ok first: a 404 body is still valid JSON ({"error": ...}), so parsing
-      // it blindly yielded an empty Set for a playlist that no longer exists --
-      // indistinguishable from an empty one, and it suppressed the hint.
-      const r = await fetch(`/playlists/${SOLAR.playlist}`);
-      if (!r.ok) return;
-      const d = await r.json();
-      solarPayload = { name: pl ? pl.name : (d.name || ''), tracks: d.tracks || d.hashes || [] };
-    }catch(_){ solarPayload = null; }
+    const got = await playlistHashSet(SOLAR.playlist);
+    if (got) solarPayload = { name: pl ? pl.name : got.name, hashes: got.hashes };
   }
 
   function solarSetFrom(payload){
     if (!payload){ SOLAR_SET = null; SOLAR_NAME = ''; return; }
     SOLAR_NAME = payload.name || '';
-    SOLAR_SET = new Set(
-      (payload.tracks || []).map(x => (typeof x === 'string' ? x : x && x.hash)).filter(Boolean));
+    SOLAR_SET = payload.hashes;
   }
 
   /* Fetch and apply in one step, for the callers that are not mid-swap. */
@@ -4556,62 +4356,22 @@
     return JSON.parse(new TextDecoder('utf-8').decode(buf));
   }
 
-  /* The map is expensive to build -- the server classifies every track in the
-     library, and the client then places every star. It was rebuilt from scratch
-     on every single switch to the Map tab, which is why coming back to it, or
-     jumping to the playing track from the now-playing bar, sat on "building your
-     map" for seconds at a time to arrive at exactly the map you just left.
-
-     So it is built once and kept. MAP_STALE says the library changed underneath
-     it -- a new analysis, an omit, an override, an adjustment -- and is set by
-     the screens that make those changes; edits made ON the map already update
-     their node in place and re-run layout(), so they don't set it. The
-     ↻ rebuild button is the escape hatch for anything that slips through. */
-  let MAP_STALE = true;                 // nothing loaded yet
-  window.vibeMapStale = () => { MAP_STALE = true; };
-
-  /* The fingerprint the loaded map was built from -- see /map/stamp. Stale says
-     "something wrote to the library"; this says whether that write touched
-     anything the map is made of. */
+    /* The map is expensive to build and cheap to keep, so it is built once and
+     kept, and each return to the Map asks the server whether the library it
+     was built from is still the library that is there (see /map/stamp -- a
+     revision counter, so the question costs microseconds). This replaced a
+     scheme that watched every fetch for writes and kept an allow-list of the
+     POSTs that were really reads; the allow-list had to grow for every new
+     endpoint, and a miss was silent. The ↻ rebuild button is the escape hatch
+     for anything that slips through. */
+  /* The fingerprint the loaded map was built from -- see /map/stamp. */
   let MAP_STAMP = null;
 
-  /* What marks it stale. Tagging the twenty call sites that write to the library
-     would work until the twenty-first was added without one, and the failure
-     there is silent: a map that quietly disagrees with the library. So this
-     watches fetch instead -- any non-GET to our own server means something
-     changed. It errs deliberately toward rebuilding, because a missed one is
-     wrong, and a spurious one now costs a stamp check rather than a rebuild
-     (loadMap). The exceptions are the POSTs that are really queries and change
-     nothing at all, so they don't even cost that. */
-  const READONLY_POST = /^\/(compare|refine|waveform|filepaths\/count|relabel\/preview)(\/|$)/;
-  /* Writes the map cannot see. A rating changes the library, but a map node is
-     not built from one -- ratings arrive as an overlay, and the widget that saved
-     it has already updated the map's copy (see wireRating), so the star is the
-     right size before the request even lands. Marking the map stale for these
-     was the common case of the bug this whole mechanism exists to avoid: rate a
-     track, jump to another, and the galaxy is torn down and rebuilt around you. */
-  const OVERLAY_POST = /^\/(ratings|artist-ratings)(\/|$)/;
-  const _origFetch = window.fetch;
-  window.fetch = function (input, init) {
-    try {
-      const method = String((init && init.method)
-        || (input && input.method) || 'GET').toUpperCase();
-      if (method !== 'GET' && method !== 'HEAD') {
-        const u = new URL((input && input.url) || String(input), location.href);
-        if (u.origin === location.origin
-            && !READONLY_POST.test(u.pathname)
-            && !OVERLAY_POST.test(u.pathname)) MAP_STALE = true;
-      }
-    } catch (_) { MAP_STALE = true; }   // couldn't tell what it was -> assume it wrote
-    return _origFetch.apply(this, arguments);
-  };
-
   /* The digest of what the map would be built from right now, or null if the
-     server can't say. Cheap: it reads and hashes the library rather than
-     classifying it. */
+     server can't say. */
   async function mapStamp(){
     try{
-      const r = await _origFetch('/map/stamp');   // straight through: this is a read
+      const r = await fetch('/map/stamp');
       if (!r.ok) return null;
       const j = await r.json();
       return (j && j.stamp) || null;
@@ -4619,23 +4379,12 @@
   }
 
   async function loadMap(force){
-    // Already built and still current: show what is there. This is the whole
-    // point -- returning to the Map has to be instant, not a rebuild.
-    if (!force && !MAP_STALE && NODES.length){
-      countMap.textContent = mapCountText();
-      return;
-    }
-    /* Marked stale, but the write that marked it may not have been about the
-       map. The flag above is set by watching fetch, which cannot tell what a
-       write meant -- only that there was one -- and most writes are not about
-       what a track IS. That cost a full rebuild on the next visit: rate a track,
-       jump to another one, and the galaxy you were reading is torn down and
-       rebuilt around you.
-
-       So ask what the map would be keyed on before spending that. A match means
-       the library the map was built from is the library that is there now, and
-       there is nothing to rebuild -- only the overlays to re-read, which is four
-       small requests.
+    /* Ask what the map would be keyed on before spending a rebuild. A match
+       means the library the map was built from is the library that is there
+       now, and there is nothing to rebuild -- only the overlays to re-read,
+       which is four small requests. Most writes are not about what a track IS:
+       rate a track, jump to another one, and the galaxy you were reading must
+       not be torn down and rebuilt around you.
 
        The two overlays that DO move stars get placed again, because neither is in
        the stamp -- a vibe and a playlist are things you put tracks into, not part
@@ -4645,7 +4394,6 @@
     if (!force && NODES.length && MAP_STAMP){
       const now = await mapStamp();
       if (now && now === MAP_STAMP){
-        MAP_STALE = false;
         const vibeSig = () => VIBES.map(v => v.name + '#' + (v.hashes || []).join(',')).join('|');
         const wasVibes = vibeSig();
         await loadOverlays();
@@ -4655,7 +4403,6 @@
         return;
       }
     }
-    MAP_STALE = false;                  // clear first: a failure sets it back
     try{
       // Phase 1 -- the server reads the library, classifies every track and
       // builds the response. Nothing is measurable until it starts sending.
@@ -4678,8 +4425,7 @@
       const nextEdges = data.edges || [];
       const nextStamp = data.stamp || null;
       if (!nextNodes.length){
-        NODES = []; EDGES = []; MAP_STAMP = null;
-        MAP_STALE = true;               // nothing to keep; look again next time
+        NODES = []; EDGES = []; MAP_STAMP = null;   // nothing to keep; look again next time
         loading(false);
         countMap.textContent='0 tracks -- scan some music first';
         return;
@@ -4702,8 +4448,7 @@
       resize(); layout();
       loading(false);
     }catch(err){
-      MAP_STALE = true;                 // a half-built map must not look current
-      MAP_STAMP = null;
+      MAP_STAMP = null;                 // a half-built map must not look current
       loading(false);
       countMap.textContent='failed to load map';
       console.error('map load failed', err);
@@ -4757,8 +4502,7 @@
         // be populated once the nodes exist
         if (window.mapFilterPopulate) window.mapFilterPopulate();
         if (window.mapGenrePopulate) window.mapGenrePopulate();
-        const m = /^#map=(.+)$/.exec(deepHash);
-        if (m && byHash.has(m[1])) selectNode(m[1], true);   // cut, don't fly
+        if (want && byHash.has(want[1])) selectNode(want[1], true);   // cut, don't fly
       });
     } else { stopLoop(); }
   }

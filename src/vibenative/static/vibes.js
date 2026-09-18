@@ -14,7 +14,6 @@
    this tab is the place to sit down and describe them. */
 (function () {
   var body;
-  var TRAINING = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -69,22 +68,11 @@
     var total = vibes.reduce(function (a, v) { return a + v.count; }, 0);
     var sorted = vibes.slice().sort(function (a, b) { return b.count - a.count; });
     var top = sorted.length ? sorted[0] : null;
-    var max = top ? Math.max(1, top.count) : 1;
     var described = vibes.filter(function (v) { return (v.description || '').trim(); }).length;
 
-    var list = sorted.map(function (v) {
-      var pct = total ? (v.count / total) * 100 : 0;
-      return '<div class="gen-stat-row" title="' + esc(v.name) + ' — ' + v.count +
-          ' track' + (v.count === 1 ? '' : 's') + '">' +
-        '<span class="gen-stat-name"><i class="gen-stat-dot" style="background:' +
-          vibeColor(v.name) + '"></i>' + esc(v.name) + '</span>' +
-        '<span class="gen-stat-bar"><span style="width:' +
-          ((v.count / max) * 100).toFixed(1) + '%;background:' + vibeColor(v.name) +
-          '"></span></span>' +
-        '<span class="gen-stat-n">' + v.count + '</span>' +
-        '<span class="gen-stat-pct">' + pct.toFixed(1) + '%</span>' +
-      '</div>';
-    }).join('');
+    var list = window.statRowsHtml(sorted.map(function (v) {
+      return { name: v.name, count: v.count, color: vibeColor(v.name) };
+    }), total);
 
     return '<div class="opt-card"><h3>Total vibes</h3>' +
       '<div class="gen-bigstats">' +
@@ -195,7 +183,6 @@
   }
 
   function render(vibes, training) {
-    TRAINING = training;
     body.innerHTML =
       howCard() +
       statsCard(vibes) +
@@ -268,22 +255,9 @@
       impFile.value = '';
     };
 
-    // Select a tile to expand it -- one at a time, matching the Genres tab: an
-    // open card spans the full grid row, so several at once undoes the grid.
-    body.querySelectorAll('.vib-key .gen-tile').forEach(function (t) {
-      t.onclick = function () {
-        var cardEl = t.closest('.gen-key');
-        var wasOpen = cardEl.classList.contains('open');
-        body.querySelectorAll('.gen-key.open').forEach(function (o) {
-          o.classList.remove('open');
-          o.querySelector('.gen-detail').hidden = true;
-        });
-        if (wasOpen) return;
-        cardEl.classList.add('open');
-        cardEl.querySelector('.gen-detail').hidden = false;
-        openCard(cardEl);
-      };
-    });
+    // Select a tile to expand it, one at a time, matching the Genres tab
+    // (wireTileToggle, app.js).
+    window.wireTileToggle(body, body.querySelectorAll('.vib-key .gen-tile'), openCard);
   }
 
   /* Everything that needs the card to be visible first: sizing the textarea to
@@ -392,5 +366,4 @@
       body.innerHTML = '<div class="opt-card">Could not load vibes.</div>';
     });
   };
-  void TRAINING;
 })();

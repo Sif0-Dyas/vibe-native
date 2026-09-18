@@ -83,11 +83,8 @@ def analyze_route():
             h = file_hash(p)
             cached = cache_get(h)
             if cached:
-                cached["hash"] = h
-                cached["cached"] = True
-                cached["segment_overrides"] = _segment_overrides(h)
-                cached["adjusted"] = _adjusted(cached)
-                return jsonify(cached)
+                _backfill_waveform(h, p)
+                return jsonify(_cached_response(cached, h))
 
             title = read_title(p) or Path(f.filename).stem
             tags = read_tags(p)
@@ -294,14 +291,43 @@ def _segment_overrides(h):
     return [{"id": r[0], "start_s": r[1], "end_s": r[2], "genre": r[3]} for r in rows]
 
 
-def _adjusted(payload):
-    """The track's blend after its manual weight adjustments, or None if it has
-    none. Sent with every cached payload so a track nudged on the map reads the
-    same the moment it lands in the Analyzer -- the alternative was a second
-    round-trip per row just to find out most rows had nothing to say."""
+def _backfill_waveform(h, upload):
+    """Render the detailed waveform from an upload we are already holding.
+
+    A track dragged in and analysed without ever being linked to a folder has
+    no file the server can reach, so its waveform can only ever come from the
+    browser's copy. The client used to discover that by asking GET /waveform,
+    getting a 404, and then re-uploading the same file to POST /waveform --
+    which the server hashed a second time. On a cache hit the upload is right
+    here, already hashed, so the one decode happens now and the second upload
+    never has to.
+    """
+    if waveform_cache_get(h) is not None:
+        return
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    if row and row[0] and Path(row[0]).is_file():
+        return                                    # GET /waveform can decode that itself
+    try:
+        waveform_cache_put(h, waveform_minmax(load_samples_for_waveform(upload)))
+    except Exception:
+        log.exception("waveform backfill failed for %s", h)   # the envelope stands
+
+
+def _cached_response(cached, h, **extra):
+    """A cached payload dressed the way every cache hit is returned.
+
+    ``adjusted`` is the blend after the track's manual weight adjustments (or
+    None), sent with every cached payload so a track nudged on the map reads
+    the same the moment it lands in the Analyzer -- the alternative was a
+    second round-trip per row just to find out most rows had nothing to say.
+    """
     from ..weights import read_with_steps
 
-    return read_with_steps(payload)
+    cached.update({"hash": h, "cached": True, **extra})
+    cached["segment_overrides"] = _segment_overrides(h)
+    cached["adjusted"] = read_with_steps(cached)
+    return cached
 
 
 @bp.get("/track/<h>")
@@ -312,11 +338,7 @@ def track_route(h):
     cached = cache_get(h)
     if not cached:
         return jsonify({"error": "not in library"}), 404
-    cached["hash"] = h
-    cached["cached"] = True
-    cached["segment_overrides"] = _segment_overrides(h)
-    cached["adjusted"] = _adjusted(cached)
-    return jsonify(cached)
+    return jsonify(_cached_response(cached, h))
 
 
 # ----------------------------------------------------------------------------
@@ -543,10 +565,7 @@ def batch_route():
             h = file_hash(path)
             cached = cache_get(h)
             if cached:
-                cached = dict(cached)
-                cached.update({"ok": True, "hash": h, "cached": True, "filepath": str(path)})
-                cached["segment_overrides"] = _segment_overrides(h)
-                cached["adjusted"] = _adjusted(cached)
+                cached = _cached_response(dict(cached), h, ok=True, filepath=str(path))
                 # backfill a server-side path for older drop-analyzed rows (which
                 # stored none) so audio preview / DAW waveform / section overrides
                 # light up for the whole library on a re-scan -- no re-analysis.

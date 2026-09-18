@@ -39,15 +39,38 @@ const AUDIO = (function () {
   try { Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}') || {}); } catch (_) { /* private mode */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) { /* private mode */ } };
 
-  /* The sample source. map.js registers its element and the verbs only it can
-     implement (restart the clip from the drop; resume a paused one; give the
-     clip up). */
+  /* The sample source. map.js registers its element and the one verb only it
+     can implement: restart the clip from the drop. */
   const sample = {
-    audio: null, restart: null, resume: null, release: null,
+    audio: null, restart: null,
     loaded: false, meta: null, start: 0, seconds: 0,
   };
 
   const trackAudio = () => (typeof PLAYER !== 'undefined' ? PLAYER.audio : null);
+
+  /* A bar's title is the way back to the star: click (or Enter / Space) and
+     the map re-centres on the track and opens its panel. Playback is untouched.
+     A track with no hash was never in the library, so there is nothing on the
+     map to fly to -- the affordance is withdrawn rather than left there to do
+     nothing. `wire` once; `sync` on every render with the current hash. */
+  function gotoTitle(titleEl, cls, hashOf) {
+    const go = () => {
+      const h = hashOf();
+      if (h && typeof window.vibeMapGoto === 'function') window.vibeMapGoto(h);
+    };
+    titleEl.addEventListener('click', go);
+    titleEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
+    return function sync() {
+      const findable = !!(hashOf() && typeof window.vibeMapGoto === 'function');
+      titleEl.classList.toggle(cls, findable);
+      titleEl.title = findable ? 'find this track on the map' : '';
+      if (findable) { titleEl.tabIndex = 0; titleEl.setAttribute('role', 'button'); }
+      else { titleEl.removeAttribute('tabindex'); titleEl.removeAttribute('role'); }
+    };
+  }
+  window.wireGotoTitle = gotoTitle;
   const trackLoaded = () => !!(typeof PLAYER !== 'undefined' && PLAYER.now);
   const isPlaying = a => !!(a && !a.paused && !a.ended);
 
@@ -81,9 +104,15 @@ const AUDIO = (function () {
     claim(kind);
     if (kind === 'sample') {
       // Resume, not restart: the strip's play button is "play / pause", and a
-      // pause that comes back from the drop is a replay -- which has its own key.
-      const go = sample.resume || sample.restart;
-      if (sample.loaded && !isPlaying(sample.audio) && go) go();
+      // pause that comes back from the drop is a replay -- which has its own
+      // key. Only once the clip has run past its window does play mean
+      // "again from the drop".
+      if (sample.loaded && !isPlaying(sample.audio)) {
+        const t = sample.audio ? sample.audio.currentTime : 0;
+        if (t >= sample.start && t < sample.start + (sample.seconds || 0)) {
+          sample.audio.play().catch(() => {});
+        } else if (sample.restart) sample.restart();
+      }
     } else if (trackLoaded() && !isPlaying(trackAudio())) {
       const t = trackAudio();
       if (t) t.play().catch(() => { /* the bar's error handler reports it */ });
@@ -150,13 +179,7 @@ const AUDIO = (function () {
     const playing = isPlaying(sample.audio);
     const m = sample.meta || {};
     el.title.textContent = m.title || 'Track';
-    // Same gesture as the now-playing bar's title: the name of what you are
-    // hearing is the way back to it on the map.
-    const findable = !!(m.hash && typeof window.vibeMapGoto === 'function');
-    el.title.classList.toggle('sb-goto', findable);
-    el.title.title = findable ? 'find this track on the map' : '';
-    if (findable) { el.title.tabIndex = 0; el.title.setAttribute('role', 'button'); }
-    else { el.title.removeAttribute('tabindex'); el.title.removeAttribute('role'); }
+    syncGoto();
     el.dot.style.background = m.color || 'var(--accent-b)';
     el.dot.style.color = m.color || 'var(--accent-b)';   // drives the glow
     el.play.textContent = playing ? '❙❙' : '▶';
@@ -172,15 +195,8 @@ const AUDIO = (function () {
     tick();
   }
 
+  const syncGoto = bar ? gotoTitle(el.title, 'sb-goto', () => (sample.meta || {}).hash) : () => {};
   if (bar) {
-    const gotoStar = () => {
-      const h = (sample.meta || {}).hash;
-      if (h && typeof window.vibeMapGoto === 'function') window.vibeMapGoto(h);
-    };
-    el.title.addEventListener('click', gotoStar);
-    el.title.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gotoStar(); }
-    });
     el.play.addEventListener('click', () => {
       if (isPlaying(sample.audio)) { pause('sample'); render(); return; }
       setListen('sample');                     // playing the sample IS choosing it
@@ -215,8 +231,6 @@ const AUDIO = (function () {
     registerSample(opts) {
       sample.audio = opts.audio;
       sample.restart = opts.restart;
-      sample.resume = opts.resume || null;
-      sample.release = opts.release;
       applyVolume();
       ['play', 'pause', 'ended'].forEach(ev => sample.audio.addEventListener(ev, render));
       sample.audio.addEventListener('timeupdate', tick);
@@ -229,10 +243,10 @@ const AUDIO = (function () {
       sample.seconds = sample.meta.seconds || 0;
       render();
     },
-    /* No clip any more (popup closed, or nothing playable): drop the strip. */
+    /* No clip any more (popup closed, or nothing playable): drop the strip.
+       The caller has already stopped the clip; this only forgets it. */
     sampleClear() {
       sample.loaded = false; sample.meta = null;
-      if (sample.release) sample.release();
       render();
     },
   };

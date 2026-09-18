@@ -98,18 +98,10 @@ def rating_put(h):
 
 @bp.get("/ratings")
 def ratings_all():
-    """Every rated track, as {hash: rating}.
+    """Every rated track, as {hash: rating} -- see ratings.all_tracks."""
+    from .. import ratings
 
-    Sparse by construction -- only tracks someone actually rated have a row --
-    so this stays small even on a library of tens of thousands. The map sizes
-    stars by rating and needs the whole set before it draws a single frame;
-    fetching per-track there would be one request per point.
-    """
-    with _db_lock, closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, stars, grade, note FROM ratings").fetchall()
-    return jsonify(
-        {r[0]: {"stars": r[1] or 0, "grade": r[2] or "", "note": r[3] or ""} for r in rows}
-    )
+    return jsonify(ratings.all_tracks())
 
 
 @bp.get("/artist-ratings")

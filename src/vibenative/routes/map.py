@@ -7,7 +7,7 @@ from pathlib import Path
 
 from flask import Response, jsonify, render_template, request
 
-from .. import insight
+from .. import insight, taxonomy
 from ..config import log
 from ..db import (
     _db_lock,
@@ -88,20 +88,13 @@ def _keystone_fields(p, mode="dark"):
     if not cls:
         return {}
     paint = P.track_paint(cls, mode) or {}
-    primary = cls["keystones"][0]
-    # subgenres are ordered keystone-first and then by score, so the first entry
-    # under the primary keystone is that keystone's strongest read.
-    ksub = next(
-        (s["style"] for s in cls["subgenres"] if s.get("keystone") == primary and s.get("style")),
-        None,
-    )
     return {
         "family": cls["family"],
         "keystones": cls["keystones"],
         "klabel": cls["label"],
         "kkey": cls["key"],
         "karch": cls["archgenre"],
-        "ksub": ksub,
+        "ksub": (K.dominant_subgenre(cls) or {}).get("style"),
         "kfusion": cls["fusion"],
         "kshares": cls["shares"],
         "rings": paint.get("rings") or [],
@@ -174,13 +167,17 @@ def _map_cache_dir():
     return Path(DB_PATH).parent / "vibe-mapcache"
 
 
-def _map_fingerprint(rows, tags_by_hash, mode):
+def _map_fingerprint(rev, mode):
     """A digest of every input the map is built from.
 
-    The track rows (including the payloads and embeddings), the tags, the render
-    mode, the taxonomy overlay -- which is also where the palette choice and
-    per-genre colours live, so one stamp covers all three -- and the app version,
-    so upgrading the code cannot serve a map built by the old one.
+    The library revision (bumped by trigger on every write to the tracks and
+    tags tables -- see db._migration_7), the render mode, the taxonomy overlay
+    -- which is also where the palette choice and per-genre colours live, so
+    one stamp covers all three -- and the app version, so upgrading the code
+    cannot serve a map built by the old one.
+
+    Nothing here reads a track: a stamp is a handful of bytes, so asking "is my
+    map current" costs the same on a six-thousand-track library as on six.
     """
     from .. import __version__
     from ..db import DB_PATH
@@ -196,25 +193,17 @@ def _map_fingerprint(rows, tags_by_hash, mode):
         h.update(f"{st.st_mtime_ns}:{st.st_size}".encode())
     except OSError:
         h.update(b"no-overlay")
-    for hh, title, filename, filepath, payload, blob in rows:
-        h.update((hh or "").encode("utf-8"))
-        h.update(b"\x00")
-        h.update((title or "").encode("utf-8", "replace"))
-        h.update(b"\x00")
-        h.update((filename or "").encode("utf-8", "replace"))
-        h.update(b"\x00")
-        h.update((filepath or "").encode("utf-8", "replace"))
-        h.update(b"\x00")
-        h.update(payload.encode("utf-8") if isinstance(payload, str) else json.dumps(payload).encode())
-        h.update(b"\x00")
-        if blob is not None:
-            h.update(blob)
-        h.update(b"\x1e")
-    for hh in sorted(tags_by_hash):
-        h.update(hh.encode("utf-8"))
-        h.update(("\x00".join(sorted(tags_by_hash[hh]))).encode("utf-8", "replace"))
-        h.update(b"\x1e")
+    h.update(f"rev{rev}".encode())
     return h.hexdigest()
+
+
+def _map_stamp(mode):
+    """The fingerprint the map would be built from right now."""
+    from ..db import library_rev
+
+    with _db_lock, closing(db()) as conn, conn as c:
+        rev = library_rev(c)
+    return _map_fingerprint(rev, mode)
 
 
 def _map_cache_read(fp):
@@ -259,21 +248,28 @@ def _map_cache_write(fp, body):
 
 @bp.get("/map")
 def map_route():
-    import numpy as np
-
     # Palette steps differ per theme; the client says which it's rendering in.
     mode = "light" if request.args.get("mode") == "light" else "dark"
-    with _db_lock, closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
-        ).fetchall()
-        tags_by_hash = _tags_by_hash(c)
-    fp = _map_fingerprint(rows, tags_by_hash, mode)
+    fp = _map_stamp(mode)
     hit = _map_cache_read(fp)
     if hit is not None:
         resp = Response(hit, mimetype="application/json")
         resp.headers["X-Map-Cache"] = "hit"
         return resp
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute(
+            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
+        ).fetchall()
+        tags_by_hash = _tags_by_hash(c)
+    # One taxonomy overlay for the whole build: every node classified and
+    # painted against the same file, and one stat() instead of one per lookup.
+    with taxonomy.pinned():
+        return _build_map(rows, tags_by_hash, mode, fp)
+
+
+def _build_map(rows, tags_by_hash, mode, fp):
+    import numpy as np
+
     nodes, embs, emb_idx = [], [], []
     # Every payload is parsed exactly once here and the parsed form is carried
     # to the audit at the end. _map_node takes a dict as happily as a string.
@@ -381,18 +377,14 @@ def map_stamp_route():
     that is in fact still exactly correct, and the next visit spends a rebuild
     proving it.
 
-    So it asks here first. This is the same digest /map keys its cache on -- read
-    the rows, hash them -- which is about a quarter of a second against seven and
-    a half to rebuild, and it is derived from the same inputs, so a match is a
-    real answer and not an optimistic one.
+    So it asks here first. This is the same digest /map keys its cache on, read
+    from the library revision counter rather than the rows, so it costs
+    microseconds against seven and a half seconds to rebuild -- and it is
+    derived from the same inputs, so a match is a real answer and not an
+    optimistic one.
     """
     mode = "light" if request.args.get("mode") == "light" else "dark"
-    with _db_lock, closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
-        ).fetchall()
-        tags_by_hash = _tags_by_hash(c)
-    return jsonify({"stamp": _map_fingerprint(rows, tags_by_hash, mode)})
+    return jsonify({"stamp": _map_stamp(mode)})
 
 
 @bp.get("/")

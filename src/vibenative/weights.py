@@ -115,9 +115,8 @@ def surviving_drops(entries, drops):
     Drops of genres the read never held are kept -- they take nothing off, and
     a later relabel may yet bring the genre in.
     """
-    styles = {(e or {}).get("style") for e in entries or []}
-    styles.discard(None)
-    left = set(styles)
+    left = {(e or {}).get("style") for e in entries or []}
+    left.discard(None)
     out = []
     for d in clean_drops(drops):
         if d in left and len(left) == 1:
@@ -193,22 +192,23 @@ def apply(entries, steps, drops=None, topk=8):
     return out
 
 
-def read_with_steps(payload, topk=8):
-    """The track's blend after its stored adjustments, or None if it has none.
+def base_read(payload):
+    """The ranked style read a track's adjustments apply to.
 
-    Reads the same source ``_dominant_style`` prefers, so an adjustment nudges
-    whatever the track currently reads as rather than resurrecting an older
-    analysis underneath it.
+    A hand relabel outranks the salience read, which outranks the flat style
+    list -- the same precedence ``_dominant_style`` uses, so an adjustment
+    nudges whatever the track currently reads as rather than resurrecting an
+    older analysis underneath it. Named once here because every caller that
+    spelled the chain out for itself was one tier away from disagreeing.
     """
+    p = payload or {}
+    return ((p.get("relabel") or {}).get("styles")) or p.get("salience") or p.get("styles") or []
+
+
+def read_with_steps(payload, topk=8):
+    """The track's blend after its stored adjustments, or None if it has none."""
     steps = (payload or {}).get("weights") or {}
     drops = (payload or {}).get("drops") or []
     if not steps and not drops:
         return None
-    base = (
-        ((payload.get("relabel") or {}).get("styles"))
-        or payload.get("salience")
-        or payload.get("styles")
-        or []
-    )
-    out = apply(base, steps, drops, topk=topk)
-    return out or None
+    return apply(base_read(payload), steps, drops, topk=topk) or None
