@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 from contextlib import closing
 from pathlib import Path
 
@@ -142,7 +143,13 @@ def _map_node(h, title, filename, payload, filepath="", tags=(), mode="dark"):
         "scale": p.get("scale"),
         "camelot": p.get("camelot"),
         "duration": p.get("duration"),
-        "a": 1 if (filepath and str(filepath).strip()) else 0,  # has a server-side file -> playable
+        # Playable: a server-side file that is actually there. A recorded path
+        # is not enough -- an unplugged drive or a moved folder leaves thousands
+        # of tracks with a path and no file, and "only tracks with audio" then
+        # hid nothing while every popup offered a play button that failed.
+        # One stat per track per rebuild; the map is cached between rebuilds,
+        # so plug the drive back in and press rebuild.
+        "a": 1 if (filepath and str(filepath).strip() and os.path.isfile(str(filepath))) else 0,
     }
 
 

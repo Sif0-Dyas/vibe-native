@@ -252,12 +252,14 @@
         <div class="mp-sep"></div>
         <label class="mp-row"><input type="checkbox" id="flt-playable">
           <span>Only tracks with audio</span></label>
-        <div class="mp-hint">Hides stars whose audio file was never found &mdash; dragged-in
-          tracks that were analysed and never linked to a folder. They can&rsquo;t be
-          previewed or exported, so they are stars you can look at but not use.
+        <div class="mp-hint">Hides stars whose audio file can&rsquo;t be found right now &mdash;
+          dragged-in tracks that were never linked to a folder, and tracks whose file has
+          moved or sits on a drive that isn&rsquo;t plugged in. They can&rsquo;t be previewed
+          or exported, so they are stars you can look at but not use.
           <b>This only hides them.</b> Where every star sits is worked out from your whole
           library, so the ones left keep their exact positions and their neighbours still
-          mean what they meant. Repair the paths under <b>Options</b> to bring them back.</div>
+          mean what they meant. Repair the paths under <b>Options</b> to bring them back;
+          after plugging a drive in, press <b>rebuild</b>.</div>
         <div class="mp-btns"><button id="flt-reset" type="button" class="mp-reset">clear filters</button></div>
       </div>
       <button id="map-recent-btn" class="map-toggle" type="button" title="stars you have looked at recently">&#9201;</button>

@@ -300,3 +300,19 @@ def test_a_genre_is_not_a_subgenre_of_itself(client):
     house = next(g for g in body if g["keystone"] == "House")
     assert house["self_count"] == 1
     assert [s["style"] for s in house["subgenres"]] == ["Progressive House"]
+
+
+def test_playable_means_the_file_is_actually_there(client, tmp_path):
+    """A recorded path is not enough: an unplugged drive leaves thousands of
+    tracks with a path and no file, and the "only tracks with audio" filter
+    then hid nothing while every popup offered a play button that failed."""
+    from vibenative.db import cache_put
+
+    real = tmp_path / "real.wav"
+    real.write_bytes(b"RIFF")
+    cache_put("pa1", "real.wav", str(real), "real", {"salience": REAL}, None)
+    cache_put("pa2", "gone.wav", str(tmp_path / "gone.wav"), "gone", {"salience": REAL}, None)
+    cache_put("pa3", "drop.wav", "", "dropped", {"salience": REAL}, None)
+    _, body = build(client)
+    a = {n["hash"]: n["a"] for n in body["nodes"]}
+    assert (a["pa1"], a["pa2"], a["pa3"]) == (1, 0, 0)
