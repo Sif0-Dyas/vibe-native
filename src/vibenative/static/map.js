@@ -3039,15 +3039,23 @@
   /* Start (or restart) the cued clip. `my` guards against a newer selection
      landing first; pass null when the user asked for this one explicitly. */
   function beginSample(my){
-    const go = () => {
+    if (my !== null && my !== PREV.token) return;
+    const a = PREV.audio;
+    const seek = () => {
       if (my !== null && my !== PREV.token) return;
-      try { PREV.audio.currentTime = PREV.start; } catch(_){ /* seek after load */ }
-      PREV.stopAt = PREV.start + previewSeconds();
-      if (typeof AUDIO !== 'undefined') AUDIO.claim('sample');   // pauses the track
-      PREV.audio.play().catch(() => {});
+      try { a.currentTime = PREV.start; } catch(_){ /* not seekable yet */ }
     };
-    if (PREV.audio.readyState >= 1) go();
-    else PREV.audio.addEventListener('loadedmetadata', go, { once: true });
+    PREV.stopAt = PREV.start + previewSeconds();
+    if (typeof AUDIO !== 'undefined') AUDIO.claim('sample');   // pauses the track
+    // play() FIRST, and seek to the drop once the metadata is in. This used to
+    // wait for loadedmetadata before calling play() -- but Chromium does not
+    // load media at all until it is asked to play (in a hidden document, and
+    // often a fresh one), so the metadata never came and the clip never
+    // started: the strip appeared, the play button stayed on ▶, and nothing
+    // sounded. Asking to play is what starts the load; the seek follows it.
+    if (a.readyState >= 1) seek();
+    else a.addEventListener('loadedmetadata', seek, { once: true });
+    a.play().catch(() => { /* blocked until a gesture; the strip's ▶ is one */ });
   }
 
   async function previewTrack(n, keepIfSame){

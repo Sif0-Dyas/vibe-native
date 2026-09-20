@@ -75,9 +75,15 @@ const AUDIO = (function () {
   const isPlaying = a => !!(a && !a.paused && !a.ended);
 
   /* A source may sound when it holds the focus — or when the other side has
-     nothing loaded, so "listening to the track" can never mean silence. */
+     nothing loaded, so "listening to the track" can never mean silence.
+
+     A sample may also sound whenever the track is not actually playing. The
+     hold exists so that exploring the map cannot cut off a track you are
+     listening to; it was holding samples after the track had ended or been
+     paused too -- and, because the choice persists, in every session after --
+     so selecting a star went silent for good once any track had been played. */
   function wants(kind) {
-    if (kind === 'sample') return state.listen === 'sample' || !trackLoaded();
+    if (kind === 'sample') return state.listen === 'sample' || !trackLoaded() || !isPlaying(trackAudio());
     return state.listen === 'track' || !sample.loaded;
   }
 
