@@ -442,7 +442,24 @@ def _musical_features(audio44) -> dict:
         "duration": duration,
         "waveform": waveform_peaks(audio44),
         "wave": waveform_minmax(audio44),  # DAW-style; cached, not stored in payload
+        **dj_features(audio44, 44100, bpm),
     }
+
+
+DJ_KEYS = ("energy", "energy_curve", "energy_hop", "cues", "grid")
+
+
+def dj_features(audio, sr, bpm) -> dict:
+    """Energy level + curve, cue points and the beat grid (``cues.analyze``),
+    keyed as they appear in the payload. Best-effort like BPM and key: every
+    field is None if the detector fails, and the rest of the analysis stands."""
+    try:
+        from . import cues as cuesmod
+
+        return {k: cuesmod.analyze(audio, sr, bpm)[k] for k in DJ_KEYS}
+    except Exception:
+        log.warning("cue / energy detection failed", exc_info=True)
+        return dict.fromkeys(DJ_KEYS)
 
 
 def _assemble(labels, audio16, embeddings, preds, features) -> dict:
@@ -487,7 +504,59 @@ def _assemble(labels, audio16, embeddings, preds, features) -> dict:
         "duration": features["duration"],
         "waveform": features["waveform"],
         "wave": features["wave"],  # DAW-style; cached, not stored in payload
+        **{k: features.get(k) for k in DJ_KEYS},
         "emb_mean": [float(x) for x in np.mean(embeddings, axis=0)],
+    }
+
+
+def fake_dj_features(rng, duration, bpm) -> dict:
+    """FAKE-mode energy + cues in the real detector's shape: a 32-bar intro, a
+    drop, a breakdown, a second drop and an outro on a 4/4 grid at ``bpm``, and
+    an energy curve that steps with them. Deterministic under ``rng``."""
+    bar = 4 * 60.0 / bpm
+    n_bars = int(duration / bar)
+    level = rng.randint(3, 10)
+    lo, hi = max(0.05, (level - 4) / 12), min(0.9, (level + 1) / 12)
+    plan = [
+        ("start", 0, lo),
+        ("drop", 32, hi),
+        ("break", 64, lo),
+        ("drop", 80, hi),
+        ("outro", 112, lo),
+    ]
+    plan = [p for p in plan if p[1] + 8 < n_bars]
+    cues, curve = [], []
+    n_drop = 0
+    for kind, b, e in plan:
+        n_drop += kind == "drop"
+        label = {"start": "Intro", "break": "Break", "outro": "Outro"}.get(kind, f"Drop {n_drop}")
+        cues.append(
+            {
+                "t": round(b * bar, 3),
+                "type": kind,
+                "label": label,
+                "bar": b + 1,
+                "energy": max(1, min(10, round(e * 12))),
+            }
+        )
+    cues.append(
+        {
+            "t": round((n_bars - 1) * bar, 3),
+            "type": "end",
+            "label": "End",
+            "bar": n_bars,
+            "energy": 1,
+        }
+    )
+    for s in range(int(duration) + 1):
+        e = next((p[2] for p in reversed(plan) if p[1] * bar <= s), lo)
+        curve.append(round(max(0.0, min(0.9, e + rng.uniform(-0.04, 0.04))), 3))
+    return {
+        "energy": level,
+        "energy_curve": curve,
+        "energy_hop": 1.0,
+        "cues": cues,
+        "grid": {"bpm": bpm, "offset": round(rng.uniform(0, 0.4), 4), "confidence": 4.0},
     }
 
 
@@ -546,6 +615,8 @@ def analyze(path: Path) -> dict:
                 (round(rng.uniform(0.02, max(0.03, top - 0.02)), 3) for _ in range(3)), reverse=True
             )
             frames.append([[s, top]] + [[others[j], rest[j]] for j in range(3)])
+        duration = rng.uniform(150, 420)
+        bpm = round(rng.uniform(120, 178), 1)
         return {
             "styles": [
                 {"parent": "Electronic", "style": s, "score": v} for s, v in zip(pool, scores)
@@ -560,15 +631,16 @@ def analyze(path: Path) -> dict:
                     sorted((rng.uniform(0.02, 0.7) for _ in range(4)), reverse=True),
                 )
             ],
-            "bpm": round(rng.uniform(120, 178), 1),
+            "bpm": bpm,
             "bpm_confidence": rng.uniform(0.5, 5.0),
             "key": key,
             "scale": scale,
             "camelot": CAMELOT[(key, scale)],
             "key_strength": rng.uniform(0.5, 0.95),
-            "duration": rng.uniform(150, 420),
+            "duration": duration,
             "waveform": wave,
             "wave": wave_mm,
+            **fake_dj_features(rng, duration, bpm),
             "emb_mean": [rng.uniform(-1, 1) for _ in range(1280)],
         }
 
@@ -633,4 +705,8 @@ def build_payload(filename, filepath, title, tags, result):
         "waveform": result.get("waveform"),
         "segments": result.get("segments"),
         "custom": result.get("custom"),
+        # DJ prep (cues.py): the 1-10 level, its per-second curve, the cue
+        # points and the beat grid they sit on. None on tracks analysed before
+        # this existed -- GET /cues/<hash> fills those in on demand.
+        **{k: result.get(k) for k in DJ_KEYS},
     }

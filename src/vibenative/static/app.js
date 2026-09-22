@@ -486,6 +486,26 @@ function addRow(file){
    focus null it draws flat. Returns nothing; purely visual.
    STRENGTH controls bulge amount; ZONE is how wide (in track-fraction) the lens
    reaches before it's back to ~1x. */
+/* The fisheye: screen fraction sx (0..1) -> source track fraction (0..1). With
+   focus null it's the identity. Monotonic (slope >= 1 - STRENGTH), so the
+   inverse below can bisect it -- the cue markers need track -> screen. */
+const LENS_STRENGTH = 0.85, LENS_ZONE = 0.14;
+function waveLens(sx, focus){
+  if (focus == null) return sx;
+  const d = sx - focus;
+  const g = Math.exp(-(d * d) / (2 * LENS_ZONE * LENS_ZONE));   // 1 at cursor -> 0 far
+  return sx - LENS_STRENGTH * d * g;                              // compress toward focus
+}
+function waveLensInv(f, focus){
+  if (focus == null) return f;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 24; i++){
+    const mid = (lo + hi) / 2;
+    if (waveLens(mid, focus) < f) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 function drawWave(canvas, peaks, fallbackColor, segments, focus, mainSet, overrides, mm){
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth || 300, h = canvas.clientHeight || 60;
@@ -495,15 +515,7 @@ function drawWave(canvas, peaks, fallbackColor, segments, focus, mainSet, overri
   ctx.clearRect(0, 0, w, h);
   const mid = h / 2;
   const segN = segments ? segments.length : 0;
-  const STRENGTH = 0.85, ZONE = 0.14;
-
-  // map a screen fraction sx (0..1) -> source track fraction (0..1) through lens
-  function lens(sx){
-    if (focus == null) return sx;
-    const d = sx - focus;
-    const g = Math.exp(-(d * d) / (2 * ZONE * ZONE));   // 1 at cursor -> 0 far
-    return sx - STRENGTH * d * g;                        // compress toward focus
-  }
+  const lens = sx => waveLens(sx, focus);
 
   const cols = Math.max(Math.floor(w), 1);
   const mmN = (mm && mm.max && mm.min && mm.rms) ? mm.max.length : 0;
@@ -566,6 +578,89 @@ function drawWave(canvas, peaks, fallbackColor, segments, focus, mainSet, overri
       ctx.globalAlpha = 0.95; ctx.fillStyle = 'rgba(120,200,255,0.95)';
       ctx.fillRect(px, 0, 1.05, 2);
     }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---- DJ prep: cue points + energy (cues.py) ----
+   A cue's colour says what it starts: a drop is hot, a build is on its way
+   there, a break cools off, and the intro / outro / end are the grey edges. */
+const CUE_COLORS = {
+  start: '#9aa3b2', end: '#9aa3b2', outro: '#9aa3b2',
+  drop: '#ff6b3b', build: '#ffb03b', break: '#5ec8ff',
+};
+function cueColor(type){ return CUE_COLORS[type] || '#9aa3b2'; }
+
+/* The 1..10 energy level's colour: cool blue at 1 through green and amber to
+   red at 10. One hue ramp everywhere the level shows (badge, strip, Library). */
+function energyColor(level){
+  const e = Math.max(1, Math.min(10, Number(level) || 1));
+  return `hsl(${Math.round(215 - (e - 1) * 22)} 85% 58%)`;
+}
+function energyBadgeHtml(level, cls){
+  if (level == null) return '';
+  return `<span class="${cls || 'energy'}" style="--ec:${energyColor(level)}" ` +
+    `title="energy level ${level} of 10 — how hard the track hits at its peak (loudness, brightness, density, tempo)">` +
+    `⚡${level}</span>`;
+}
+
+/* Cue markers over an already-drawn waveform: a line at each cue, a small flag
+   at the top and its label. Positions go through the same lens as the wave so
+   they stay on their beat while you magnify. */
+function drawCues(canvas, cues, dur, focus){
+  if (!cues || !cues.length || !dur) return;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 60;
+  const ctx = canvas.getContext('2d');                 // transform already dpr-scaled by drawWave
+  ctx.save();
+  ctx.font = '500 9px "JetBrains Mono", monospace';
+  ctx.textBaseline = 'top';
+  let lastRight = -1e9;
+  for (const c of cues){
+    const x = Math.round(waveLensInv(Math.max(0, Math.min(1, c.t / dur)), focus) * w) + 0.5;
+    const col = cueColor(c.type);
+    ctx.globalAlpha = 0.75; ctx.strokeStyle = col; ctx.lineWidth = 1;
+    ctx.setLineDash(c.type === 'start' || c.type === 'end' ? [] : [3, 2]);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1; ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(x - 4, 0); ctx.lineTo(x + 4, 0); ctx.lineTo(x, 5); ctx.closePath(); ctx.fill();
+    // label to the right of the line unless it would overlap the previous one
+    const label = c.type === 'end' ? '' : (c.label || c.type);
+    if (label){
+      const tw = ctx.measureText(label).width;
+      const lx = (x + 4 + tw <= w) ? x + 4 : x - 4 - tw;
+      if (lx > lastRight + 4){
+        ctx.globalAlpha = 0.72; ctx.fillStyle = 'rgba(0,0,0,.7)';
+        ctx.fillRect(lx - 2, 6, tw + 4, 11);
+        ctx.globalAlpha = 1; ctx.fillStyle = col;
+        ctx.fillText(label, lx, 7);
+        lastRight = lx + tw;
+      }
+    }
+  }
+  ctx.restore();
+}
+
+/* The energy strip under the waveform: one cell per second of the curve,
+   coloured on the same ramp as the level. Reads the arc of the track at a glance
+   (a dark intro, the hot drops, the cool breakdown between them). */
+function drawEnergyStrip(canvas, curve, focus){
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 4;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  if (!curve || !curve.length) return;
+  const n = curve.length;
+  for (let px = 0; px < w; px++){
+    const f = Math.max(0, Math.min(1, waveLens(px / Math.max(1, w - 1), focus)));
+    const v = curve[Math.min(n - 1, Math.floor(f * n))];
+    // the curve tops out at 0.9 (the tempo term is track-level), so 0.9 = level 10
+    const level = 1 + 9 * Math.max(0, Math.min(1, (v - 0.2) / 0.65));
+    ctx.fillStyle = energyColor(level);
+    ctx.globalAlpha = 0.35 + 0.65 * Math.max(0, Math.min(1, v / 0.9));
+    ctx.fillRect(px, 0, 1.05, h);
   }
   ctx.globalAlpha = 1;
 }
@@ -692,6 +787,8 @@ function finishRow(row, data, file){
       hop: 2.0,                           // seconds per frame (coarse default)
       smooth: 1.0,                        // medium default (~1s)
       mm: null,                           // DAW-style min/max/rms (fetched below)
+      cues: data.cues || null,            // DJ cue points (cues.py); fetched below if absent
+      curve: data.energy_curve || null,   // per-second energy, 0..0.9
     };
     const container = document.createElement('div');
     container.className = 'wavecontainer';
@@ -702,6 +799,12 @@ function finishRow(row, data, file){
     tip.className = 'wavetip';
     container.appendChild(c);
     container.appendChild(tip);
+    const strip = document.createElement('canvas');
+    strip.className = 'energystrip';
+    strip.title = 'energy over time — cool blue is quiet, red is the peak';
+    container.appendChild(strip);
+    const cuestrip = document.createElement('div');
+    cuestrip.className = 'cuestrip';
 
     const controls = document.createElement('div');
     controls.className = 'wavehint';
@@ -712,6 +815,7 @@ function finishRow(row, data, file){
     const fineBtn = controls.querySelector('.finebtn');
 
     row.children[0].appendChild(container);
+    row.children[0].appendChild(cuestrip);
     row.children[0].appendChild(controls);
 
     // per-row lens override controls (inherit global until changed)
@@ -766,9 +870,62 @@ function finishRow(row, data, file){
     }
     function redraw(focus){
       drawWave(c, waveState.peaks, pcol, waveState.segments, focus ?? null, waveState.mainSet, ovFracs(), waveState.mm);
+      drawCues(c, waveState.cues, dur, focus ?? null);
+      drawEnergyStrip(strip, waveState.curve, focus ?? null);
     }
     applySmoothing();
     requestAnimationFrame(() => redraw(null));
+
+    /* ---- the cue strip: one chip per cue, click to play from it ---- */
+    function renderCues(){
+      const cues = waveState.cues || [];
+      cuestrip.innerHTML = '';
+      cuestrip.style.display = cues.length ? '' : 'none';
+      if (!cues.length) return;
+      const g = data.grid;
+      const head = document.createElement('span');
+      head.className = 'cuehead';
+      head.textContent = 'cues';
+      head.title = g
+        ? `beat grid: ${g.bpm} BPM, first beat at ${g.offset.toFixed(2)}s · cues are snapped to it (bar numbers count from the intro)`
+        : 'no beat grid for this track — cues are unsnapped';
+      cuestrip.appendChild(head);
+      for (const cue of cues){
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'cue cue-' + cue.type;
+        b.style.setProperty('--cc', cueColor(cue.type));
+        b.innerHTML = `${escapeHtml(cue.label || cue.type)}<span class="cuet">${fmtTime(cue.t)}</span>`;
+        b.title = `play from ${fmtTime(cue.t)}` + (cue.bar != null ? ` · bar ${cue.bar}` : '') +
+          (cue.energy != null ? ` · energy ${cue.energy}` : '');
+        b.addEventListener('click', () => { if (row._playCtl && row._playCtl.seek) row._playCtl.seek(dur ? cue.t / dur : 0); });
+        cuestrip.appendChild(b);
+      }
+    }
+    renderCues();
+
+    // Tracks analysed before cue detection existed carry no cues: ask for
+    // them once (GET decodes the server file; a 404 with the dropped file in
+    // hand sends that instead, the waveform's own arrangement). Stored, so
+    // the next load has them in the payload.
+    row._fetchCues = async () => {
+      if (data.cues != null || !data.hash) return;
+      try {
+        let r = await fetch(`/cues/${data.hash}`);
+        if (r.status === 404 && file){
+          const fd = new FormData();
+          fd.append('file', file);
+          r = await fetch(`/cues/${data.hash}`, {method: 'POST', body: fd});
+        }
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!j || !j.cues) return;
+        Object.assign(data, j);
+        waveState.cues = j.cues; waveState.curve = j.energy_curve || null;
+        redraw(null); renderCues();
+        if (row._renderKey) row._renderKey();
+      } catch (_) { /* offline, or the row went away -- no cues is fine */ }
+    };
 
     // Upgrade to the DAW-style min/max/rms waveform: render the stored envelope
     // instantly, then fetch the detailed one (pre-cached for new tracks, decoded
@@ -807,10 +964,17 @@ function finishRow(row, data, file){
       const shown = ovg || g;
       const swatch = shown ? (ovg ? colorFor(ovg) : bandColor(g, waveState.mainSet)) : null;
       const text = ovg ? `${ovg} \u00b7 override` : (g ? (isOther ? `${g} \u00b7 other` : g) : '');
+      // a cue within a few pixels of the cursor names itself
+      let cueHtml = '';
+      if (waveState.cues && dur){
+        const near = waveState.cues.find(q => Math.abs(q.t / dur - f) * rect.width <= 5);
+        if (near) cueHtml = `<span class="tipcue" style="color:${cueColor(near.type)}">\u25bc ${escapeHtml(near.label || near.type)}` +
+          (near.energy != null ? ` \u00b7 E${near.energy}` : '') + `</span>`;
+      }
       tip.style.left = (f * rect.width) + 'px';
       tip.style.display = 'block';
       tip.innerHTML = `${fmtTime(f * dur)}` +
-        (shown ? `<span class="sw" style="background:${swatch}"></span>${escapeHtml(text)}` : '');
+        (shown ? `<span class="sw" style="background:${swatch}"></span>${escapeHtml(text)}` : '') + cueHtml;
     }
 
     // ---- shift-drag to override a time RANGE as a genre (segment override) ----
@@ -1009,9 +1173,11 @@ function finishRow(row, data, file){
       (k.cam ? `<span class="camelot">${escapeHtml(k.cam)}</span>` : '') +
       escapeHtml(k.mus) + `</div>`;
   };
+  // The energy level sits with the other DJ numbers. Re-painted by _fetchCues
+  // when an older track's level arrives after the row is on screen.
   const paintMusical = () => {
     row.children[1].innerHTML = bpmHtml + keyHtmlFor() +
-      `<div class="dur">${fmtDur(data.duration)}</div>`;
+      `<div class="dur">${fmtDur(data.duration)}${energyBadgeHtml(data.energy)}</div>`;
   };
   paintMusical();
   row._renderKey = paintMusical;
@@ -1454,6 +1620,7 @@ const EXTRAS = (() => {
       renderVibeMatches(row, h, vibes[h] || []);
       renderTags(row, h, tags[h] || []);
       if (row._fetchWave) row._fetchWave();
+      if (row._fetchCues) row._fetchCues();
     }
   }
   return {

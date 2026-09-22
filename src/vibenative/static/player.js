@@ -151,7 +151,7 @@ function attachPlayer(row, container, controls, c, file, data, dur){
         ? 'this audio format can’t be played by the browser'
         : 'no saved audio for this track — re-add it (drag-drop or Browse) to enable playback';
     }
-    const ctl = { tick, render, stopVisual, error: onError };
+    const ctl = { tick, render, stopVisual, error: onError, seek: null };
     row._playCtl = ctl;
 
     async function startPlay(seekFrac){
@@ -182,6 +182,8 @@ function attachPlayer(row, container, controls, c, file, data, dur){
       try { await PLAYER.audio.play(); } catch(e){ /* error event drives the UI */ }
       render();
     }
+    // the cue strip (app.js) plays from a cue through this: a track fraction in
+    ctl.seek = frac => startPlay(frac);
     function togglePlay(){
       if (isActive() && !PLAYER.audio.paused) PLAYER.audio.pause();
       else startPlay(isActive() ? null : 0);

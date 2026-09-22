@@ -285,6 +285,26 @@ input[type=file]{display:none}
 .segmenu-remove:hover{ background:var(--err); color:#fff; }
 .segmenu-remove:disabled{ opacity:.5; cursor:default; }
 .wavehint .restag{color:var(--text)}
+/* ---- DJ prep: energy strip under the wave, the cue chips, the level badge ---- */
+.energystrip{display:block; width:100%; height:4px; margin-top:2px; border-radius:2px}
+.wavetip .tipcue{margin-left:8px; font-weight:500}
+.cuestrip{
+  font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim);
+  margin-top:4px; display:flex; flex-wrap:wrap; align-items:center; gap:4px 5px;
+}
+.cuestrip .cuehead{color:var(--dim); margin-right:2px; cursor:help}
+.cuestrip .cue{
+  font-family:'JetBrains Mono',monospace; font-size:10px; line-height:1;
+  color:var(--cc); background:none; border:1px solid var(--line); border-left:3px solid var(--cc);
+  border-radius:4px; padding:3px 6px 3px 5px; cursor:pointer; white-space:nowrap;
+}
+.cuestrip .cue:hover{border-color:var(--cc); background:var(--ov-1)}
+.cuestrip .cue .cuet{color:var(--dim); margin-left:5px}
+.energy{
+  display:inline-block; margin-left:8px; padding:0 5px; border-radius:5px; line-height:1.5;
+  font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:500;
+  color:var(--ec); border:1px solid var(--ec); cursor:help;
+}
 .finebtn{
   font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--trance);
   background:none; border:1px solid var(--line); border-radius:5px;

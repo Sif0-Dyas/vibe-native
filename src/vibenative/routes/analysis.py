@@ -10,10 +10,12 @@ from flask import Response, jsonify, request, send_file
 
 from .. import insight
 from ..analysis import (
+    DJ_KEYS,
     FINE_HOP_SECONDS,
     _lock,
     analyze,
     build_payload,
+    dj_features,
     get_engine,
     get_maest,
     load_samples_for_waveform,
@@ -27,6 +29,7 @@ from ..config import AUDIO_EXTS, FAKE, log
 from ..db import (
     _db_lock,
     cache_get,
+    cache_merge,
     cache_put,
     db,
     file_hash,
@@ -307,11 +310,11 @@ def _backfill_waveform(h, upload):
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     if row and row[0] and Path(row[0]).is_file():
-        return                                    # GET /waveform can decode that itself
+        return  # GET /waveform can decode that itself
     try:
         waveform_cache_put(h, waveform_minmax(load_samples_for_waveform(upload)))
     except Exception:
-        log.exception("waveform backfill failed for %s", h)   # the envelope stands
+        log.exception("waveform backfill failed for %s", h)  # the envelope stands
 
 
 def _cached_response(cached, h, **extra):
@@ -424,7 +427,7 @@ def waveform_upload_route(h):
     """
     cached = waveform_cache_get(h)
     if cached:
-        return jsonify(cached)                    # raced another tab; nothing to do
+        return jsonify(cached)  # raced another tab; nothing to do
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
     # Only for tracks already in the library: this must not become a way to have
@@ -447,6 +450,84 @@ def waveform_upload_route(h):
     data = waveform_minmax(samples)
     waveform_cache_put(h, data)
     return jsonify(data)
+
+
+def _load_for_cues(path):
+    """Decode a file for the cue / energy detector -> ``(samples, sample_rate)``.
+    The detector works at 11025 Hz, so real mode decodes straight to that; FAKE
+    mode reads a WAV with the stdlib at whatever rate it has."""
+    if FAKE:
+        import wave as _wave
+
+        with _wave.open(str(path), "rb") as wf:
+            sr = wf.getframerate()
+        return load_samples_for_waveform(path), sr
+    from .. import cues as cuesmod
+    from .. import decode
+
+    return decode.decode_mono(path, cuesmod.SR), cuesmod.SR
+
+
+def _cues_response(cached):
+    return {k: cached.get(k) for k in DJ_KEYS}
+
+
+def _compute_cues(h, cached, path):
+    """Run the detector on ``path`` for track ``h`` and merge the result into its
+    stored payload, so the next load has it without asking."""
+    samples, sr = _load_for_cues(path)
+    dj = dj_features(samples, sr, cached.get("bpm"))
+    cache_merge(h, dj)
+    return dj
+
+
+@bp.get("/cues/<h>")
+def cues_route(h):
+    """A track's energy level, energy curve, cue points and beat grid.
+
+    New analyses carry these in the payload already; this fills them in for
+    tracks analysed before cue detection existed. Served from the payload when
+    present, else computed once from the server-side file and stored. A track
+    with neither a stored result nor a file 404s (the POST below takes an
+    upload for those, like the waveform)."""
+    cached = cache_get(h)
+    if not cached:
+        return jsonify({"error": "track not in database"}), 404
+    if cached.get("cues") is not None:
+        return jsonify(_cues_response(cached))
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    filepath = row[0] if row else None
+    if not filepath or not Path(filepath).is_file():
+        return jsonify({"error": "no server-side audio to analyse (re-add the track)"}), 404
+    try:
+        return jsonify(_compute_cues(h, cached, Path(filepath)))
+    except Exception:
+        log.exception("cue detection failed for %s", h)
+        return jsonify({"error": "could not decode this track's audio"}), 500
+
+
+@bp.post("/cues/<h>")
+def cues_upload_route(h):
+    """Cue / energy detection from an uploaded copy of a library track's audio
+    -- for tracks that were dragged in, never linked to a folder, and analysed
+    before cue detection existed. Same guards as POST /waveform: the track must
+    already be in the library and the upload must hash to it."""
+    cached = cache_get(h)
+    if not cached:
+        return jsonify({"error": "track not in database"}), 404
+    if cached.get("cues") is not None:
+        return jsonify(_cues_response(cached))
+    try:
+        with saved_upload(request.files.get("file")) as up:
+            if file_hash(up) != h:
+                return jsonify({"error": "this audio is not that track"}), 400
+            return jsonify(_compute_cues(h, cached, up))
+    except UploadError as e:
+        return jsonify({"error": str(e)}), e.status
+    except Exception:
+        log.exception("cue detection (upload) failed for %s", h)
+        return jsonify({"error": "could not decode this track's audio"}), 500
 
 
 def _rss_mb():

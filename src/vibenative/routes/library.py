@@ -52,6 +52,7 @@ def library_list():
                 "scale": p.get("scale"),
                 "camelot": p.get("camelot"),
                 "duration": p.get("duration"),
+                "energy": p.get("energy"),
                 "has_file": bool(filepath),
                 "created": created,
             }

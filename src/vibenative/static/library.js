@@ -15,6 +15,7 @@
     { key: 'bpm', label: 'BPM', w: '62px', num: true },
     { key: 'key', label: 'Key', w: '80px' },
     { key: 'camelot', label: 'Camelot', w: '72px' },
+    { key: 'energy', label: 'Energy', w: '62px', num: true },
     { key: 'duration', label: 'Length', w: '70px', num: true },
     { key: 'created', label: 'Added', w: '112px', num: true }
   ];
@@ -61,6 +62,7 @@
     if (key === 'duration') return fmtDur(t.duration) || '—';
     if (key === 'created') return fmtDate(t.created) || '—';
     if (key === 'bpm') return t.bpm != null ? t.bpm : '—';
+    if (key === 'energy') return t.energy != null ? '⚡' + t.energy : '—';
     return t[key] || '—';
   }
   function sortVal(t, key) {

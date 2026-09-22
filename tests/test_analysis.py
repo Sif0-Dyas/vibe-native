@@ -87,8 +87,15 @@ def test_assemble_shape_and_values(monkeypatch):
         "duration",
         "waveform",
         "wave",
+        "energy",
+        "energy_curve",
+        "energy_hop",
+        "cues",
+        "grid",
         "emb_mean",
     ]
+    # DJ features are spliced through from the features dict (absent here -> None)
+    assert out["energy"] is None and out["cues"] is None and out["grid"] is None
     # styles ranked by mean prediction: Techno (0.5) > House (0.4) > Trance (0.1)
     assert [s["style"] for s in out["styles"]] == ["Techno", "House", "Trance"]
     assert out["styles"][0]["parent"] == "B"

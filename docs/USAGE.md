@@ -71,7 +71,7 @@ A track you drop in that's **already in your library still appears on the list**
 Each analyzed row shows three things:
 
 - **Track** — the title with a **genre-colored waveform** underneath. The colors come from the moment-by-moment genre guesses, so you can literally *see* where a track changes character — an ambient intro, a drop, a half-time breakdown. Hover the waveform to magnify it; click anywhere on it to **play and seek** from that point. **Shift-drag** a time range to **override that section as a genre** — it repaints in the override style and the extracted clip is saved into that genre's training folder (needs a track added from a folder/batch, not a browser-dropped file). To undo one, **shift-click** its span and confirm **remove** (this also deletes the extracted clip).
-- **BPM / Key** — the tempo and musical key. The key is shown in **Camelot** notation (like `8A`), the wheel DJs use for harmonic mixing, alongside the plain key.
+- **BPM / Key** — the tempo and musical key. The key is shown in **Camelot** notation (like `8A`), the wheel DJs use for harmonic mixing, alongside the plain key. Next to the length sits the **⚡ energy level**, 1–10 (section 9).
 - **Genre** — the breakdown: the dominant genre(s) and their share of the track, tagged with the broad **family** they belong to (House, Trance, Bass Music, …). If a read looks shaky, you may also see a **⚠ "sounds like …"** hint suggesting a better fit (see section 6).
 
 Every analyzed track also has a built-in **preview player** — play and scrub it right from its waveform.
@@ -186,7 +186,7 @@ The **≣ Library** tab is every track you've ever analyzed, shown as a plain te
 
 - **Search** — type to filter by title, artist, genre, key, or Camelot code as you go. The count shows how many match.
 - **Sort** — pick a field from the **sort** dropdown and flip **▲ / ▼** for ascending/descending, or just **click any column header** to sort by it (click again to reverse).
-- **▦ columns — choose what you see.** Click **▦ columns** (or **right-click any column header**, Windows-Explorer style) to toggle which columns appear: **Title** (always on), **Artist**, **Genre**, **BPM**, **Key**, **Camelot**, **Length**, and **Added** (the date analyzed). Show only the columns you care about.
+- **▦ columns — choose what you see.** Click **▦ columns** (or **right-click any column header**, Windows-Explorer style) to toggle which columns appear: **Title** (always on), **Artist**, **Genre**, **BPM**, **Key**, **Camelot**, **Energy** (the 1–10 level, section 9), **Length**, and **Added** (the date analyzed). Show only the columns you care about.
 - **Group by — collapsible sections.** Use the **group by** dropdown to split the list into collapsible sections by **Genre**, **Key**, **Camelot**, **BPM range**, or **Artist**. Each section shows its track count; **click a section header to collapse or expand it** — great for folding away genres you're not looking at and focusing on one at a time.
 - **Click any row** to load that track into the **Analyzer** tab (with its full waveform and per-track tools).
 - **↻ refresh** reloads the library; **⭳ .txt** downloads the currently visible columns as a tab-separated text file (opens in Excel/Sheets).
@@ -461,6 +461,31 @@ You can also share a view: the address bar updates as you go (`#map`, `#universe
 On the Map, select a track and turn on **🎧 harmonic**. Vibedentify rings every track that would mix smoothly with it — matching **key** (neighbors on the Camelot wheel, or the relative major/minor) **and tempo** (within about ±6%, or at half/double time) — and dims everything else.
 
 It turns the Map into a "what can I play next?" tool: pick a track, flip harmonic on, and your compatible options light up across the whole library. Pair it with the **playlist** panel (section 6) to build a harmonically-ordered set, then **⭳ .m3u** it into your DJ software.
+
+### ⚡ Energy level
+
+Every track gets an **energy level from 1 to 10** — the same scale Mixed In Key popularised — shown next to its length in the Analyzer, in the Map popup, and as a sortable **Energy** column in the Library. It's a read of how hard the track hits *at its peak*: loudness (in real dBFS, so tracks compare across your library), brightness (hats, noise, distortion), rhythmic density, and tempo (octave-blind — a 174 and an 87 BPM read of the same drum & bass tune agree). Roughly: ambient and downtempo 1–3, deep house 4–5, house and techno 6–7, tech house and trance 7–8, dubstep, hard drum & bass, hardstyle and trap 9–10. A quiet master of a heavy track reads lower than a loud one — that's deliberate; energy on a dancefloor is partly the master.
+
+Under the waveform, a thin **energy strip** paints the same scale over time — cool blue where the track is quiet, red at its peaks — so you see the arc of a track before you hear it.
+
+### ▼ Cue points
+
+Under the waveform is a row of **cue chips** — click one to play from it. They are detected from the audio, snapped to a beat grid, and numbered in bars from the intro:
+
+- **Intro** — the first audible downbeat (bar 1).
+- **Drop 1, Drop 2, …** — where the track steps up into its loudest zone: bass and loudness jump and stay up.
+- **Build** — a step up that doesn't reach the peak yet (the energy is climbing).
+- **Break** — a breakdown: the step down between drops.
+- **Outro** — the last step down that never comes back up.
+- **End** — the last audible beat, for planning a mix-out.
+
+Each chip's tooltip gives the bar number and the energy of the section that follows. The markers also sit on the waveform itself, and hovering near one names it. There are at most eight (Rekordbox's count), strongest first, so a busy track never drowns in flags.
+
+The beat grid comes from the analysed BPM refined against the track's own onsets; the bar lines are anchored to the strongest drop, since in electronic music a drop *is* a phrase boundary. Hover the word **cues** to see the grid (BPM and first-beat offset). A track with no usable grid — no BPM, or nothing beat-like to lock onto — still gets cues, just unsnapped and without bar numbers.
+
+Tracks analysed before this feature existed are filled in the first time they appear on the list (from their folder file, or from the file you drop) and stored, so it happens once.
+
+**Rekordbox export** (Library → saved playlist → Rekordbox XML) carries all of it: the cues as **memory cues** named like `Drop 1 (E8)`, the beat grid as the track's tempo and first-beat, and the energy level at the front of the Comments field (`Energy 7 - A - peak time`) — the place Mixed In Key puts it, so Rekordbox sorts and searches it the same way.
 
 ---
 

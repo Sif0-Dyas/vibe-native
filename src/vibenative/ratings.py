@@ -232,6 +232,35 @@ def _attr(value):
     return quoteattr("" if value is None else str(value))
 
 
+def _track_children(t):
+    """The TEMPO and POSITION_MARK children of a TRACK: the beat grid and the
+    detected cue points (see cues.py), when the track has them.
+
+    Cues go in as MEMORY cues (``Num="-1"``): they show on the waveform and in
+    the cue list without claiming the eight hot-cue pads, which a DJ tends to
+    lay out by hand. The grid needs the first downbeat (``Inizio``) and the
+    tempo the cues were snapped to -- the grid's own BPM, refined from the
+    analysed one, not ``AverageBpm``."""
+    out = []
+    grid = t.get("grid") or {}
+    if grid.get("bpm"):
+        out.append(
+            f"        <TEMPO Inizio={_attr(round(float(grid.get('offset') or 0.0), 3))} "
+            f'Bpm={_attr(round(float(grid["bpm"]), 2))} Metro="4/4" Battito="1"/>'
+        )
+    for c in t.get("cues") or []:
+        if c.get("t") is None:
+            continue
+        name = c.get("label") or c.get("type") or "Cue"
+        if c.get("energy"):
+            name = f"{name} (E{int(c['energy'])})"
+        out.append(
+            f'        <POSITION_MARK Name={_attr(name)} Type="0" '
+            f'Start={_attr(round(float(c["t"]), 3))} Num="-1"/>'
+        )
+    return out
+
+
 def _location(filepath):
     """Rekordbox's ``Location``: a file:// URL with the host part present.
 
@@ -280,7 +309,14 @@ def playlist_xml(name, tracks, ratings=None):
             f"Location={_attr(_location(t.get('filepath')))}",
             f"Rating={_attr(STARS_TO_RB.get(_clamp_stars(r.get('stars')), 0))}",
         ]
-        comment = comment_for(r)
+        # The energy level rides in Comments, "Energy 7 - ..." -- Rekordbox has
+        # no field for it and that prefix is the convention Mixed In Key set,
+        # so it sorts and searches the way DJs already expect.
+        comment = " - ".join(
+            s
+            for s in (f"Energy {int(t['energy'])}" if t.get("energy") else "", comment_for(r))
+            if s
+        )
         if comment:
             bits.append(f"Comments={_attr(comment)}")
         if t.get("bpm"):
@@ -289,7 +325,13 @@ def playlist_xml(name, tracks, ratings=None):
             bits.append(f"Tonality={_attr(t['key'])}")
         if t.get("duration"):
             bits.append(f"TotalTime={_attr(int(float(t['duration'])))}")
-        rows.append("      <TRACK " + " ".join(bits) + "/>")
+        children = _track_children(t)
+        if children:
+            rows.append("      <TRACK " + " ".join(bits) + ">")
+            rows.extend(children)
+            rows.append("      </TRACK>")
+        else:
+            rows.append("      <TRACK " + " ".join(bits) + "/>")
         refs.append(f"        <TRACK Key={_attr(i)}/>")
 
     skip_note = (

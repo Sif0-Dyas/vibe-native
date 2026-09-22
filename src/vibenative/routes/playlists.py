@@ -193,6 +193,9 @@ def playlist_rekordbox(pid):
                     "bpm": p.get("bpm"),
                     "key": p.get("key"),
                     "duration": p.get("duration"),
+                    "energy": p.get("energy"),
+                    "cues": p.get("cues"),
+                    "grid": p.get("grid"),
                 }
             )
 

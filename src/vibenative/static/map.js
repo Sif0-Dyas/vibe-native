@@ -1965,6 +1965,7 @@
     const bits = [];
     if (n.bpm) bits.push(Math.round(n.bpm) + ' bpm');
     if (keyText(n)) bits.push(escapeHtml(keyText(n)));
+    if (n.energy != null) bits.push('⚡' + n.energy);
     if (n.duration) bits.push(fmtTime(n.duration));
     treeCardEl.innerHTML =
       `<div class="tc-head" style="border-color:${col}">
@@ -3201,6 +3202,7 @@
       n.style ? `<span><b>${escapeHtml(n.style)}</b> ${(n.score*100).toFixed(0)}%</span>` : '',
       n.bpm!=null ? `<span><b>${Math.round(n.bpm)}</b> bpm</span>` : '',
       `<span>${escapeHtml(keyfmt(n))}</span>`,
+      n.energy!=null ? `<span title="energy level, 1-10"><b>⚡${n.energy}</b></span>` : '',
       `<span>${durfmt(n.duration)}</span>`,
     ].join('');
     const other = (n.styles||[]).filter(s=>s && s!==n.style);

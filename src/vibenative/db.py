@@ -289,6 +289,20 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
         )
 
 
+def cache_merge(h: str, fields: dict) -> bool:
+    """Merge ``fields`` into a cached track's payload in place (for analysis
+    results added after the fact, e.g. cue points on an older track). Nothing
+    else on the row changes. False if the track isn't cached."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
+        if not row:
+            return False
+        payload = json.loads(row[0]) if row[0] else {}
+        payload.update(fields)
+        c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(payload), h))
+    return True
+
+
 def waveform_cache_get(h: str):
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT data_json FROM waveform_cache WHERE hash=?", (h,)).fetchone()
