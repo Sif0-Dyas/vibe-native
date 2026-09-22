@@ -1,10 +1,23 @@
-"""Agreement of the clean-room key detector (vibenative.tonality) with the reference
-labels in oracle/index.json, per profile set, in MIREX categories.
+"""Accuracy of the clean-room key detector (vibenative.tonality) against labelled
+datasets, per profile set, in MIREX categories.
 
-    python tools/eval_key.py            # all profile sets x front-end variants
-    python tools/eval_key.py --loo      # also leave-one-out corpus-fitted profiles
+    python tools/eval_key.py                          # oracle corpus, built-in profiles
+    python tools/eval_key.py --loo                    # + leave-one-out corpus-fitted profiles
+    python tools/eval_key.py --dataset giantsteps     # human-labelled GiantSteps (604 tracks)
+    python tools/eval_key.py --dataset oracle --fit-on giantsteps   # cross-dataset
+    python tools/eval_key.py --dataset giantsteps --sweep --loo     # front-end experiments
 
-Global PCPs are cached in oracle/pcp_cache.npz (keyed by track hash + variant)
+The "shipped model" line is the multi-band model in data/key_profiles.json (what
+the app runs); the per-variant lines score single 12-bin profile sets on the
+whole-band PCP.
+
+Datasets:
+  oracle      oracle/index.json — labels are Essentia's KeyExtractor output (agreement, not truth)
+  giantsteps  datasets/giantsteps-key-dataset — expert-corrected Beatport labels (Knees et al.
+              ISMIR 2015). Clone https://github.com/GiantSteps/giantsteps-key-dataset into
+              datasets/ and fetch audio/ with its audio_dl.sh (the JKU mirror still serves).
+
+Global PCPs are cached in datasets/cache/<dataset>.npz (keyed by track id + variant)
 so re-running after a profile tweak takes seconds, not minutes.
 """
 
@@ -26,25 +39,69 @@ from vibenative.decode import decode_mono  # noqa: E402
 from vibenative.paths import wsl_to_windows  # noqa: E402
 
 ORACLE = ROOT / "oracle"
-CACHE = ORACLE / "pcp_cache.npz"
+DATASETS = ROOT / "datasets"
+CACHE_DIR = DATASETS / "cache"
+# GiantSteps spells with flats; the app (and the oracle) use C# and F#.
+SPELLING = {"Db": "C#", "Gb": "F#", "D#": "Eb", "G#": "Ab", "A#": "Bb"}
 # name -> pcp_from_magnitudes() kwargs. Every variant shares one decode + FFT per track.
 # "default" is what the app ships; add entries here to sweep a setting.
 VARIANTS: dict[str, dict] = {"default": {}}
+if tonality.MODEL:  # the shipped model's blocks, so it can be scored from the cache
+    for _i, _blk in enumerate(tonality.MODEL["blocks"]):
+        VARIANTS[f"model block {_i}"] = dict(_blk)
+
+# Opt-in front-end experiments (--sweep): whole-band settings, and single bands
+# whose PCPs tools/train_key_templates.py can concatenate into a multi-band model.
+SWEEP: dict[str, dict] = {}
+_BASE = dict(f_lo=200, top_peaks=100, subharmonics=4, tuning=True)
+SWEEP["base"] = dict(_BASE)
+for _flo in (15, 60, 200):
+    for _top in (40, 100, 150, 0):
+        for _sub in (0, 4):
+            SWEEP[f"flo={_flo} top={_top} sub={_sub}"] = dict(f_lo=_flo, top_peaks=_top, subharmonics=_sub, tuning=True)
+for _lo, _hi in ((25, 400), (400, 1500), (1500, 5000), (200, 1000), (1000, 5000)):
+    for _tp in (16, 50):
+        SWEEP[f"band {_lo}-{_hi} peaks={_tp}"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=_tp, subharmonics=4, tuning=False)
 
 
-def load_index() -> dict:
-    return json.loads((ORACLE / "index.json").read_text(encoding="utf-8"))
+def variant_settings(name: str) -> dict:
+    """pcp_from_magnitudes kwargs for a variant from either table."""
+    if name in VARIANTS:
+        return VARIANTS[name]
+    if name in SWEEP:
+        return SWEEP[name]
+    sys.exit(f"unknown variant {name!r}")
 
 
-def load_pcps(index: dict, verbose: bool = True) -> dict[tuple[str, str], np.ndarray]:
-    """{(hash, variant): pcp} for every track with audio on disk, via the cache."""
+def load_index(dataset: str = "oracle") -> dict:
+    """{id: {"file": path, "key": name, "scale": mode, ...}} for a dataset."""
+    if dataset == "oracle":
+        idx = json.loads((ORACLE / "index.json").read_text(encoding="utf-8"))
+        return {h: {**m, "file": wsl_to_windows(m["file"])} for h, m in idx.items()}
+    if dataset == "giantsteps":
+        root = DATASETS / "giantsteps-key-dataset"
+        if not (root / "annotations" / "key").is_dir():
+            sys.exit(f"{root} missing - see the docstring for how to fetch it")
+        out = {}
+        for f in sorted((root / "annotations" / "key").glob("*.key")):
+            key, scale = f.read_text(encoding="utf-8").split()
+            out[f.stem] = {"file": str(root / "audio" / f"{f.stem}.mp3"), "key": SPELLING.get(key, key), "scale": scale}
+        return out
+    sys.exit(f"unknown dataset {dataset!r}")
+
+
+def load_pcps(index: dict, dataset: str = "oracle", verbose: bool = True) -> dict[tuple[str, str], np.ndarray]:
+    """{(id, variant): pcp} for every track with audio on disk, via the cache."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = CACHE_DIR / f"{dataset}.npz"
     cache: dict[str, np.ndarray] = {}
-    if CACHE.exists():
-        with np.load(CACHE) as z:
+    if cache_file.exists():
+        with np.load(cache_file) as z:
             cache = {k: z[k] for k in z.files}
     out = {}
+    dirty = False
     for i, h in enumerate(sorted(index)):
-        path = Path(wsl_to_windows(index[h]["file"]))
+        path = Path(index[h]["file"])
         if not path.exists():
             continue
         missing = [n for n in VARIANTS if f"{h}:{n}" not in cache]
@@ -52,15 +109,19 @@ def load_pcps(index: dict, verbose: bool = True) -> dict[tuple[str, str], np.nda
             if verbose:
                 print(f"[{i + 1}/{len(index)}] {path.name}".encode("ascii", "replace").decode(), flush=True)
             audio = decode_mono(path, tonality.SR)
-            for frame in sorted({VARIANTS[n].get("frame", tonality.FRAME) for n in missing}):
+            for frame in sorted({variant_settings(n).get("frame", tonality.FRAME) for n in missing}):
                 mags, freqs = tonality.magnitudes(audio, tonality.SR, frame)
                 for n in missing:
-                    settings = {k: v for k, v in VARIANTS[n].items() if k != "frame"}
-                    if VARIANTS[n].get("frame", tonality.FRAME) == frame:
+                    settings = {k: v for k, v in variant_settings(n).items() if k != "frame"}
+                    if variant_settings(n).get("frame", tonality.FRAME) == frame:
                         cache[f"{h}:{n}"] = tonality.pcp_from_magnitudes(mags, freqs, **settings)
-            np.savez(CACHE, **cache)  # save as we go: decoding is the slow part
+            dirty = True
+            if i % 25 == 0:
+                np.savez(cache_file, **cache)  # save as we go: decoding is the slow part
         for n in VARIANTS:
             out[(h, n)] = cache[f"{h}:{n}"]
+    if dirty:
+        np.savez(cache_file, **cache)
     return out
 
 
@@ -108,28 +169,57 @@ def evaluate(pcps: dict, index: dict, variant: str, profile: str | None = None, 
     return cats
 
 
+def evaluate_model(pcps: dict, index: dict) -> Counter:
+    """The shipped multi-band model (tonality.MODEL) on the cached block PCPs."""
+    names = [f"model block {i}" for i in range(len(tonality.MODEL["blocks"]))]
+    cats: Counter = Counter()
+    for h in sorted(index):
+        if not all((h, n) in pcps for n in names):
+            continue
+        f = np.concatenate([gated(pcps[(h, n)]) for n in names])
+        k, s, _ = tonality.match_model(f)
+        cats[category((k, s), (index[h]["key"], index[h]["scale"]))] += 1
+    return cats
+
+
 def report(label: str, cats: Counter) -> None:
     n = sum(cats.values())
     mirex = (cats["exact"] + 0.5 * cats["fifth"] + 0.3 * cats["relative"] + 0.2 * cats["parallel"]) / n
     parts = "  ".join(f"{c}={cats[c]}" for c in ("exact", "fifth", "relative", "parallel", "other"))
-    print(f"{label:<14} exact {cats['exact']:>3}/{n} ({100 * cats['exact'] / n:5.1f}%)  mirex {mirex:.3f}   {parts}")
+    print(f"{label:<16} exact {cats['exact']:>3}/{n} ({100 * cats['exact'] / n:5.1f}%)  mirex {mirex:.3f}   {parts}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", default="oracle", help="oracle | giantsteps (what to score on)")
     ap.add_argument("--loo", action="store_true", help="also score leave-one-out fitted profiles")
+    ap.add_argument("--fit-on", metavar="DATASET", help="also score profiles fitted on this other dataset")
+    ap.add_argument("--sweep", action="store_true", help="also compute and score the SWEEP front-end variants")
     args = ap.parse_args()
+    if args.sweep:
+        VARIANTS.update(SWEEP)
 
-    index = load_index()
-    pcps = load_pcps(index)
+    index = load_index(args.dataset)
+    pcps = load_pcps(index, args.dataset)
     n = len({h for h, _ in pcps})
-    print(f"\n{n} tracks with audio\n")
+    print(f"\n{args.dataset}: {n} tracks with audio\n")
+    if tonality.MODEL:
+        report("shipped model", evaluate_model(pcps, index))
+        print()
+    if args.fit_on:
+        fit_index = load_index(args.fit_on)
+        fit_pcps = load_pcps(fit_index, args.fit_on)
     for variant in VARIANTS:
         print(variant)
         for name in sorted(tonality.PROFILES):
             report(f"  {name}", evaluate(pcps, index, variant, profile=name))
         if args.loo:
             report("  fitted LOO", evaluate(pcps, index, variant, loo=True))
+        if args.fit_on:
+            hashes = [h for h in sorted(fit_index) if (h, variant) in fit_pcps]
+            tonality.PROFILES["_x"] = fit_profiles(fit_pcps, fit_index, hashes, variant)
+            report(f"  fit:{args.fit_on}", evaluate(pcps, index, variant, profile="_x"))
+            tonality.PROFILES.pop("_x", None)
         print()
 
 

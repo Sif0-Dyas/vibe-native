@@ -15,9 +15,11 @@ GPU works in the packaged build). Validated against the WSL build as the oracle:
   head matches the oracle's top styles exactly (worst |Δscore| 5.96e-08).
 - **Tempo** — TempoCNN within 2% or an octave for **96.7%** of tracks (≥95% bar).
 - **Key** — our own detector (`tonality.py`, written from the published papers,
-  see [`docs/KEY_SPEC.md`](docs/KEY_SPEC.md)) agrees with Essentia's KeyExtractor
-  on **96/121 tracks (79%, leave-one-out)**; the rest are mostly relative/parallel
-  mode calls on genuinely ambiguous EDM tracks.
+  see [`docs/KEY_SPEC.md`](docs/KEY_SPEC.md)): multi-band pitch-class profiles
+  scored by templates trained on the human-labelled GiantSteps EDM set, where it
+  reaches **66.6% exact / MIREX 0.730** (5-fold CV) vs 64.1% / 0.725 for
+  Essentia's KeyExtractor and 67.2% / 0.742 for Mixed In Key. It agrees with the
+  old Essentia port on 88/121 of the oracle tracks.
 - **App** — same routes, DB schema, and frontend as Vibe_Identify; the whole Flask
   app + the pywebview desktop shell run on one Windows venv in dev, or as a single
   packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. GPU falls out for free

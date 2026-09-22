@@ -67,9 +67,23 @@ def test_silence_and_short_input_do_not_crash():
     assert s in tonality.MODES
 
 
-def test_strength_is_a_correlation():
+def test_strength_is_a_probability_or_correlation():
     _, _, r = tonality.estimate(_progression(C_MAJOR), SR)
     assert 0.5 < r <= 1.0
+    if tonality.MODEL:
+        _, _, r = tonality.estimate(_progression(C_MAJOR), SR, profile="kk")
+        assert 0.5 < r <= 1.0
+
+
+def test_model_file_is_consistent():
+    if not tonality.MODEL:
+        pytest.skip("no trained model in data/key_profiles.json")
+    n = len(tonality.MODEL["blocks"])
+    assert all(tonality.MODEL["weights"][m].shape == (12 * n,) for m in tonality.MODES)
+    # a chord progression yields one 12-bin PCP per block, all gated to [0, 1]
+    mags, freqs = tonality.magnitudes(_progression(A_MINOR), SR)
+    f = tonality.features(mags, freqs)
+    assert f.shape == (12 * n,) and f.min() >= 0 and f.max() <= 1.0
 
 
 def _oracle_ready():

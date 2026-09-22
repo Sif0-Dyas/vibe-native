@@ -38,81 +38,105 @@ ffmpeg wrapper and not part of this spec).
 1. **Framing.** Hann-windowed frames of N = 8192 samples, hop 4096 (50 % overlap).
    Frames whose RMS is below 1e-4 are skipped (silence).
 2. **Spectrum.** Magnitude of the real FFT, max-normalised per frame, restricted to
-   15 Hz – 5 kHz. (The first draft high-passed at 200 Hz following Faraldo 2017;
-   on this corpus that discards the bassline, which in house/techno carries most
-   of the tonal information, and cost ~15 points. Above 5 kHz is noise and
-   partials we do not model.)
+   the block's band (step 7); the whole-band block high-passes at 200 Hz as in
+   Faraldo 2017, the bass block starts at 25 Hz. Above 5 kHz is noise and
+   partials we do not model.
 3. **Peak selection.** Per frame, keep only local maxima (a bin larger than both
-   neighbours) that are ≥ 1 % of the frame max, and of those only the 150 strongest
+   neighbours) that are ≥ 1 % of the frame max, and of those only the N strongest
+   (N = 100 for the whole band, 16 for a single band; see step 7)
    (Gómez 2006: pitch content lives in a few strong peaks). This is the single
    most important step: a noisy spectrum has a local maximum every few bins, and
    without the cap those swamp the real partials and flatten the profile.
    Magnitudes are used linearly — log compression (γ = 10…100) and squaring were
    both tried and lost, because compression lifts the residual noise peaks.
+   Each retained peak also credits the pitch classes of f/2 … f/5 with weight
+   1/h (a partial may be a harmonic of a lower note; HPCP does the same).
 4. **Tuning estimation.** From peaks above 500 Hz only (below that a bin is wider
    than the tuning resolution): fractional MIDI pitch `p = 69 + 12·log2(f / 440)`,
    fraction `p − round(p)` histogrammed in 5-cent bins (odd count, so one bin is
    centred on "in tune"), weighted by peak magnitude. The mode is the global
    offset `δ` — but only if it is ≥ 2× the mean bin; a flat histogram means noise
-   and the track is treated as A440. On this corpus the gate fires on ~20 % of
-   tracks and changes no decisions; it exists for genuinely detuned material.
+   and the track is treated as A440. The gate fires on ~20 % of tracks and
+   rarely changes a decision; it exists for genuinely detuned material. Only the
+   whole-band block is tuning-corrected (a single band is too narrow to
+   estimate it).
 5. **Pitch-class profile (PCP).** Each retained bin's pitch `p_k − δ` goes to pitch
    class `round(p_k − δ) mod 12` (0 = C … 11 = B) with weight `cos²(π·(p_k − round
-   p_k))`, so energy between two semitones is split. Sub-harmonic crediting
-   (a peak at f also credits f/2, f/3 …, as HPCP does) was evaluated at depths
-   2–8 and did not help once peaks were capped; it is implemented but off.
+   p_k))`, so energy between two semitones is split.
 6. **Aggregation.** Each frame's PCP is max-normalised (so loud sections do not
    dominate), then averaged over non-silent frames, then max-normalised again.
-   Bins under 0.2 are zeroed (PCP gate, Faraldo 2017) — on this corpus it never
-   fires with the profiles below, but it is cheap and matches the paper.
-7. **Template matching.** For each of the 24 keys (12 tonics × {major, minor})
-   rotate the mode's profile so index 0 is the tonic and compute the Pearson
-   correlation with the global PCP. The best score wins. `strength` is the winning
-   correlation. Ties broken toward minor (EDM prior, Faraldo 2016).
-8. **Output.** `(key_name, "major"|"minor", strength)` with names spelled
+   Bins under 0.2 are zeroed (PCP gate, Faraldo 2017).
+7. **Multi-band features.** Steps 2–6 are run four times with different bands
+   and peak caps, giving four 12-bin PCPs that are concatenated (48 values):
+   the whole band (200 Hz – 5 kHz, 100 peaks, tuning-corrected), the bass
+   (25–400 Hz, 16 peaks), the low-mids (200 Hz – 1 kHz, 16 peaks) and the
+   top (1–5 kHz, 16 peaks). The bass PCP is the strongest *tonic* cue in EDM
+   (Mauch & Dixon 2010 use a separate bass chroma for the same reason); the
+   whole-band PCP carries the *mode*. Each block is standardised (zero mean,
+   unit norm) so a dot product with a template is a Pearson correlation.
+8. **Scoring.** For each of the 24 keys, every block is rotated so the candidate
+   tonic sits at index 0 and the concatenation is dotted with the mode's trained
+   48-weight template, plus a per-mode bias. The highest score wins; `strength`
+   is the winner's softmax probability over the 24 keys (0–1). Silence (no
+   peaks anywhere) reports strength 0.
+9. **Output.** `(key_name, "major"|"minor", strength)` with names spelled
    `C C# D Eb E F F# G Ab A Bb B` (the spelling the app's Camelot table and the
    existing database use).
 
-## Profiles
+## Templates
 
-Two published sets are built in verbatim from the papers:
+The weights are **trained**, not hand-written: `tools/train_key_templates.py`
+fits the two 48-vectors and two biases as a transposition-equivariant 24-way
+softmax (multinomial logistic regression over the rotated, standardised
+features, L2 = 1e-3) on the GiantSteps key dataset — 604 two-minute Beatport
+excerpts with expert-corrected labels (Knees, Faraldo et al., ISMIR 2015). It
+is exactly the classical template-matching model (Krumhansl 1990, Gómez 2006),
+with the templates chosen to *separate* keys rather than to describe the
+average one. The result lives in `src/vibenative/data/key_profiles.json` under
+`"model"` with its blocks, cross-validation and provenance.
 
-- `kk` — Krumhansl & Kessler 1982.
-- `temperley` — Temperley 1999.
-
-A third set, `edm`, is derived by this project from labelled audio using the recipe
-in Faraldo 2017 §3.1: for each labelled track compute the global PCP (steps 1–6),
-rotate it so the labelled tonic is index 0, and take the per-mode **median** across
-tracks. `tools/fit_key_profiles.py` does this with leave-one-out cross-validation so
-the reported accuracy is honest; the fitted vectors are stored in
-`src/vibenative/data/key_profiles.json` with the provenance recorded in the file.
-The labels used for fitting are the app's own key annotations (whatever the
-library says the key is); the vectors are statistics of our own audio, not copies
-of anyone's constants.
+Three 12-bin profile sets are kept as a baseline/fallback for the single
+whole-band PCP: Krumhansl–Kessler 1982 and Temperley 1999 verbatim from the
+papers, and `edm`, the per-mode median of tonic-rotated GiantSteps PCPs
+(Faraldo 2017 §3.1 recipe; `tools/fit_key_profiles.py`).
 
 ## Evaluation
 
-`tools/eval_key.py --loo` runs the detector over `oracle/index.json` and reports
-agreement with the reference key/scale labels, broken down by exact match,
-relative (major↔relative minor), parallel (same tonic, other mode), fifth
-(tonic a fifth away), and other — the MIREX key-detection categories — for each
-profile set. Result on the 121-track corpus (2026-09-21):
+`tools/eval_key.py --dataset giantsteps|oracle` scores the shipped model and
+the profile sets in the MIREX categories: exact, fifth (tonic a fifth away, same
+mode), relative (major ↔ relative minor), parallel (same tonic, other mode),
+other. Results, 2026-09-22:
 
-| profiles              | exact        | fifth | relative | parallel | other | MIREX |
-|-----------------------|--------------|-------|----------|----------|-------|-------|
-| Krumhansl–Kessler     | 60 (49.6 %)  | 20    | 4        | 23       | 14    | 0.626 |
-| Temperley             | 53 (43.8 %)  | 14    | 20       | 6        | 28    | 0.555 |
-| `edm` (leave-one-out) | 96 (79.3 %)  | 7     | 3        | 9        | 6     | 0.845 |
+**GiantSteps, 604 human-labelled tracks** (the model's number is 5-fold
+cross-validated; the paper's numbers are from Faraldo 2017 Tables 1–2 on the
+same set):
 
-This measures *agreement with the previous detector* (Essentia's `bgate`
-KeyExtractor), not ground truth: Faraldo 2017 Table 1 reports `bgate` itself at
-64 % exact (MIREX 0.73) on the human-labelled GiantSteps set and 64–66 % on two
-others, with Mixed In Key at 66–72 %. Two imperfect detectors agreeing on ~80 %
-is consistent with both being in that range; it says nothing about which one is
-right on the other 20 %. Genuine accuracy needs
-human labels — the public GiantSteps key dataset (604 Beatport excerpts, expert
-annotated) is the obvious next step, both to score and to refit the profiles
-on ~5× more data.
+| detector                                   | exact      | fifth | relative | parallel | other | MIREX     |
+|--------------------------------------------|------------|-------|----------|----------|-------|-----------|
+| Krumhansl–Kessler, whole-band PCP          | 34.9 %     | 87    | 40       | 102      | 164   | 0.475     |
+| `edm` median profiles, whole-band (LOO)    | 52.6 %     | 67    | 52       | 41       | 126   | 0.621     |
+| trained, whole-band only (5-fold)          | 61.3 %     | 64    | 31       | 26       | 113   | 0.690     |
+| **trained, 4 bands (5-fold) — shipped**    | **66.6 %** | 54    | 20       | 31       | 97    | **0.730** |
+| Essentia `bgate` (the old detector, paper) | 64.1 %     |       |          |          |       | 0.725     |
+| KeyFinder (paper)                          | 60.4 %     |       |          |          |       | 0.699     |
+| Mixed In Key 7 (paper)                     | 67.2 %     |       |          |          |       | 0.742     |
+
+**Oracle corpus, 121 tracks from this library** — labels are the *old
+detector's output*, so this is agreement, not accuracy; the model never saw
+these tracks:
+
+| detector                                  | agrees with old detector |
+|-------------------------------------------|--------------------------|
+| shipped model                             | 88/121 (72.7 %)          |
+| `edm` median profiles (fit on GiantSteps) | 93/121 (76.9 %)          |
+
+The two detectors disagree on ~27 % of the library. Which is right there is
+unknowable without human labels; on the set that has them, the model is 2.5
+points ahead of the old detector. What the sweeps established along the way,
+all on GiantSteps: front-end settings (cutoff, peak cap, compression,
+sub-harmonics, frame size, tuning) move a single-PCP detector only within
+51–55 %; the gains came from training the templates (+6) and adding the band
+PCPs (+5).
 
 ## Non-goals
 

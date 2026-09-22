@@ -30,6 +30,10 @@ PEAK_FLOOR = 0.01  # spectral peaks below this fraction of the frame max are ign
 TOP_PEAKS = 150  # strongest peaks kept per frame; the rest of the maxima are noise
 SUBHARMONICS = 0  # a peak at f also credits f/2 .. f/(SUBHARMONICS+1)
 DECAY = 1.0  # sub-harmonic weight = DECAY^(h-1) / h
+BASS_LO = 25.0  # the bass band starts here regardless of F_LO
+BASS_HI = 250.0  # the bass band: its own PCP is a strong tonic cue in EDM
+BASS_PEAKS = 4  # peaks kept per frame in the bass band (a bassline is one or two notes)
+BASS_WEIGHT = 0.0  # share of the bass-band PCP in the final profile (0 = full band only)
 GATE = 0.2  # PCP bins under this (after max-normalisation) are zeroed
 SILENCE_RMS = 1e-4
 TUNING_BIN = 0.05  # semitones (5 cents)
@@ -55,9 +59,16 @@ PROFILES: dict[str, dict[str, np.ndarray]] = {
 
 _DATA = Path(__file__).resolve().parent / "data" / "key_profiles.json"
 
+# The trained model (tools/train_key_templates.py): a linear scorer over the
+# concatenated, per-block standardised PCPs of several frequency bands.
+#   score(tonic t, mode m) = sum_blocks <standardise(pcp_block) rolled by t, W[m][block]> + bias[m]
+# {"blocks": [pcp_from_magnitudes kwargs, ...], "weights": {mode: [12*len(blocks)]}, "bias": {mode: float}}
+MODEL: dict | None = None
+
 
 def _load_fitted() -> None:
-    """Corpus-derived profiles written by tools/fit_key_profiles.py, if present."""
+    """Corpus-derived profiles and/or the trained multi-band model, if present."""
+    global MODEL
     if not _DATA.exists():
         return
     try:
@@ -69,11 +80,22 @@ def _load_fitted() -> None:
             PROFILES[name] = {m: np.asarray(modes[m], dtype=np.float64) for m in MODES}
         except (KeyError, TypeError, ValueError):
             continue
+    model = doc.get("model")
+    if model:
+        try:
+            MODEL = {
+                "blocks": [dict(b) for b in model["blocks"]],
+                "weights": {m: np.asarray(model["weights"][m], dtype=np.float64) for m in MODES},
+                "bias": {m: float(model["bias"][m]) for m in MODES},
+            }
+            assert all(len(MODEL["weights"][m]) == 12 * len(MODEL["blocks"]) for m in MODES)
+        except (KeyError, TypeError, ValueError, AssertionError):
+            MODEL = None
 
 
 _load_fitted()
 
-DEFAULT_PROFILE = "edm" if "edm" in PROFILES else "temperley"
+DEFAULT_PROFILE = "model" if MODEL else ("edm" if "edm" in PROFILES else "temperley")
 
 
 # --- spectral front end -----------------------------------------------------------
@@ -111,7 +133,7 @@ def magnitudes(audio: np.ndarray, sr: int = SR, frame: int = FRAME, hop: int | N
 
 def emphasise(mag: np.ndarray, freqs: np.ndarray, f_lo: float = F_LO, gamma: float = GAMMA,
               peaks: bool = True, peak_floor: float = PEAK_FLOOR, top_peaks: int = TOP_PEAKS,
-              power: float = POWER) -> np.ndarray:
+              power: float = POWER, f_hi: float = F_HI) -> np.ndarray:
     """What of the spectrum counts as pitch evidence. Bins below ``f_lo`` are
     dropped. With ``peaks`` only local maxima survive, and of those only the
     ``top_peaks`` strongest per frame above ``peak_floor`` x the frame max
@@ -120,7 +142,7 @@ def emphasise(mag: np.ndarray, freqs: np.ndarray, f_lo: float = F_LO, gamma: flo
     dynamic range; ``gamma`` > 0 applies log(1 + gamma·m)."""
     if mag.size == 0:
         return mag
-    mag = np.where(freqs[None, :] >= f_lo, mag, 0.0)
+    mag = np.where((freqs[None, :] >= f_lo) & (freqs[None, :] <= f_hi), mag, 0.0)
     if peaks:
         inner = mag[:, 1:-1]
         is_peak = (inner > mag[:, :-2]) & (inner >= mag[:, 2:]) & (inner >= peak_floor)
@@ -177,21 +199,40 @@ def _chroma_matrix(freqs: np.ndarray, offset: float, subharmonics: int, decay: f
     return m
 
 
-def pcp_from_magnitudes(mags: np.ndarray, freqs: np.ndarray, subharmonics: int = SUBHARMONICS,
-                        decay: float = DECAY, f_lo: float = F_LO, gamma: float = GAMMA, peaks: bool = True,
-                        peak_floor: float = PEAK_FLOOR, top_peaks: int = TOP_PEAKS, power: float = POWER,
-                        frame_norm: bool = True, tuning: bool = True) -> np.ndarray:
-    if mags.size == 0:
-        return np.zeros(12)
-    mags = emphasise(mags, freqs, f_lo, gamma, peaks, peak_floor, top_peaks, power)
-    offset = _tuning_offset(mags, freqs, tuning)
-    chroma = mags @ _chroma_matrix(freqs, offset, subharmonics, decay)  # (frames, 12)
+def _global_pcp(mags: np.ndarray, chroma_matrix: np.ndarray, frame_norm: bool) -> np.ndarray:
+    chroma = mags @ chroma_matrix  # (frames, 12)
     if frame_norm:
         top = chroma.max(axis=1, keepdims=True)
         chroma = chroma / np.where(top > 0, top, 1.0)
     g = chroma.mean(axis=0)
     top = g.max()
     return g / top if top > 0 else g
+
+
+def pcp_from_magnitudes(mags: np.ndarray, freqs: np.ndarray, subharmonics: int = SUBHARMONICS,
+                        decay: float = DECAY, f_lo: float = F_LO, gamma: float = GAMMA, peaks: bool = True,
+                        peak_floor: float = PEAK_FLOOR, top_peaks: int = TOP_PEAKS, power: float = POWER,
+                        frame_norm: bool = True, tuning: bool = True, bass_weight: float = BASS_WEIGHT,
+                        bass_hi: float = BASS_HI, bass_peaks: int = BASS_PEAKS, f_hi: float = F_HI,
+                        offset: float | None = None) -> np.ndarray:
+    """Global PCP. With ``bass_weight`` > 0 the profile is a blend of the
+    full-band PCP and a PCP of the bass band alone (few peaks per frame, so it
+    tracks the bassline's root notes): bass chroma is the strongest tonic cue in
+    EDM, where the upper voices are often modally ambiguous (Mauch & Dixon 2010
+    use a separate bass chroma for the same reason in chord recognition)."""
+    if mags.size == 0:
+        return np.zeros(12)
+    full = emphasise(mags, freqs, f_lo, gamma, peaks, peak_floor, top_peaks, power, f_hi)
+    if offset is None:
+        offset = _tuning_offset(full, freqs, tuning)
+    cm = _chroma_matrix(freqs, offset, subharmonics, decay)
+    g = _global_pcp(full, cm, frame_norm)
+    if bass_weight > 0:
+        bass = emphasise(mags, freqs, BASS_LO, gamma, peaks, peak_floor, bass_peaks, power, f_hi=bass_hi)
+        gb = _global_pcp(bass, _chroma_matrix(freqs, offset, 0), frame_norm)
+        g = (1.0 - bass_weight) * g + bass_weight * gb
+        g = g / g.max() if g.max() > 0 else g
+    return g
 
 
 def pcp(audio: np.ndarray, sr: int = SR, frame: int = FRAME, **settings) -> np.ndarray:
@@ -211,22 +252,72 @@ def _pearson(a: np.ndarray, b: np.ndarray) -> float:
     return float((a * b).sum() / d) if d > 0 else 0.0
 
 
+def _standardise(v: np.ndarray) -> np.ndarray:
+    """Zero-mean, unit-norm per 12-bin block (so a dot product is a correlation)."""
+    out = np.array(v, dtype=np.float64)
+    for j in range(0, out.size, 12):
+        blk = out[j:j + 12] - out[j:j + 12].mean()
+        n = np.linalg.norm(blk)
+        out[j:j + 12] = blk / n if n > 0 else blk
+    return out
+
+
+def features(mags: np.ndarray, freqs: np.ndarray, blocks: list[dict] | None = None) -> np.ndarray:
+    """Concatenated, gated PCPs of the model's frequency-band blocks (12 each)."""
+    blocks = MODEL["blocks"] if blocks is None and MODEL else (blocks or [{}])
+    parts = []
+    for kw in blocks:
+        g = pcp_from_magnitudes(mags, freqs, **kw)
+        parts.append(np.where(g < GATE, 0.0, g))
+    return np.concatenate(parts)
+
+
+def match_model(feature: np.ndarray, model: dict | None = None) -> tuple[str, str, float]:
+    """Best key under the trained linear model. Strength is the softmax
+    probability of the winner over all 24 keys (0..1)."""
+    model = model or MODEL
+    if not np.any(feature):
+        return KEY_NAMES[0], "minor", 0.0  # silence: no evidence at all
+    x = _standardise(feature)
+    nblk = x.size // 12
+    scores = np.empty((12, 2))
+    for t in range(12):
+        rolled = np.concatenate([np.roll(x[j * 12:(j + 1) * 12], -t) for j in range(nblk)])
+        for mi, m in enumerate(MODES):
+            scores[t, mi] = rolled @ model["weights"][m] + model["bias"][m]
+    flat = scores.ravel()
+    best = int(np.argmax(flat))
+    p = np.exp(flat - flat[best])
+    return KEY_NAMES[best // 2], MODES[best % 2], float(1.0 / p.sum())
+
+
 def match(profile_vec: np.ndarray, profile: str = DEFAULT_PROFILE) -> tuple[str, str, float]:
-    """Best (key, mode, correlation) over 24 rotated templates. Ties go to minor."""
+    """Best (key, mode, strength). With ``profile="model"`` ``profile_vec`` is the
+    multi-band feature vector from ``features``; otherwise it is a single 12-bin
+    PCP correlated against the named 12-bin templates (ties go to minor)."""
+    if profile == "model":
+        return match_model(profile_vec)
     templates = PROFILES[profile]
     best = ("C", "minor", -2.0)
     for mode in ("minor", "major"):  # minor first so a tie keeps minor
         t = templates[mode]
         for tonic in range(12):
-            r = _pearson(profile_vec, np.roll(t, tonic))
+            r = _pearson(profile_vec[:12], np.roll(t, tonic))
             if r > best[2]:
                 best = (KEY_NAMES[tonic], mode, r)
     return best
 
 
 def estimate(audio: np.ndarray, sr: int = SR, profile: str = DEFAULT_PROFILE, **front_end) -> tuple[str, str, float]:
-    """(key, "major"|"minor", strength) for a mono signal. ``front_end`` kwargs go
-    to ``pcp`` (tools/eval_key.py uses them to sweep settings)."""
+    """(key, "major"|"minor", strength) for a mono signal. With the trained model
+    (the default when data/key_profiles.json carries one) strength is a
+    probability; with a named profile set it is a Pearson correlation and
+    ``front_end`` kwargs go to ``pcp``."""
+    if profile == "model" and MODEL:
+        mags, freqs = magnitudes(audio, sr)
+        return match_model(features(mags, freqs))
+    if profile == "model":
+        profile = "edm" if "edm" in PROFILES else "temperley"
     g = pcp(audio, sr, **front_end)
     g = np.where(g < GATE, 0.0, g)
     return match(g, profile)
