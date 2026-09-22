@@ -157,51 +157,6 @@ own mel reproduces Essentia TempoCNN (125→125, etc.). The 4 misses: 2 are genu
 TempoCNN-vs-RhythmExtractor2013 disagreements (mine == Essentia TempoCNN, both ≠
 oracle), 2 are octave picks where mine diverges from Essentia on ambiguous tracks.
 
-## Key (native HPCP + KeyExtractor port): **PASSED** — 100%
+## Key: **replaced** by an independent detector
 
-Reproduces Essentia KeyExtractor's key **exactly (key + scale) on 121/121 tracks**
-(acceptance ≥ 90%). `src/vibenative/key.py` is a stage-for-stage numpy port of
-KeyExtractor, validated against per-stage WSL Essentia dumps (the Phase-2 playbook).
-
-**Pipeline** (KeyExtractor's exact config, `keyextractor.cpp`): 44100 Hz mono →
-FrameCutter 4096/4096 startFromZero → Windowing(hann) → Spectrum → SpectralPeaks
-(magThresh 1e-4, 25–3500 Hz, 60 peaks) → SpectralWhitening → HPCP(size 12, ref 440,
-harmonics 4, cosine, windowSize 1.0, bandPreset false, nonLinear false, normalized
-none) → mean over frames → Key(profileType **bgate**, usePolyphony false,
-numHarmonics 4, slope 0.6).
-
-**What the earlier scaffold missed.** The Key *selection* was never the problem —
-feeding Essentia's own mean HPCP through bgate-Pearson (12 circular shifts,
-`index=(i-shift)%12`, minor wins ties, keyNames flats with **bin 0 = A**) already
-reproduces the oracle **121/121**. With a size-12 HPCP and `usePolyphony=false`,
-`Key` uses the **raw** bgate profiles (the resize() harmonic-interpolation loop is
-empty when n=1). The entire burden was reproducing Essentia's **HPCP**, which
-requires the full SpectralPeaks + **SpectralWhitening** + HPCP chain (the previous
-"~55% on the mean chroma" was a *no-whitening* chroma; whitening is essential).
-
-**Ported faithfully from source** (essentia 2.1-beta6):
-- *SpectralPeaks* = `standard/peakdetection.cpp`: strict local maxima with parabolic
-  interpolation, `pos = bin·(SR/2)/(N−1)`. A vectorized finder (`_spectral_peaks_fast`)
-  is verified bit-identical to the literal port; the one subtlety is that Essentia's
-  loop starts *at* `i0=ceil(minFreq/scale)` and climbs, so bin `i0` is reported only
-  by the low-edge boundary check, never as an interior peak (else a phantom ~37 Hz
-  peak appears).
-- *SpectralWhitening* = `spectral/spectralwhitening.cpp`: 100 Hz-resolution power
-  envelope BPF, per-peak `db` difference to it. Two gotchas that cost the accuracy:
-  1. **Window normalization matters.** Essentia `Windowing(normalized=true)` scales
-     the window by `2/Σ|w|` (≈1/1024). This is *not* globally scale-invariant because
-     SpectralPeaks' `magnitudeThreshold` and the whitening passthrough are **absolute**
-     — without it, silent frames sprout 60 phantom peaks.
-  2. **essentia `lin2db`/`db2lin` use `10·log10` / `10^(x/10)`**, not 20/20. Getting
-     this wrong under-applies the whitening's `−20·freq/4000` tilt by exactly a factor
-     of `10^(freq/8000)` (a clean frequency-dependent error), which flipped ~10% of
-     tracks between relative/parallel major-minor. Fixing it took 90.1% → 100%.
-  3. The installed build whitens peaks up to `_maxFreq` itself (not `_maxFreq−incr`
-     as the source's passthrough reads) — verified from per-peak dumps.
-- *HPCP* = `spectral/hpcp.cpp`: harmonic-contribution table (`initHarmonicContribution
-  Table`, 5 harmonics → fundamental strength 3.0 + fifth + major-third), cosine window
-  `cos(π·distance)`, accumulate `weight·mag²·strength²`, **no** normalization.
-
-Result: native mean HPCP vs Essentia's mean HPCP is cosine ~1.00000 across the
-validation tracks; native key == oracle key 121/121. Acceptance test:
-`tests/test_key.py` (subset by default, `VIBE_FULL_ORACLE=1` for all 121).
+See `docs/KEY_SPEC.md`; `python tools/eval_key.py --loo` for the numbers.

@@ -14,8 +14,10 @@ GPU works in the packaged build). Validated against the WSL build as the oracle:
   embeddings to **cosine > 0.999 on all 121 tracks** (worst 0.99932); the converted
   head matches the oracle's top styles exactly (worst |Δscore| 5.96e-08).
 - **Tempo** — TempoCNN within 2% or an octave for **96.7%** of tracks (≥95% bar).
-- **Key** — a faithful port of Essentia's KeyExtractor matches key + scale on
-  **121/121 tracks (100%)**.
+- **Key** — our own detector (`tonality.py`, written from the published papers,
+  see [`docs/KEY_SPEC.md`](docs/KEY_SPEC.md)) agrees with Essentia's KeyExtractor
+  on **96/121 tracks (79%, leave-one-out)**; the rest are mostly relative/parallel
+  mode calls on genuinely ambiguous EDM tracks.
 - **App** — same routes, DB schema, and frontend as Vibe_Identify; the whole Flask
   app + the pywebview desktop shell run on one Windows venv in dev, or as a single
   packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. GPU falls out for free
@@ -33,7 +35,7 @@ Standard `src/` layout — the importable `vibenative` package lives under `src/
 
 ```
 src/vibenative/        the package: Flask app factory + config/db, the ONNX engine
-                       (decode · frontend_mel · onnx_engine · tempo · key), and
+                       (decode · frontend_mel · onnx_engine · tempo · tonality), and
   routes/              one Blueprint, split by domain: analysis, library, vibes,
                        tags, playlists, map, training
   templates/ static/   the web UI (bundled into the exe as data files)
@@ -202,11 +204,12 @@ cover the following third-party components, which keep their own licenses:
   `models/`, and are **not** covered by this repo's MIT license. Their terms —
   including the **non-commercial** restriction — govern any use or redistribution of
   the models themselves.
-- **Essentia-derived algorithm ports** — `src/vibenative/key.py` and parts of
-  `src/vibenative/frontend_mel.py` were **ported stage-for-stage from Essentia**
-  (MTG), which is licensed **AGPL-3.0**. As derivative works of AGPL code, these files
-  follow **Essentia's AGPL-3.0** upstream license, **not** MIT. If you reuse or
-  redistribute them, treat them as AGPL-3.0.
+- **Essentia-derived algorithm port** — parts of `src/vibenative/frontend_mel.py`
+  were **ported stage-for-stage from Essentia** (MTG), which is licensed
+  **AGPL-3.0**. As a derivative work of AGPL code, that file follows **Essentia's
+  AGPL-3.0** upstream license, **not** MIT. If you reuse or redistribute it, treat
+  it as AGPL-3.0. (The former `key.py` port was replaced by the independent
+  `tonality.py`, which is MIT like the rest of the first-party code.)
 - **Crawled genre reference** — `src/vibenative/data/genres_electronic.json` (built by
   `tools/crawl_genres.py`) is a derived aggregate of **Wikidata** and the **MusicBrainz**
   genre list (both **CC0**) and of **DBpedia** / **English Wikipedia** text

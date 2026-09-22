@@ -4,7 +4,7 @@ the waveform envelope.
 
 Phase 4 engine swap: the genre / tempo / key internals now run on the native
 ONNX engine (``onnx_engine`` + ``frontend_mel`` + ``decode`` + ``tempo`` +
-``key``) instead of Essentia, BEHIND the same function signatures and the same
+``tonality``) instead of Essentia, BEHIND the same function signatures and the same
 payload shape -- everything downstream (routes, DB, frontend) is unable to tell.
 FAKE_ANALYZER mode is untouched. The heavy engine modules (onnxruntime-backed)
 are imported lazily inside the functions that use them, so the app still imports
@@ -405,13 +405,13 @@ def _musical_features(audio44) -> dict:
     signal. BPM and key are best-effort (None on failure).
 
     Engine swap (Phase 4): BPM from the native TempoCNN (``tempo.estimate``,
-    resamples 44.1k->11025 itself) and key from the native Essentia-KeyExtractor
-    port (``key.estimate`` at 44100). Same dict shape as before. Note ``bpm``
+    resamples 44.1k->11025 itself) and key from our own detector
+    (``tonality.estimate`` at 44100; see docs/KEY_SPEC.md). Same dict shape as
+    before. Note ``bpm``
     stays a plain float and ``bpm_confidence`` a plain float; the confidence is now
     the TempoCNN mean peak softmax (0..1) rather than RhythmExtractor2013's (~0..5)
     -- a value-scale change, not a shape change."""
-    from . import key as keymod
-    from . import tempo
+    from . import tempo, tonality
 
     duration = float(len(audio44)) / 44100.0
 
@@ -426,7 +426,7 @@ def _musical_features(audio44) -> dict:
     key = scale = camelot = None
     key_strength = None
     try:
-        k, s, strength = keymod.estimate(audio44, 44100)
+        k, s, strength = tonality.estimate(audio44, 44100)
         key, scale, key_strength = str(k), str(s), float(strength)
         camelot = CAMELOT.get((key, scale))
     except Exception:  # nosec B110  # key extraction is best-effort; None on failure is fine

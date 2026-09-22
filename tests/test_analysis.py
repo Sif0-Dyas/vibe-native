@@ -3,7 +3,7 @@
 _decode_and_infer stays untested here (it needs the real ONNX models, absent in
 CI — the same reason analysis.py's real path is uncovered). _musical_features and
 _assemble are exercised with synthetic inputs: the former with the native
-`tempo.estimate` / `key.estimate` monkeypatched (Phase-4 engine swap: BPM/key are
+`tempo.estimate` / `tonality.estimate` monkeypatched (Phase-4 engine swap: BPM/key are
 native now, not Essentia — the test's contract is unchanged, only the mocked
 extractor is), the latter with hand-built predictions/embeddings so it runs on
 pure NumPy.
@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from vibenative import analysis, tempo
-from vibenative import key as keymod
+from vibenative import tonality as keymod
 
 
 def test_musical_features_happy(monkeypatch):
