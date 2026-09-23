@@ -79,6 +79,47 @@ def _get(url: str, timeout: float = 5.0):
         return None, str(e)
 
 
+def _make_tagged_track(path: Path, title: str, seconds: int = 12) -> bool:
+    """Generate a tagged audio file with the *bundled* ffmpeg. Quiet noise rather
+    than silence so the analyser has something to work on. False if it could not
+    be made (then the round-trip check is skipped, not failed)."""
+    exe = DIST / "ffmpeg.exe"
+    if not exe.is_file():
+        return False
+    try:
+        subprocess.run(  # nosec B603  # the bundled ffmpeg, fixed arg list, no shell
+            [str(exe), "-y", "-v", "error", "-f", "lavfi",
+             "-i", f"anoisesrc=d={seconds}:c=pink:a=0.05:r=44100",
+             "-ac", "2", "-metadata", f"title={title}", str(path)],
+            check=True, capture_output=True, timeout=60,
+        )
+        return path.is_file()
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _post_file(url: str, path: Path, timeout: float = 120.0):
+    """multipart/form-data upload of one file, as the UI does it."""
+    boundary = "----vibesmoke" + secrets.token_hex(8)
+    body = b"".join([
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+        f'filename="{path.name}"\r\nContent-Type: audio/mpeg\r\n\r\n'.encode(),
+        path.read_bytes(),
+        f"\r\n--{boundary}--\r\n".encode(),
+    ])
+    req = urllib.request.Request(
+        url, data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # nosec B310  # fixed loopback URL
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        return None, str(e).encode()
+
+
 def _kill_tree(proc: subprocess.Popen) -> None:
     """Kill the app and anything it spawned. The desktop shell runs the backend
     in-process by default but can fall back to a child interpreter, so the whole
@@ -174,6 +215,36 @@ def main() -> int:
             note("providers", s.get("providers_available"))
             if not s.get("gpu_available"):
                 note("gpu", "no DmlExecutionProvider - CPU only on this machine")
+
+            print("licensing:")
+            # mutagen (GPL-2.0) used to be imported into the process and bundled
+            # into the PYZ. Nothing copyleft may ship in a product meant to be
+            # sold, and "I removed the import" is not evidence -- the archive is.
+            # See docs/PROVENANCE.md.
+            toc = ROOT / "build" / "Vibe Identify" / "PYZ-00.toc"
+            if toc.is_file():
+                bundled = toc.read_text(encoding="utf-8", errors="replace").lower()
+                for pkg in ("mutagen",):
+                    check(f"no {pkg} in the bundle (copyleft)", pkg in bundled, False)
+            else:
+                note("PYZ toc", "not found - build first to check what was bundled")
+
+            print("reading a real file end to end:")
+            # The functional counterpart to the check above: tags are read with
+            # ffprobe now, and "the module imports" is not the same as "the
+            # packaged app can actually read a tag off a file". Analyse a short
+            # generated track and see its title come back.
+            track = Path(tmp) / "smoke track.mp3"
+            if _make_tagged_track(track, "Smoke Test Title"):
+                st, resp = _post_file(f"{base}/analyze?k={token}", track, timeout=120)
+                check("analyses an uploaded file", st, 200)
+                if st == 200:
+                    j = json.loads(resp)
+                    check("reads the title from the file's tags",
+                          j.get("title"), "Smoke Test Title")
+                    note("bpm / key", (j.get("bpm"), j.get("key"), j.get("scale")))
+            else:
+                note("tag round-trip", "skipped - could not generate a test file")
 
             print("bundled web assets:")
             ui_status, ui = _get(f"{base}/?k={token}")

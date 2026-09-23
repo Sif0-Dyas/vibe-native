@@ -25,7 +25,7 @@ Audited 2026-09-22 against commit `54a27f1`. Re-run the checks in
 | 5 | `data/key_profiles.json` | trained on GiantSteps + Beatport EDM Key | training-data question | yes | unclear |
 | 6 | `data/enao.json` | everynoise.com scrape (6,291 Spotify genres) | **none stated** | **yes, inside the exe** | likely |
 | 7 | `data/genres_electronic.json` | Wikidata/MusicBrainz + DBpedia/Wikipedia | CC0 + **CC BY-SA** | **yes, inside the exe** | attribution + share-alike |
-| 8 | `mutagen` | Python package | **GPL-2.0** | **no** (not bundled — by accident) | not currently |
+| 8 | `mutagen` | Python package | **GPL-2.0** | **yes**, inside the exe | **YES** — being removed |
 | 9 | ffmpeg / ffprobe | BtbN LGPL static build | **LGPL** | yes, beside the exe | no, handled |
 | 10 | onnxruntime, numpy, flask, pywebview | PyPI | MIT / BSD | yes | no |
 | 11 | `oracle/` + `paths.wsl_to_windows` | the predecessor WSL app | n/a — dev asset | no (tests only) | no |
@@ -151,29 +151,33 @@ the same way, so the attribution has to travel with the *product*, where a user
 can see it — not only inside a JSON file. Share-alike may also reach any adapted
 text.
 
-## 8. `mutagen` — GPL, and a functional bug
+## 8. `mutagen` — GPL, and it ships
 
-`mutagen` (GPL-2.0) is in `requirements.txt` and imported by
+`mutagen` (GPL-2.0) was in `requirements.txt` and imported by
 `analysis.read_title` / `read_tags` to read track tags.
 
 Unlike ffmpeg — which is invoked as a separate program via argv, the textbook
 "mere aggregation" position the README argues correctly — mutagen is *imported*
 into the process. For a proprietary product that is the classic copyleft
-problem.
+problem, and it is the one dependency here that is genuinely incompatible with
+selling a closed-source binary.
 
-**It is not currently shipped**, and not by design: both imports are inside
-functions, so PyInstaller's static analysis never saw them and never bundled the
-package. Two consequences:
+It **is** redistributed. `Vibe Identify.spec` lists `mutagen` in `hiddenimports`,
+and the build embeds it in the PYZ archive inside the exe
+(`build/Vibe Identify/PYZ-00.toc` lists `mutagen\__init__.py` and friends).
 
-1. The distributed binary contains no GPL code today. The exposure is limited to
-   the declared dependency (anyone installing from source pulls it in).
-2. **Tag reading is silently broken in the packaged app.** `from mutagen import
-   File` raises `ImportError`, the surrounding `except Exception: pass` swallows
-   it, and every track falls back to its filename. Verified: no `mutagen` in
-   `dist/Vibe Identify/_internal/`.
+> An earlier revision of this document claimed mutagen was *not* shipped and that
+> tag reading was therefore silently broken in the packaged app. That was wrong,
+> and wrong in the direction that matters: it came from looking for loose files
+> under `_internal/` and finding none. PyInstaller puts pure-Python packages in
+> the embedded PYZ archive, not on disk, so the absence of files proved nothing.
+> Tag reading worked; the licence exposure was real and current.
 
-The fix serves both: read tags with `ffprobe` (already shipped, LGPL, separate
-process) or a permissive library, and drop the dependency.
+**Resolved** by `src/vibenative/metadata.py`, which reads tags with ffprobe —
+already shipped for decoding, LGPL, separate process. Verified field-for-field
+against mutagen on all 121 oracle tracks: **identical on 120**. The single
+difference is a FLAC carrying two GENRE fields, where ffprobe returns both
+("Dubstep;Electronic") and mutagen returned only the first.
 
 ## 9–10. Dependencies that are fine
 

@@ -136,63 +136,10 @@ def custom_predict(embeddings):
     return [{"style": head["labels"][int(i)], "score": round(float(probs[i]), 4)} for i in order]
 
 
-def read_title(path: Path) -> str | None:
-    """Title from the file's tags via mutagen, or None."""
-    try:
-        from mutagen import File as MFile
-
-        mf = MFile(str(path), easy=True)
-        if mf and mf.tags:
-            vals = mf.tags.get("title")
-            if vals:
-                t = str(vals[0]).strip()
-                if t:
-                    return t
-    except Exception:  # nosec B110  # best-effort tag read; missing/odd tags degrade to None
-        pass
-    return None
-
-
-def read_tags(path: Path) -> dict:
-    """Common tag fields + technical info for the details box."""
-    tag, tech = {}, {}
-    try:
-        from mutagen import File as MFile
-
-        mf = MFile(str(path), easy=True)
-        if mf:
-            if mf.tags:
-                for k in (
-                    "title",
-                    "artist",
-                    "album",
-                    "albumartist",
-                    "genre",
-                    "date",
-                    "tracknumber",
-                    "discnumber",
-                    "composer",
-                    "bpm",
-                ):
-                    vals = mf.tags.get(k)
-                    if vals and str(vals[0]).strip():
-                        tag[k] = str(vals[0]).strip()
-            info = getattr(mf, "info", None)
-            if info is not None:
-                br = getattr(info, "bitrate", 0)
-                if br:
-                    tech["bitrate"] = f"{round(br / 1000)} kbps"
-                sr = getattr(info, "sample_rate", 0)
-                if sr:
-                    tech["sample rate"] = f"{sr} Hz"
-                ch = getattr(info, "channels", 0)
-                if ch:
-                    tech["channels"] = str(ch)
-                tech["format"] = type(mf).__name__
-    except Exception:  # nosec B110  # best-effort metadata read; degrade gracefully on odd files
-        pass
-    return {"tag": tag, "tech": tech}
-
+# Tag reading lives in metadata.py (ffprobe, not the GPL mutagen -- see that
+# module and docs/PROVENANCE.md). Re-exported here because this is where the rest
+# of the app has always imported it from.
+from .metadata import read_tags, read_title  # noqa: E402,F401  (public re-export)
 
 CAMELOT = {  # (key, scale) -> Camelot wheel position; enharmonics included
     ("C", "major"): "8B",

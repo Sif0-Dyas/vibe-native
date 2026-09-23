@@ -8,7 +8,6 @@
 onnxruntime-directml
 numpy
 flask
-mutagen
 
 # Test tooling — needed to run the suite; not part of a shipped/frozen build.
 pytest
