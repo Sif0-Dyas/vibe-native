@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 import eval_key  # noqa: E402
+
 from vibenative import tonality  # noqa: E402
 
 OUT = ROOT / "src" / "vibenative" / "data" / "key_profiles.json"

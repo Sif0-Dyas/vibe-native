@@ -23,17 +23,18 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
 import numpy as np
-from collections import Counter
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 import eval_key  # noqa: E402
+
 from vibenative import tonality  # noqa: E402
 
 OUT = ROOT / "src" / "vibenative" / "data" / "key_profiles.json"

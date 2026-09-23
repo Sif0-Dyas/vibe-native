@@ -91,9 +91,17 @@ def _load_fitted() -> None:
                 "weights": {m: np.atleast_2d(np.asarray(model["weights"][m], dtype=np.float64)) for m in MODES},
                 "bias": {m: np.atleast_1d(np.asarray(model["bias"][m], dtype=np.float64)) for m in MODES},
             }
-            assert all(MODEL["weights"][m].shape[1] == 12 * len(MODEL["blocks"])
-                       and MODEL["weights"][m].shape[0] == MODEL["bias"][m].size for m in MODES)
-        except (KeyError, TypeError, ValueError, AssertionError):
+            # Shape the scorer relies on: one weight per pitch class per block, and
+            # one bias per sub-template. A file that disagrees is not a model we can
+            # score with, so fall back to the 12-bin profiles rather than load it.
+            # (A plain `assert` would be stripped under `python -O` and let a
+            # malformed file through.)
+            for m in MODES:
+                w, b = MODEL["weights"][m], MODEL["bias"][m]
+                if w.shape[1] != 12 * len(MODEL["blocks"]) or w.shape[0] != b.size:
+                    raise ValueError(f"{m}: weights {w.shape} do not match "
+                                     f"{len(MODEL['blocks'])} blocks / {b.size} biases")
+        except (KeyError, TypeError, ValueError):
             MODEL = None
 
 

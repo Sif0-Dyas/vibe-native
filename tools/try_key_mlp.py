@@ -24,7 +24,6 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import eval_key  # noqa: E402
 import train_key_templates as TKT  # noqa: E402
-from vibenative import tonality  # noqa: E402
 
 MODES = TKT.MODES
 
@@ -54,7 +53,10 @@ def train_mlp(X, y, hidden=16, steps=3000, lr=0.5, l2=1e-4, seed=0):
         gH = np.einsum("ntm,hm->nth", g3, U) * (1.0 - H * H)
         gV = np.einsum("nth,ntd->dh", gH, R) + l2 * V
         gc = gH.sum(axis=(0, 1))
-        U -= lr * gU; d -= lr * gd; V -= lr * gV; c -= lr * gc
+        U -= lr * gU
+        d -= lr * gd
+        V -= lr * gV
+        c -= lr * gc
     return V, c, U, d
 
 

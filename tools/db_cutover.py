@@ -1,9 +1,11 @@
-"""One-time database cutover: WSL live genre_v2.db -> the native app's GENRE_DB.
+"""Bring a WSL Vibe_Identify library across: its live genre_v2.db -> GENRE_DB.
 
-The native app inherits the Vibe_Identify library DB (analysis cache, vibes, tags,
-training labels, segment overrides). Phase 4 proved the schema migration on a
-days-old backup; this copies the *live* WSL database so the desktop app opens the
-current library. The WSL original is only READ — it stays put as the rollback.
+Run once per machine that still has the old WSL app, to inherit its library DB
+(analysis cache, vibes, tags, training labels, segment overrides) instead of
+starting empty. The cutover on the original dev machine is long done; this stays
+because a fresh install on a machine with the WSL app is the same problem again,
+and the README points users here. The WSL original is only READ — it stays put as
+the rollback.
 
     python tools/db_cutover.py            # copy live WSL DB -> %USERPROFILE%\\genre_v2.db
     python tools/db_cutover.py --force    # overwrite an existing destination

@@ -10,8 +10,15 @@ from pathlib import Path
 from flask import jsonify, request
 
 from .. import lookup
-from ..db import (_db_lock, cosine, db, key_label_delete, key_label_put,
-                  key_labels_map, track_embedding)
+from ..db import (
+    _db_lock,
+    cosine,
+    db,
+    key_label_delete,
+    key_label_put,
+    key_labels_map,
+    track_embedding,
+)
 from ._shared import _artist_of, _dominant_style, bp
 
 

@@ -119,3 +119,28 @@ def test_oracle_agreement():
         for h in keys
     )
     assert hits / len(keys) >= 0.60, f"{hits}/{len(keys)} exact"
+
+
+def test_a_malformed_model_file_falls_back_instead_of_loading(tmp_path, monkeypatch):
+    """A key_profiles.json whose weights do not match its blocks must be refused,
+    leaving the 12-bin profiles in charge. The check has to survive `python -O`,
+    so it cannot be an assert.
+
+    monkeypatch owns every global this touches, so the real model is back in place
+    for the rest of the suite even though _load_fitted() writes to them directly.
+    """
+    bad = tmp_path / "key_profiles.json"
+    bad.write_text(json.dumps({
+        "model": {"blocks": [{}, {}],                  # 2 blocks -> 24 weights expected
+                  "weights": {"major": [[1.0] * 12], "minor": [[1.0] * 12]},  # only 12
+                  "bias": {"major": [0.0], "minor": [0.0]}},
+        "profiles": {"edm": {"major": [1.0] * 12, "minor": [1.0] * 12}},
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(tonality, "_DATA", bad)
+    monkeypatch.setattr(tonality, "MODEL", None)
+    monkeypatch.setattr(tonality, "PROFILES", dict(tonality.PROFILES))
+
+    tonality._load_fitted()
+    assert tonality.MODEL is None, "a mismatched model must be refused"
+    assert "edm" in tonality.PROFILES, "the fallback profiles should still load"
