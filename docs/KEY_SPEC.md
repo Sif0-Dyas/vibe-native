@@ -102,41 +102,61 @@ papers, and `edm`, the per-mode median of tonic-rotated GiantSteps PCPs
 
 ## Evaluation
 
-`tools/eval_key.py --dataset giantsteps|oracle` scores the shipped model and
-the profile sets in the MIREX categories: exact, fifth (tonic a fifth away, same
-mode), relative (major ↔ relative minor), parallel (same tonic, other mode),
-other. Results, 2026-09-22:
+`tools/eval_key.py --dataset giantsteps|beatport|both|library|oracle` scores the
+shipped model and the profile sets in the MIREX categories: exact, fifth (tonic
+a fifth away, same mode), relative (major ↔ relative minor), parallel (same
+tonic, other mode), other. See [`DATASETS.md`](DATASETS.md) for the data.
 
-**GiantSteps, 604 human-labelled tracks** (the model's number is 5-fold
-cross-validated; the paper's numbers are from Faraldo 2017 Tables 1–2 on the
-same set):
+Five-fold cross-validated, union-trained (what ships), 2026-09-22:
 
-| detector                                   | exact      | fifth | relative | parallel | other | MIREX     |
-|--------------------------------------------|------------|-------|----------|----------|-------|-----------|
-| Krumhansl–Kessler, whole-band PCP          | 34.9 %     | 87    | 40       | 102      | 164   | 0.475     |
-| `edm` median profiles, whole-band (LOO)    | 52.6 %     | 67    | 52       | 41       | 126   | 0.621     |
-| trained, whole-band only (5-fold)          | 61.3 %     | 64    | 31       | 26       | 113   | 0.690     |
-| **trained, 4 bands (5-fold) — shipped**    | **66.6 %** | 54    | 20       | 31       | 97    | **0.730** |
-| Essentia `bgate` (the old detector, paper) | 64.1 %     |       |          |          |       | 0.725     |
-| KeyFinder (paper)                          | 60.4 %     |       |          |          |       | 0.699     |
-| Mixed In Key 7 (paper)                     | 67.2 %     |       |          |          |       | 0.742     |
+| detector                                   | GiantSteps | Beatport |
+|--------------------------------------------|------------|----------|
+| Krumhansl–Kessler, whole-band PCP          | 34.9 %     |          |
+| `edm` median profiles, whole-band          | 52.6 %     |          |
+| trained, whole band only                   | 61.3 %     | 56.6 %*  |
+| **trained, 5 bands, K=2 — shipped**        | **66.2 %** | **61.3 %** |
+| Essentia `bgate` — the old detector (paper) | 64.1 %    |          |
+| KeyFinder (paper)                          | 60.4 %     |          |
+| Mixed In Key 7 (paper)                     | 67.2 %     |          |
+| Korzeniowski & Widmer CNN 2017 (paper)     | ~74 %      |          |
 
-**Oracle corpus, 121 tracks from this library** — labels are the *old
-detector's output*, so this is agreement, not accuracy; the model never saw
-these tracks:
+\* whole-band-only figure is the union five-fold, not per-set.
 
-| detector                                  | agrees with old detector |
-|-------------------------------------------|--------------------------|
-| shipped model                             | 88/121 (72.7 %)          |
-| `edm` median profiles (fit on GiantSteps) | 93/121 (76.9 %)          |
+Paper figures are Faraldo 2017 Tables 1–2 on the same GiantSteps set. A
+specialist model trained on GiantSteps alone reaches 67.2 % there but only
+55.3 % on Beatport; union training trades ~0.5 points for a model that holds up
+on both, which is the right trade for a detector that meets unknown libraries.
 
-The two detectors disagree on ~27 % of the library. Which is right there is
-unknowable without human labels; on the set that has them, the model is 2.5
-points ahead of the old detector. What the sweeps established along the way,
-all on GiantSteps: front-end settings (cutoff, peak cap, compression,
-sub-harmonics, frame size, tuning) move a single-PCP detector only within
-51–55 %; the gains came from training the templates (+6) and adding the band
-PCPs (+5).
+On the 121-track oracle corpus — this library's own tracks, labelled by the
+*old* Essentia port, so agreement rather than accuracy — the model agrees on
+88/121 (72.7 %).
+
+### What did not work
+
+Recorded so the experiments are not repeated. All five-fold on the union:
+
+| idea                                              | result            |
+|---------------------------------------------------|-------------------|
+| More data from a second expert dataset            | **−1.8** on GiantSteps (see DATASETS.md) |
+| Nonlinear scorer (MLP, 8/16/32 hidden)            | 58.1 / 56.0 / 54.8 % vs 62.9 % linear |
+| Octave-spaced bands (8) instead of 4 broad ones   | 62.5 % vs 62.5 %  |
+| Section PCPs (loudest/quietest 15–30 % of frames) | ≤ baseline; kept, off |
+| Sub-harmonic depth, compression, frame size, tuning, peak caps | all within 51–55 % on a single-PCP detector |
+
+The two things that did work were structural: training the templates
+discriminatively rather than fitting a median (+6), and splitting the spectrum
+into bands so the bassline can carry the tonic while the whole band carries the
+mode (+5). Sub-templates per mode added +0.6.
+
+### Where the remaining points are
+
+`tools/train_key_templates.py --dataset library` fits the model to the keys
+corrected in the app itself. Two expert datasets disagree with each other by six
+points, so the labels that describe a given collection best are the ones its
+owner makes — and unlike the public sets, that one grows. A CNN on the
+log-spectrogram is the published state of the art (~74 %) and the only known way
+past this feature family, at the cost of a training dependency and pitch-shift
+augmentation.
 
 ## Non-goals
 
