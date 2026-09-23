@@ -121,11 +121,11 @@ def _migration_2(c):
     The WSL app stored server-side paths as ``/mnt/<drive>/...``; on Windows those
     don't resolve, so audio preview, on-demand waveforms, and segment extraction
     would break for inherited rows. Rewrite only the mnt-prefixed ``tracks.filepath``
-    values via the same ``paths.wsl_to_windows`` helper the routes use
+    values via the same ``legacy.wsl_to_windows`` helper the routes use
     (``/mnt/c/Users/x`` -> ``C:\\Users\\x``). ``tracks.filepath`` is the only stored
     filesystem path in the schema. Idempotent: a translated path no longer matches
     the ``/mnt/%`` filter, so a re-run touches nothing."""
-    from .paths import wsl_to_windows
+    from .legacy import wsl_to_windows
 
     rows = c.execute("SELECT rowid, filepath FROM tracks WHERE filepath LIKE '/mnt/%'").fetchall()
     for rowid, fp in rows:

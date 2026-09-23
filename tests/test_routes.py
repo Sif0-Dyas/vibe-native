@@ -973,3 +973,18 @@ def test_key_correction_rejects_nonsense(client):
     assert client.post(f"/key/{h}", json={"key": "H", "scale": "minor"}).status_code == 400
     assert client.post(f"/key/{h}", json={"key": "C", "scale": "lydian"}).status_code == 400
     assert client.post("/key/nosuchtrack", json={"key": "C", "scale": "minor"}).status_code == 404
+
+
+def test_notices_lists_what_the_build_ships(client):
+    """Attribution is owed to whoever runs the product, so it has to be reachable
+    from inside it. The list is built from what is actually present, so it never
+    credits a file this build does not have."""
+    r = client.get("/notices")
+    assert r.status_code == 200
+    items = r.get_json()
+    assert items and all({"name", "what", "licence", "url"} <= set(i) for i in items)
+
+    names = " ".join(i["name"] for i in items)
+    assert "FFmpeg" in names          # LGPL: the one with a hard obligation
+    licences = " ".join(i["licence"] for i in items)
+    assert "LGPL" in licences

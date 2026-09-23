@@ -82,6 +82,19 @@ def library_list():
     return jsonify(out)
 
 
+@bp.get("/notices")
+def notices_route():
+    """Third-party attribution for the Options tab.
+
+    ffmpeg is LGPL and the genre reference is built partly from CC BY-SA sources;
+    those credits are owed to whoever runs the product, so they have to be
+    reachable from inside it rather than only from the repo. See
+    ``vibenative.notices`` and docs/PROVENANCE.md."""
+    from ..notices import all_notices
+
+    return jsonify(all_notices())
+
+
 @bp.get("/status")
 def status_route():
     """App status for the Options tab: version, DB location + track count, ffmpeg
@@ -558,7 +571,7 @@ def filepaths_repair_route():
     broken ``filepath`` for a track whose analysis already exists.
     """
     from .. import filepaths
-    from ..paths import wsl_to_windows
+    from ..legacy import wsl_to_windows
 
     d = request.get_json(silent=True) or {}
     folder = str(d.get("folder") or "").strip()
@@ -581,7 +594,7 @@ def filepaths_count_route():
     scan rather than appearing to hang for minutes.
     """
     from .. import filepaths
-    from ..paths import wsl_to_windows
+    from ..legacy import wsl_to_windows
 
     folder = str((request.get_json(silent=True) or {}).get("folder") or "").strip()
     if not folder:

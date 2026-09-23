@@ -91,7 +91,7 @@ def test_model_file_is_consistent():
 def _oracle_ready():
     if not (ORACLE / "index.json").exists():
         return False, "need oracle/index.json"
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())
     keys = sorted(idx)
@@ -109,7 +109,7 @@ def test_oracle_agreement():
     """Agreement with the reference labels. The bar is deliberately below the old
     port's 100 % — these are Essentia's labels, not ground truth, and this is a
     different algorithm; the number to watch is tools/eval_key.py."""
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())
     keys = sorted(idx)

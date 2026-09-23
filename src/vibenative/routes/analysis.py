@@ -547,7 +547,7 @@ def batch_route():
     import json as _json
     import time as _time
 
-    from ..paths import wsl_to_windows
+    from ..legacy import wsl_to_windows
 
     data = request.get_json(silent=True) or {}
     folder = Path(wsl_to_windows(str(data.get("path", "")))).expanduser()

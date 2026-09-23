@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vibenative import tonality  # noqa: E402
 from vibenative.decode import decode_mono  # noqa: E402
-from vibenative.paths import wsl_to_windows  # noqa: E402
+from vibenative.legacy import wsl_to_windows  # noqa: E402
 
 ORACLE = ROOT / "oracle"
 DATASETS = ROOT / "datasets"

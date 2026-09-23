@@ -145,7 +145,7 @@ def _seed_oracle_mnt_row(dbpath):
     expected translated Windows Path, or None if no oracle file is available."""
     if not _ORACLE_INDEX.exists():
         return None
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     idx = json.loads(_ORACLE_INDEX.read_text())
     for _h, m in idx.items():

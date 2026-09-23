@@ -28,7 +28,7 @@ def _ready():
     except Exception:
         return False, "onnxruntime not installed"
     sys.path.insert(0, str(ROOT / "src"))
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())
     if not any(Path(wsl_to_windows(m["file"])).is_file() for m in idx.values()):
@@ -51,7 +51,7 @@ def test_analyze_route_matches_oracle(tmp_path, monkeypatch):
         if name == "vibenative" or name.startswith("vibenative."):
             del sys.modules[name]
     import vibenative
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     app = vibenative.create_app()
     app.config.update(TESTING=True)

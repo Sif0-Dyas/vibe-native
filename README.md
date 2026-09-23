@@ -79,8 +79,7 @@ ready. See `desktop/README.md` for the folder-picker / security details.
 ```
 
 `FAKE_ANALYZER=1` serves instant fake results (no models). The library database is
-read from `GENRE_DB` (default `%USERPROFILE%\genre_v2.db`); bring an existing WSL
-library over once with `python tools/db_cutover.py`.
+read from `GENRE_DB` (default `%USERPROFILE%\genre_v2.db`).
 
 **ffmpeg** is required for audio decode. In dev it's found on PATH (or the WinGet
 Links dir). In a packaged build it sits **next to the exe** — `tools/prepare_dist.py`
@@ -198,7 +197,11 @@ false-positive on unsigned PyInstaller executables — if flagged, allow/exclude
 
 This repository's **first-party code is MIT-licensed** (see [`LICENSE`](LICENSE)).
 That covers the app, routes, desktop shell, build tooling, and tests. It does **not**
-cover the following third-party components, which keep their own licenses:
+cover the following third-party components, which keep their own licenses.
+
+**[`docs/PROVENANCE.md`](docs/PROVENANCE.md) is the full inventory** — every
+component, what reaches a customer, and what would have to change to sell this.
+Read that one before shipping anything; the summary below is the short version.
 
 - **ML models** — the genre (Discogs-EffNet / Discogs-400), tempo (TempoCNN), and
   related models are **MTG's**, released under **CC BY-NC-ND 4.0** (non-commercial,
@@ -206,18 +209,34 @@ cover the following third-party components, which keep their own licenses:
   `models/`, and are **not** covered by this repo's MIT license. Their terms —
   including the **non-commercial** restriction — govern any use or redistribution of
   the models themselves.
-- **Essentia-derived algorithm port** — parts of `src/vibenative/frontend_mel.py`
-  were **ported stage-for-stage from Essentia** (MTG), which is licensed
-  **AGPL-3.0**. As a derivative work of AGPL code, that file follows **Essentia's
-  AGPL-3.0** upstream license, **not** MIT. If you reuse or redistribute it, treat
-  it as AGPL-3.0. (The former `key.py` port was replaced by the independent
-  `tonality.py`, which is MIT like the rest of the first-party code.)
+- **The mel frontend** — `src/vibenative/frontend_mel.py` produces the exact input
+  MTG's models expect, and its header cites Essentia source for those parameter
+  *values*. Whether that makes it a derivative work of Essentia (**AGPL-3.0**) is
+  the open question in `PROVENANCE.md`: the code itself is textbook DSP — a Hann
+  window, Slaney's published 1998 mel constants, `numpy.fft` — and parameter values
+  are facts. Treat it as AGPL until someone qualified says otherwise. (The former
+  `key.py`, which really was a function-by-function port, is gone: `tonality.py`
+  replaced it clean-room and is MIT like the rest.)
 - **Crawled genre reference** — `src/vibenative/data/genres_electronic.json` (built by
   `tools/crawl_genres.py`) is a derived aggregate of **Wikidata** and the **MusicBrainz**
   genre list (both **CC0**) and of **DBpedia** / **English Wikipedia** text
-  (**CC BY-SA**). It is git-ignored rather than committed; the file's own `licences`
-  block and each record's `sources` field carry the attribution CC BY-SA requires if
-  you redistribute it.
+  (**CC BY-SA**). The file's own `licences` block and per-record `sources` carry the
+  attribution, and the app surfaces it under **Options → Credits and licences**.
+  Note it is git-ignored but **still shipped** — PyInstaller bundles the whole data
+  directory — so being out of git is not a redistribution mitigation. The same is
+  true of `data/enao.json`, whose licence is unresolved (`PROVENANCE.md` item 6).
 - **ffmpeg** — invoked as a separate program (never linked), so it stays a mere
   aggregation; a bundled build ships with its own `ffmpeg-NOTICE.txt`. Prefer an
   **LGPL** shared build for redistribution (see the ffmpeg note under *Running it*).
+- **Tag reading** — uses the bundled **ffprobe**, not the GPL `mutagen`, which was
+  removed for exactly that reason.
+
+## Coming from the WSL build
+
+The predecessor ([Vibe_Identify](https://github.com/Sif0-Dyas/Vibe_Identify)) ran
+under WSL and kept its library in the same SQLite schema. `python
+tools/db_cutover.py` copies that database across once, reading the original and
+leaving it in place as a rollback; the first launch rewrites its `/mnt/...` paths
+to Windows ones. A fresh install needs none of this — see
+[`src/vibenative/legacy.py`](src/vibenative/legacy.py), which is all of it.
+

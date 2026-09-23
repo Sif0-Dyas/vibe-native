@@ -154,6 +154,14 @@
         '<div class="opt-note">Every setting on this tab and every remembered view state ' +
         '&mdash; map controls, library columns, the sample volume. Nothing in your ' +
         'library is touched. The app reloads.</div>' +
+      '</div>' +
+      /* Credits. ffmpeg is LGPL and the genre reference is part CC BY-SA; those
+         attributions are owed to whoever runs the app, so they belong in the app
+         and not only in the repo. Filled in by loadNotices(). */
+      '<div class="opt-card"><h3>Credits and licences</h3>' +
+        '<div id="notices">loading&hellip;</div>' +
+        '<div class="opt-note">This app is built on the work below. ' +
+        'Licence terms are the responsibility of whoever redistributes it.</div>' +
       '</div>';
 
     body.querySelectorAll('[data-reveal]').forEach(function (b) {
@@ -166,6 +174,26 @@
     wireFilePaths();
     wireKeyView();
     wirePrefs();
+    loadNotices();
+  }
+
+  /* Third-party attribution, listed from what this build actually ships
+     (see src/vibenative/notices.py). */
+  function loadNotices() {
+    var host = body.querySelector('#notices');
+    if (!host) return;
+    fetch('/notices').then(function (r) { return r.json(); }).then(function (list) {
+      if (!list || !list.length) { host.textContent = 'none recorded'; return; }
+      host.innerHTML = list.map(function (n) {
+        return '<div class="notice">' +
+          '<div class="notice-h"><b>' + esc(n.name) + '</b>' +
+            '<span class="notice-lic">' + esc(n.licence) + '</span></div>' +
+          '<div class="notice-w">' + esc(n.what) + '</div>' +
+          (n.url ? '<a class="notice-u" href="' + esc(n.url) + '" target="_blank" ' +
+                   'rel="noopener noreferrer">' + esc(n.url) + '</a>' : '') +
+        '</div>';
+      }).join('');
+    }).catch(function () { host.textContent = 'could not load the credits'; });
   }
 
   /* Every control that carries data-pref edits that preference in place. */
