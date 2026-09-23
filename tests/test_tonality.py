@@ -79,7 +79,9 @@ def test_model_file_is_consistent():
     if not tonality.MODEL:
         pytest.skip("no trained model in data/key_profiles.json")
     n = len(tonality.MODEL["blocks"])
-    assert all(tonality.MODEL["weights"][m].shape == (12 * n,) for m in tonality.MODES)
+    for m in tonality.MODES:  # (sub-templates, 12 per block), one bias each
+        w, b = tonality.MODEL["weights"][m], tonality.MODEL["bias"][m]
+        assert w.ndim == 2 and w.shape[1] == 12 * n and w.shape[0] == b.size
     # a chord progression yields one 12-bin PCP per block, all gated to [0, 1]
     mags, freqs = tonality.magnitudes(_progression(A_MINOR), SR)
     f = tonality.features(mags, freqs)

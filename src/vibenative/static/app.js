@@ -434,6 +434,67 @@ function keyParts(t){
   if (KEYVIEW.mode === 'musical') return { cam: mus ? '' : cam, mus };
   return { cam, mus };
 }
+/* Correcting a key. The detector is a trained model (docs/KEY_SPEC.md) and its
+   training set is whatever music it was fitted on -- public EDM key sets
+   disagree with each other by several points, so the labels that describe THIS
+   library best are the ones its owner makes. Every correction here is stored
+   apart from the analysis (so re-analysis cannot wipe it) and is a training
+   example `tools/train_key_templates.py --dataset library` can learn from.
+   Picking the same key again clears the correction, restoring the detector's. */
+const KEY_CHOICES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+let keyMenu = null;
+function closeKeyMenu(){ if (keyMenu){ keyMenu.remove(); keyMenu = null; } }
+document.addEventListener('click', e => {
+  if (keyMenu && !keyMenu.contains(e.target) && !e.target.closest('.keyrow')) closeKeyMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKeyMenu(); });
+
+function openKeyMenu(anchorEl, track, repaint){
+  if (keyMenu && keyMenu._anchor === anchorEl){ closeKeyMenu(); return; }
+  closeKeyMenu();
+  if (!track || !track.hash) return;
+  keyMenu = document.createElement('div');
+  keyMenu._anchor = anchorEl;
+  keyMenu.className = 'keymenu';
+  const cells = mode => KEY_CHOICES.map(k => {
+    const on = track.key === k && track.scale === mode;
+    return `<button type="button" class="keypick${on ? ' on' : ''}" data-key="${k}" data-scale="${mode}">` +
+      `${escapeHtml(k)}</button>`;
+  }).join('');
+  keyMenu.innerHTML =
+    `<div class="keymenu-lbl">minor</div><div class="keymenu-grid">${cells('minor')}</div>` +
+    `<div class="keymenu-lbl">major</div><div class="keymenu-grid">${cells('major')}</div>` +
+    (track.key_source === 'manual'
+      ? `<button type="button" class="keymenu-clear">use the detector's key</button>` : '') +
+    `<div class="keymenu-msg"></div>`;
+  document.body.appendChild(keyMenu);
+  const r = anchorEl.getBoundingClientRect();
+  keyMenu.style.left = Math.max(4, Math.min(window.innerWidth - keyMenu.offsetWidth - 4, r.left)) + 'px';
+  keyMenu.style.top = (window.scrollY + r.bottom + 4) + 'px';
+
+  const msg = keyMenu.querySelector('.keymenu-msg');
+  async function send(body){
+    msg.textContent = 'saving\u2026';
+    try {
+      const res = await fetch(`/key/${track.hash}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+      const j = await res.json();
+      if (!res.ok) { msg.textContent = j.error || 'could not save'; return; }
+      track.key = j.key; track.scale = j.scale; track.camelot = j.camelot; track.key_source = j.key_source;
+      closeKeyMenu();
+      if (repaint) repaint();
+      if (window.reloadLibrary) window.reloadLibrary();
+    } catch (_) { msg.textContent = 'could not reach the app'; }
+  }
+  keyMenu.querySelectorAll('.keypick').forEach(b => b.addEventListener('click', () => {
+    const same = b.classList.contains('on') && track.key_source === 'manual';
+    send(same ? {key: null} : {key: b.dataset.key, scale: b.dataset.scale});
+  }));
+  const clear = keyMenu.querySelector('.keymenu-clear');
+  if (clear) clear.addEventListener('click', () => send({key: null}));
+}
+
 function keyText(t){
   const k = keyParts(t);
   return [k.cam, k.mus].filter(Boolean).join(' ');
@@ -1004,14 +1065,18 @@ function finishRow(row, data, file){
   // rebuilding the whole cell would take the waveform's neighbours with it.
   const keyHtmlFor = () => {
     const k = keyParts(data);              // same notation rule as keyText
-    if (!k.cam && !k.mus) return `<div class="keyrow">no key</div>`;
-    return `<div class="keyrow">` +
-      (k.cam ? `<span class="camelot">${escapeHtml(k.cam)}</span>` : '') +
-      escapeHtml(k.mus) + `</div>`;
+    const fixed = data.key_source === 'manual';
+    const title = fixed ? 'key corrected by hand \u2014 click to change' : 'click to correct the key';
+    const inner = (!k.cam && !k.mus) ? 'no key'
+      : (k.cam ? `<span class="camelot">${escapeHtml(k.cam)}</span>` : '') + escapeHtml(k.mus);
+    return `<div class="keyrow${fixed ? ' keyfixed' : ''}" title="${title}" role="button" tabindex="0">` +
+      inner + `</div>`;
   };
   const paintMusical = () => {
     row.children[1].innerHTML = bpmHtml + keyHtmlFor() +
       `<div class="dur">${fmtDur(data.duration)}</div>`;
+    const kr = row.children[1].querySelector('.keyrow');
+    if (kr) kr.addEventListener('click', () => openKeyMenu(kr, data, paintMusical));
   };
   paintMusical();
   row._renderKey = paintMusical;

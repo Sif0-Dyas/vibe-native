@@ -61,8 +61,10 @@ _DATA = Path(__file__).resolve().parent / "data" / "key_profiles.json"
 
 # The trained model (tools/train_key_templates.py): a linear scorer over the
 # concatenated, per-block standardised PCPs of several frequency bands.
-#   score(tonic t, mode m) = sum_blocks <standardise(pcp_block) rolled by t, W[m][block]> + bias[m]
-# {"blocks": [pcp_from_magnitudes kwargs, ...], "weights": {mode: [12*len(blocks)]}, "bias": {mode: float}}
+#   score(t, m) = logsumexp_k(<standardise(pcp) rolled by t, W[m][k]> + bias[m][k])
+# {"blocks": [pcp_from_magnitudes kwargs, ...],       # one PCP per frequency band
+#  "weights": {mode: [[12*len(blocks)], ...]},        # one or more sub-templates per mode
+#  "bias":    {mode: [float, ...]}}
 MODEL: dict | None = None
 
 
@@ -85,10 +87,12 @@ def _load_fitted() -> None:
         try:
             MODEL = {
                 "blocks": [dict(b) for b in model["blocks"]],
-                "weights": {m: np.asarray(model["weights"][m], dtype=np.float64) for m in MODES},
-                "bias": {m: float(model["bias"][m]) for m in MODES},
+                # weights[mode]: (K, 12 * n_blocks), bias[mode]: (K,)
+                "weights": {m: np.atleast_2d(np.asarray(model["weights"][m], dtype=np.float64)) for m in MODES},
+                "bias": {m: np.atleast_1d(np.asarray(model["bias"][m], dtype=np.float64)) for m in MODES},
             }
-            assert all(len(MODEL["weights"][m]) == 12 * len(MODEL["blocks"]) for m in MODES)
+            assert all(MODEL["weights"][m].shape[1] == 12 * len(MODEL["blocks"])
+                       and MODEL["weights"][m].shape[0] == MODEL["bias"][m].size for m in MODES)
         except (KeyError, TypeError, ValueError, AssertionError):
             MODEL = None
 
@@ -199,6 +203,21 @@ def _chroma_matrix(freqs: np.ndarray, offset: float, subharmonics: int, decay: f
     return m
 
 
+def _section(mags: np.ndarray, which: str, frac: float) -> np.ndarray:
+    """A contiguous run of ``frac`` of the frames: the loudest such window
+    ("loud", typically the drop) or the quietest ("quiet", the breakdown). EDM
+    sections often disagree about the key, so a model can weigh them apart."""
+    n = mags.shape[0]
+    w = max(1, int(round(n * frac)))
+    if w >= n:
+        return mags
+    energy = mags.sum(axis=1)
+    csum = np.concatenate([[0.0], np.cumsum(energy)])
+    window = csum[w:] - csum[:-w]  # energy of each contiguous w-frame window
+    start = int(np.argmax(window) if which == "loud" else np.argmin(window))
+    return mags[start:start + w]
+
+
 def _global_pcp(mags: np.ndarray, chroma_matrix: np.ndarray, frame_norm: bool) -> np.ndarray:
     chroma = mags @ chroma_matrix  # (frames, 12)
     if frame_norm:
@@ -214,7 +233,8 @@ def pcp_from_magnitudes(mags: np.ndarray, freqs: np.ndarray, subharmonics: int =
                         peak_floor: float = PEAK_FLOOR, top_peaks: int = TOP_PEAKS, power: float = POWER,
                         frame_norm: bool = True, tuning: bool = True, bass_weight: float = BASS_WEIGHT,
                         bass_hi: float = BASS_HI, bass_peaks: int = BASS_PEAKS, f_hi: float = F_HI,
-                        offset: float | None = None) -> np.ndarray:
+                        offset: float | None = None, section: str | None = None,
+                        section_frac: float = 0.25) -> np.ndarray:
     """Global PCP. With ``bass_weight`` > 0 the profile is a blend of the
     full-band PCP and a PCP of the bass band alone (few peaks per frame, so it
     tracks the bassline's root notes): bass chroma is the strongest tonic cue in
@@ -222,6 +242,8 @@ def pcp_from_magnitudes(mags: np.ndarray, freqs: np.ndarray, subharmonics: int =
     use a separate bass chroma for the same reason in chord recognition)."""
     if mags.size == 0:
         return np.zeros(12)
+    if section:
+        mags = _section(mags, section, section_frac)
     full = emphasise(mags, freqs, f_lo, gamma, peaks, peak_floor, top_peaks, power, f_hi)
     if offset is None:
         offset = _tuning_offset(full, freqs, tuning)
@@ -284,7 +306,9 @@ def match_model(feature: np.ndarray, model: dict | None = None) -> tuple[str, st
     for t in range(12):
         rolled = np.concatenate([np.roll(x[j * 12:(j + 1) * 12], -t) for j in range(nblk)])
         for mi, m in enumerate(MODES):
-            scores[t, mi] = rolled @ model["weights"][m] + model["bias"][m]
+            sub = model["weights"][m] @ rolled + model["bias"][m]  # one score per sub-template
+            top = sub.max()
+            scores[t, mi] = top + np.log(np.exp(sub - top).sum())  # soft max over sub-templates
     flat = scores.ravel()
     best = int(np.argmax(flat))
     p = np.exp(flat - flat[best])

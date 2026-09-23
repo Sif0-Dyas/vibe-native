@@ -256,6 +256,31 @@ input[type=file]{display:none}
   margin-top:3px; display:flex; align-items:center; gap:7px;
 }
 /* floating "override section as [genre]" menu (shift-drag on the waveform) */
+.keyrow[role=button]{ cursor:pointer; }
+.keyrow[role=button]:hover{ text-decoration:underline dotted; }
+/* a corrected key is marked, so a hand-made judgement is never mistaken for
+   the detector's guess */
+.keyrow.keyfixed::after{ content:'\2713'; margin-left:4px; opacity:.75; font-size:9px; }
+.keymenu{
+  position:absolute; z-index:60; background:var(--panel,#11161c);
+  border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:8px;
+  box-shadow:0 10px 30px rgba(0,0,0,.45); width:212px;
+}
+.keymenu-lbl{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); margin:2px 0 4px; }
+.keymenu-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:3px; margin-bottom:6px; }
+.keypick{
+  font-family:'JetBrains Mono',monospace; font-size:10px; padding:4px 0; cursor:pointer;
+  background:rgba(255,255,255,.05); color:var(--text,#dfe7ee);
+  border:1px solid transparent; border-radius:4px;
+}
+.keypick:hover{ background:rgba(255,255,255,.12); }
+.keypick.on{ background:rgba(34,211,238,.18); border-color:rgba(34,211,238,.5); }
+.keymenu-clear{
+  width:100%; font-size:10px; padding:4px 0; margin-top:2px; cursor:pointer; border-radius:4px;
+  background:transparent; color:var(--dim); border:1px solid rgba(255,255,255,.14);
+}
+.keymenu-clear:hover{ color:var(--text,#dfe7ee); }
+.keymenu-msg{ font-size:10px; color:var(--dim); min-height:12px; margin-top:4px; }
 .segmenu{
   position:absolute; top:64px; width:220px; z-index:6;
   background:var(--panel-2); border:1px solid var(--line); border-radius:7px;

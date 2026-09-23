@@ -16,6 +16,13 @@ Datasets:
   giantsteps  datasets/giantsteps-key-dataset — expert-corrected Beatport labels (Knees et al.
               ISMIR 2015). Clone https://github.com/GiantSteps/giantsteps-key-dataset into
               datasets/ and fetch audio/ with its audio_dl.sh (the JKU mirror still serves).
+  beatport    datasets/beatport-edm-key — Beatport EDM Key Dataset (Faraldo 2017, CC BY-SA 4.0,
+              zenodo.org/records/1101082): 1486 excerpts, of which 1287 carry a single key.
+              Unzip audio.zip and keys.zip into datasets/beatport-edm-key/.
+  both        giantsteps + beatport, ids prefixed with the dataset name.
+  library     this app's own corrected keys (the key_labels table). The best
+              training set there is, because it is the distribution the app serves;
+              grows every time someone fixes a key in the UI.
 
 Global PCPs are cached in datasets/cache/<dataset>.npz (keyed by track id + variant)
 so re-running after a profile tweak takes seconds, not minutes.
@@ -62,6 +69,16 @@ for _flo in (15, 60, 200):
 for _lo, _hi in ((25, 400), (400, 1500), (1500, 5000), (200, 1000), (1000, 5000)):
     for _tp in (16, 50):
         SWEEP[f"band {_lo}-{_hi} peaks={_tp}"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=_tp, subharmonics=4, tuning=False)
+# octave-spaced bands: a chroma per octave, which is what a listener hears
+OCTAVES = [(25, 50), (50, 100), (100, 200), (200, 400), (400, 800), (800, 1600), (1600, 3200), (3200, 5000)]
+for _lo, _hi in OCTAVES:
+    SWEEP[f"oct {_lo}"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=16, subharmonics=4, tuning=False)
+    SWEEP[f"oct {_lo} p4"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=4, subharmonics=4, tuning=False)
+for _sec in ("loud", "quiet"):
+    for _frac in (0.15, 0.3):
+        SWEEP[f"{_sec}{_frac:g} whole"] = dict(_BASE, section=_sec, section_frac=_frac)
+        SWEEP[f"{_sec}{_frac:g} bass"] = dict(f_lo=25, f_hi=400, top_peaks=16, subharmonics=4,
+                                              tuning=False, section=_sec, section_frac=_frac)
 
 
 def variant_settings(name: str) -> dict:
@@ -73,8 +90,26 @@ def variant_settings(name: str) -> dict:
     sys.exit(f"unknown variant {name!r}")
 
 
+def _beatport_confidence(root: Path) -> dict[str, int]:
+    """{track id: annotator confidence 0-2} from the dataset's spreadsheet, if
+    openpyxl is installed; an empty dict (all None) otherwise."""
+    book = root / "meta.xlsx"
+    if not book.exists():
+        return {}
+    try:
+        import openpyxl
+    except ImportError:
+        return {}
+    rows = list(openpyxl.load_workbook(book, read_only=True).active.values)
+    hdr = [str(c or "").lower() for c in rows[0]]
+    i_id, i_conf = hdr.index("id"), hdr.index("confidence")
+    return {str(r[i_id]): int(r[i_conf]) for r in rows[1:] if r[i_id] is not None and r[i_conf] is not None}
+
+
 def load_index(dataset: str = "oracle") -> dict:
     """{id: {"file": path, "key": name, "scale": mode, ...}} for a dataset."""
+    if dataset == "both":
+        return {f"{d}:{k}": v for d in ("giantsteps", "beatport") for k, v in load_index(d).items()}
     if dataset == "oracle":
         idx = json.loads((ORACLE / "index.json").read_text(encoding="utf-8"))
         return {h: {**m, "file": wsl_to_windows(m["file"])} for h, m in idx.items()}
@@ -87,11 +122,44 @@ def load_index(dataset: str = "oracle") -> dict:
             key, scale = f.read_text(encoding="utf-8").split()
             out[f.stem] = {"file": str(root / "audio" / f"{f.stem}.mp3"), "key": SPELLING.get(key, key), "scale": scale}
         return out
+    if dataset == "library":
+        sys.path.insert(0, str(ROOT / "src"))
+        from vibenative.db import key_labels_all
+
+        out = {}
+        for h, filepath, key, scale in key_labels_all():
+            if Path(filepath).exists():
+                out[h] = {"file": filepath, "key": key, "scale": scale}
+        if not out:
+            sys.exit("no corrected keys yet - correct some in the app first")
+        return out
+    if dataset == "beatport":
+        root = DATASETS / "beatport-edm-key"
+        if not (root / "keys").is_dir():
+            sys.exit(f"{root} missing - see the docstring for how to fetch it")
+        conf = _beatport_confidence(root)
+        out = {}
+        for f in sorted((root / "keys").glob("*.txt")):
+            label = f.read_text(encoding="utf-8", errors="replace").strip()
+            parts = label.split()
+            if len(parts) != 2 or parts[1] not in ("major", "minor"):
+                continue  # "X" (no key), "F minor phrygian", "C# minor | E major": not a single key
+            audio = root / "audio" / f"{f.stem}.mp3"
+            out[f.stem] = {"file": str(audio), "key": SPELLING.get(parts[0], parts[0]), "scale": parts[1],
+                           "confidence": conf.get(f.stem.split()[0])}
+        return out
     sys.exit(f"unknown dataset {dataset!r}")
 
 
 def load_pcps(index: dict, dataset: str = "oracle", verbose: bool = True) -> dict[tuple[str, str], np.ndarray]:
     """{(id, variant): pcp} for every track with audio on disk, via the cache."""
+    if dataset == "both":  # reuse each dataset's own cache, keyed by prefixed id
+        out = {}
+        for d in ("giantsteps", "beatport"):
+            sub = {k.split(":", 1)[1]: v for k, v in index.items() if k.startswith(f"{d}:")}
+            for (h, n), v in load_pcps(sub, d, verbose).items():
+                out[(f"{d}:{h}", n)] = v
+        return out
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = CACHE_DIR / f"{dataset}.npz"
     cache: dict[str, np.ndarray] = {}
@@ -191,7 +259,7 @@ def report(label: str, cats: Counter) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="oracle", help="oracle | giantsteps (what to score on)")
+    ap.add_argument("--dataset", default="oracle", help="oracle | giantsteps | beatport | both")
     ap.add_argument("--loo", action="store_true", help="also score leave-one-out fitted profiles")
     ap.add_argument("--fit-on", metavar="DATASET", help="also score profiles fitted on this other dataset")
     ap.add_argument("--sweep", action="store_true", help="also compute and score the SWEEP front-end variants")

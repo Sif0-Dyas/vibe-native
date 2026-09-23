@@ -74,6 +74,25 @@ def saved_upload(f, missing_msg="no file received"):
             pass
 
 
+def _apply_key_correction(h, payload):
+    """Overlay a human-corrected key onto an analysis payload (in place).
+    Corrections live outside the payload so re-analysis cannot clobber them, so
+    every path that serves a payload has to put them back."""
+    from ..db import key_label_get
+
+    correction = key_label_get(h)
+    if not correction:
+        payload.setdefault("key_source", "detector")
+        return payload
+    from ..analysis import CAMELOT
+
+    key, scale = correction
+    payload["key"], payload["scale"] = key, scale
+    payload["camelot"] = CAMELOT.get((key, scale))
+    payload["key_source"] = "manual"
+    return payload
+
+
 @bp.post("/analyze")
 def analyze_route():
     f = request.files.get("file")
@@ -83,6 +102,7 @@ def analyze_route():
             h = file_hash(p)
             cached = cache_get(h)
             if cached:
+                _apply_key_correction(h, cached)
                 _backfill_waveform(h, p)
                 return jsonify(_cached_response(cached, h))
 
@@ -565,6 +585,7 @@ def batch_route():
             h = file_hash(path)
             cached = cache_get(h)
             if cached:
+                _apply_key_correction(h, cached)
                 cached = _cached_response(dict(cached), h, ok=True, filepath=str(path))
                 # backfill a server-side path for older drop-analyzed rows (which
                 # stored none) so audio preview / DAW waveform / section overrides

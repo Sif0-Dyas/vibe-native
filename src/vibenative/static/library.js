@@ -184,6 +184,11 @@
     }).catch(function () { els.rows.innerHTML = '<div class="lib-empty">failed to load the library</div>'; });
   }
 
+  /* A key corrected in the List tab changes a row here too; app.js calls this
+     so the table does not keep showing the detector's old answer. Cheap: it
+     only refetches when the Library has already been loaded once. */
+  window.reloadLibrary = function () { if (LIB) load(true); };
+
   function exportTxt() {
     if (!LIB) return;
     var cols = state.cols;

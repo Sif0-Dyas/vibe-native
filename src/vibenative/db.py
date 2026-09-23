@@ -225,6 +225,26 @@ def _migration_7(c):
             )
 
 
+def _migration_8(c):
+    """v8 -- corrected keys.
+
+    The key detector (`tonality.py`) is a trained model, and the training data
+    that matters most is this library's own music: public EDM key sets disagree
+    with each other by ~6 points, so a model fitted to one of them is
+    mis-calibrated for anyone else's collection. Every key a person corrects
+    here is one labelled example from the distribution that actually matters,
+    which `tools/eval_key.py --dataset library` reads back and
+    `tools/train_key_templates.py` trains on.
+
+    Kept out of the payload deliberately: the payload is the analyser's output
+    and gets overwritten on re-analysis, whereas a human judgement must outlive
+    that. Routes read the label and present it in place of the detected key.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS key_labels(
+        hash TEXT PRIMARY KEY, key TEXT NOT NULL, scale TEXT NOT NULL,
+        source TEXT, created REAL)""")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -234,6 +254,7 @@ MIGRATIONS = [
     (5, _migration_5),
     (6, _migration_6),
     (7, _migration_7),
+    (8, _migration_8),
 ]
 
 
@@ -287,6 +308,41 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
             "INSERT OR REPLACE INTO tracks VALUES(?,?,?,?,?,?,?)",
             (h, filename, filepath or "", title, json.dumps(payload), blob, time.time()),
         )
+
+
+def key_label_get(h: str):
+    """The corrected (key, scale) for a track, or None."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT key, scale FROM key_labels WHERE hash=?", (h,)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def key_label_put(h: str, key: str, scale: str, source: str = "manual"):
+    with _db_lock, closing(db()) as conn, conn as c:
+        c.execute("INSERT OR REPLACE INTO key_labels VALUES(?,?,?,?,?)",
+                  (h, key, scale, source, time.time()))
+
+
+def key_label_delete(h: str):
+    """Drop a correction; the detector's own answer stands again."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        c.execute("DELETE FROM key_labels WHERE hash=?", (h,))
+
+
+def key_labels_map():
+    """{hash: (key, scale)} for every correction -- one query for a whole listing."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        return {r[0]: (r[1], r[2]) for r in c.execute("SELECT hash, key, scale FROM key_labels")}
+
+
+def key_labels_all():
+    """[(hash, filepath, key, scale)] for every corrected track that still has a
+    file on disk recorded -- the training set tools/eval_key.py reads."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        return c.execute(
+            "SELECT l.hash, t.filepath, l.key, l.scale FROM key_labels l "
+            "JOIN tracks t ON t.hash = l.hash WHERE t.filepath != ''"
+        ).fetchall()
 
 
 def waveform_cache_get(h: str):

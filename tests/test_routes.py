@@ -938,3 +938,38 @@ def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
     import inspect
 
     assert "signature" in inspect.getsource(summarise)
+
+
+def test_key_correction_overrides_the_detector(client):
+    """A corrected key replaces the detected one everywhere a track is served,
+    carries the right Camelot code, survives re-analysis (it lives outside the
+    payload), and can be cleared."""
+    from tests.conftest import seed_track
+
+    h = seed_track("k" * 40, {"key": "C", "scale": "major", "camelot": "8B", "styles": []})
+
+    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert (row["key"], row["scale"], row["key_source"]) == ("C", "major", "detector")
+
+    r = client.post(f"/key/{h}", json={"key": "Eb", "scale": "minor"})
+    assert r.status_code == 200, r.data
+    assert r.get_json() == {"ok": True, "key": "Eb", "scale": "minor",
+                            "camelot": "2A", "key_source": "manual"}
+
+    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert (row["key"], row["scale"], row["camelot"], row["key_source"]) == \
+        ("Eb", "minor", "2A", "manual")
+
+    # clearing restores the detector's own answer from the payload
+    assert client.post(f"/key/{h}", json={"key": None}).get_json()["key"] == "C"
+    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert (row["key"], row["key_source"]) == ("C", "detector")
+
+
+def test_key_correction_rejects_nonsense(client):
+    from tests.conftest import seed_track
+
+    h = seed_track("j" * 40, {"key": "C", "scale": "major", "styles": []})
+    assert client.post(f"/key/{h}", json={"key": "H", "scale": "minor"}).status_code == 400
+    assert client.post(f"/key/{h}", json={"key": "C", "scale": "lydian"}).status_code == 400
+    assert client.post("/key/nosuchtrack", json={"key": "C", "scale": "minor"}).status_code == 404

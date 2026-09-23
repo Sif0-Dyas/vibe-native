@@ -10,7 +10,8 @@ from pathlib import Path
 from flask import jsonify, request
 
 from .. import lookup
-from ..db import _db_lock, cosine, db, track_embedding
+from ..db import (_db_lock, cosine, db, key_label_delete, key_label_put,
+                  key_labels_map, track_embedding)
 from ._shared import _artist_of, _dominant_style, bp
 
 
@@ -26,6 +27,18 @@ def forget_route(h):
     return jsonify({"ok": True, "deleted": deleted})
 
 
+def _key_of(payload: dict, correction):
+    """(key, scale, camelot, source) for a track: a human correction if there is
+    one, else whatever the detector found. Camelot is recomputed rather than read
+    from the payload, so a corrected key carries the right wheel position."""
+    if correction:
+        from ..analysis import CAMELOT
+
+        key, scale = correction
+        return key, scale, CAMELOT.get((key, scale)), "manual"
+    return payload.get("key"), payload.get("scale"), payload.get("camelot"), "detector"
+
+
 @bp.get("/library")
 def library_list():
     """A lean listing of EVERY cached track for the Library tab: hash, title, top
@@ -37,9 +50,11 @@ def library_list():
             "ORDER BY created DESC"
         ).fetchall()
     out = []
+    corrections = key_labels_map()
     for h, fn, title, payload, filepath, created in rows:
         p = json.loads(payload) if payload else {}
         styles = p.get("styles") or []
+        key, scale, camelot, source = _key_of(p, corrections.get(h))
         out.append(
             {
                 "hash": h,
@@ -48,9 +63,10 @@ def library_list():
                 "artist": _artist_of(p, title, fn),
                 "style": styles[0].get("style") if styles else None,
                 "bpm": p.get("bpm"),
-                "key": p.get("key"),
-                "scale": p.get("scale"),
-                "camelot": p.get("camelot"),
+                "key": key,
+                "scale": scale,
+                "camelot": camelot,
+                "key_source": source,
                 "duration": p.get("duration"),
                 "has_file": bool(filepath),
                 "created": created,
@@ -226,6 +242,41 @@ def override_route(h):
                 shutil.copy2(src, dest)
             trained = True
     return jsonify({"ok": True, "genre": genre, "trained": trained})
+
+
+@bp.post("/key/<h>")
+def key_override_route(h):
+    """Correct (or un-correct) a track's key.
+
+    The correction is stored in `key_labels`, not in the analysis payload, so it
+    survives re-analysis -- and it doubles as a training example: the detector is
+    fitted from labelled audio, and this library's own corrections describe its
+    music better than any public dataset can (see docs/DATASETS.md). Send
+    {"key": null} to drop the correction and fall back to the detector.
+    """
+    from ..analysis import CAMELOT
+    from ..tonality import KEY_NAMES, MODES
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get("key")
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
+    if not row:
+        return jsonify({"error": "track not in database"}), 404
+
+    if raw is None:  # clear -> the detector's own answer stands again
+        key_label_delete(h)
+        p = json.loads(row[0])
+        return jsonify({"ok": True, "key": p.get("key"), "scale": p.get("scale"),
+                        "camelot": p.get("camelot"), "key_source": "detector"})
+
+    key = str(raw).strip()
+    scale = str(data.get("scale") or "").strip().lower()
+    if key not in KEY_NAMES or scale not in MODES:
+        return jsonify({"error": f"key must be one of {KEY_NAMES} and scale one of {list(MODES)}"}), 400
+    key_label_put(h, key, scale)
+    return jsonify({"ok": True, "key": key, "scale": scale,
+                    "camelot": CAMELOT.get((key, scale)), "key_source": "manual"})
 
 
 def _remove_segment_clip(h, genre, start, end):
