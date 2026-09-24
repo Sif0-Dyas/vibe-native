@@ -14,6 +14,7 @@ from ..db import (
     _db_lock,
     cosine,
     db,
+    forget_track,
     key_label_delete,
     key_label_put,
     key_labels_map,
@@ -24,14 +25,11 @@ from ._shared import _artist_of, _dominant_style, bp
 
 @bp.post("/forget/<h>")
 def forget_route(h):
-    """Delete a track's analysis by content hash: removes it from the cache, the
-    map, and any vibe/tag membership. Does NOT touch the audio file -- dropping
+    """Delete everything stored about a track by content hash (see
+    db.forget_track): analysis, map, vibe/tag membership, overrides, ratings,
+    key and training labels, caches. Does NOT touch the audio file -- dropping
     the track again will re-analyze it from scratch."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        deleted = c.execute("DELETE FROM tracks WHERE hash=?", (h,)).rowcount
-        c.execute("DELETE FROM track_tags WHERE hash=?", (h,))
-        c.execute("DELETE FROM vibe_tracks WHERE hash=?", (h,))
-    return jsonify({"ok": True, "deleted": deleted})
+    return jsonify({"ok": True, "deleted": forget_track(h)})
 
 
 def _key_of(payload: dict, correction):

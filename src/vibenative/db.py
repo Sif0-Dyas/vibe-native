@@ -331,6 +331,34 @@ def key_label_delete(h: str):
         c.execute("DELETE FROM key_labels WHERE hash=?", (h,))
 
 
+# Every table holding per-track rows, keyed by the content hash in a `hash`
+# column. forget_track deletes from all of them; test_db checks this list against
+# the live schema, so a new per-track table cannot be silently left behind.
+TRACK_TABLES = (
+    "tracks",
+    "track_tags",
+    "vibe_tracks",
+    "segment_overrides",
+    "lookup_cache",
+    "waveform_cache",
+    "ratings",
+    "training_labels",
+    "training_rejects",
+    "key_labels",
+)
+
+
+def forget_track(h: str) -> int:
+    """Delete everything stored about one track, in one transaction. Returns how
+    many `tracks` rows went (0 or 1). The tracks/track_tags triggers bump
+    library_rev, so the map cache rebuilds. The audio file is never touched."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        deleted = c.execute("DELETE FROM tracks WHERE hash=?", (h,)).rowcount
+        for t in TRACK_TABLES[1:]:
+            c.execute(f"DELETE FROM {t} WHERE hash=?", (h,))  # nosec B608  # t from TRACK_TABLES
+    return deleted
+
+
 def key_labels_map():
     """{hash: (key, scale)} for every correction -- one query for a whole listing."""
     with _db_lock, closing(db()) as conn, conn as c:

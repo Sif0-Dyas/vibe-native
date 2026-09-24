@@ -146,7 +146,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] `timeout=120` on both `decode.py` calls and `metadata.py:53`
 - [x] `tempo.py` imports `PROVIDER_ORDER` from `onnx_engine`
 - [x] Double-checked build lock in `onnx_engine.get_engine()`
-- [ ] `/forget` deletes from all ten tables (incl. `key_labels`)
+- [x] `/forget` deletes from all ten tables (incl. `key_labels`)
 - [ ] Name the columns in `db.cache_put`
 - [ ] Exclude `data/enao.json` from the PyInstaller spec
 - [ ] Lockfile; pin ruff once; CI installs from the lock

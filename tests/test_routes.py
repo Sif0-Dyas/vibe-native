@@ -99,6 +99,46 @@ def test_vibes_create_and_duplicate(client):
     assert r2.status_code == 409
 
 
+def test_forget_clears_every_per_track_table(client):
+    # One row per per-track table for A and for B; forgetting A must empty A from
+    # all of them in one go and leave B alone. The table list is read from the live
+    # schema, so a new per-track table fails here until forget_track covers it.
+    from contextlib import closing
+
+    from vibenative.db import TRACK_TABLES, db, library_rev
+
+    with closing(db()) as conn, conn as c:
+        keyed = {
+            t
+            for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            if any(col[1] == "hash" for col in c.execute(f"PRAGMA table_info({t})"))
+        }
+        assert keyed == set(TRACK_TABLES)
+        for h in ("A" * 40, "B" * 40):
+            c.execute("INSERT INTO tracks(hash, payload, created) VALUES(?, '{}', 0)", (h,))
+            c.execute("INSERT INTO track_tags(tag_id, hash) VALUES(1, ?)", (h,))
+            c.execute("INSERT INTO vibe_tracks(vibe_id, hash) VALUES(1, ?)", (h,))
+            c.execute(
+                "INSERT INTO segment_overrides(hash, start_s, end_s, genre) VALUES(?, 0, 1, 'x')",
+                (h,),
+            )
+            c.execute("INSERT INTO lookup_cache(hash, source) VALUES(?, 'discogs')", (h,))
+            c.execute("INSERT INTO waveform_cache(hash, data_json) VALUES(?, '{}')", (h,))
+            c.execute("INSERT INTO ratings(hash, stars) VALUES(?, 3)", (h,))
+            c.execute("INSERT INTO training_labels(hash, genre) VALUES(?, 'x')", (h,))
+            c.execute("INSERT INTO training_rejects(hash, genre) VALUES(?, 'y')", (h,))
+            c.execute("INSERT INTO key_labels(hash, key, scale) VALUES(?, 'C', 'major')", (h,))
+        rev_before = library_rev(c)
+
+    assert client.post(f"/forget/{'A' * 40}").get_json()["deleted"] == 1
+
+    with closing(db()) as conn, conn as c:
+        for t in TRACK_TABLES:
+            counts = dict(c.execute(f"SELECT hash, COUNT(*) FROM {t} GROUP BY hash").fetchall())
+            assert counts == {"B" * 40: 1}, t
+        assert library_rev(c) > rev_before  # the map cache sees the change
+
+
 def test_forget_deletes_track(client):
     # analyze a track, then forget it -> removed from the cache
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "gone.wav")}
