@@ -4,7 +4,7 @@
   "private": true,
   "description": "Dev-only tooling for the static frontend JS. No runtime dependencies -- the app ships plain <script>-loaded files served by Flask; this exists solely so ESLint can catch cross-file ReferenceErrors after the app.js/player.js/map.js split.",
   "scripts": {
-    "lint": "eslint vibedentify/static/"
+    "lint": "eslint src/vibenative/static/"
   },
   "devDependencies": {
     "eslint": "^9.13.0",

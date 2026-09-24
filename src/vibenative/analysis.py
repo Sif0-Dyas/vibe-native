@@ -1,10 +1,9 @@
-"""Model plumbing (native ONNX EffNet + Discogs-400 head, MAEST placeholder,
-custom head) and the per-track analysis pipeline: genre styles, BPM, key, and
-the waveform envelope.
+"""Model plumbing (native ONNX EffNet + Discogs-400 head, custom head) and the
+per-track analysis pipeline: genre styles, BPM, key, and the waveform envelope.
 
 Phase 4 engine swap: the genre / tempo / key internals now run on the native
 ONNX engine (``onnx_engine`` + ``frontend_mel`` + ``decode`` + ``tempo`` +
-``key``) instead of Essentia, BEHIND the same function signatures and the same
+``tonality``) instead of Essentia, BEHIND the same function signatures and the same
 payload shape -- everything downstream (routes, DB, frontend) is unable to tell.
 FAKE_ANALYZER mode is untouched. The heavy engine modules (onnxruntime-backed)
 are imported lazily inside the functions that use them, so the app still imports
@@ -25,8 +24,7 @@ from .config import FAKE, MODEL_DIR, log
 # /batch workers infer concurrently) is a later optimization with its own test.
 _lock = threading.Lock()
 
-_engine = {}  # MAEST / custom-head bookkeeping; the genre engine itself lives in onnx_engine
-_engine_lock = threading.Lock()  # guards the one-time custom-head / MAEST build
+_engine_lock = threading.Lock()  # guards the one-time custom-head load
 
 
 def get_engine():
@@ -43,48 +41,6 @@ def get_engine():
     from . import onnx_engine
 
     return onnx_engine.get_engine()
-
-
-# --- optional MAEST engine (2nd genre model, for ensembling) ----------------
-# A transformer trained on the SAME Discogs-400 task, so its predictions align
-# 1:1 with the EffNet head's label order -> the two can be averaged directly.
-# ~10x slower than EffNet on CPU, so it's used on demand (the /compare route),
-# never in the normal /analyze path.
-MAEST_PB = MODEL_DIR / os.environ.get("MAEST_MODEL", "discogs-maest-30s-pw-1.pb")
-
-
-def get_maest():
-    """Lazily build the MAEST genre model. Returns None if the ~334 MB model
-    file isn't present, so the ensemble feature stays optional."""
-    if "maest" in _engine:
-        return _engine["maest"]
-    with _engine_lock:
-        if "maest" in _engine:  # built while we waited on the lock
-            return _engine["maest"]
-        if not MAEST_PB.exists():
-            _engine["maest"] = None
-            return None
-        from essentia.standard import TensorflowPredictMAEST
-
-        _engine["maest"] = TensorflowPredictMAEST(
-            graphFilename=str(MAEST_PB),
-            input="serving_default_melspectrogram",  # this graph's actual input node
-            output="StatefulPartitionedCall:0",
-        )  # discogs-400 predictions, direct
-        return _engine["maest"]
-
-
-def maest_genre(audio16):
-    """Track-level 400-dim genre probabilities from MAEST (mean over 30s patches),
-    aligned to the same Discogs-400 label order as the EffNet head. None if the
-    MAEST model isn't installed."""
-    import numpy as np
-
-    m = get_maest()
-    if m is None:
-        return None
-    preds = np.asarray(m(audio16))  # shape (patches, 1, 1, 400)
-    return preds.reshape(-1, preds.shape[-1]).mean(axis=0)
 
 
 # --- optional custom head (trained with train_head.py) ----------------------
@@ -136,63 +92,10 @@ def custom_predict(embeddings):
     return [{"style": head["labels"][int(i)], "score": round(float(probs[i]), 4)} for i in order]
 
 
-def read_title(path: Path) -> str | None:
-    """Title from the file's tags via mutagen, or None."""
-    try:
-        from mutagen import File as MFile
-
-        mf = MFile(str(path), easy=True)
-        if mf and mf.tags:
-            vals = mf.tags.get("title")
-            if vals:
-                t = str(vals[0]).strip()
-                if t:
-                    return t
-    except Exception:  # nosec B110  # best-effort tag read; missing/odd tags degrade to None
-        pass
-    return None
-
-
-def read_tags(path: Path) -> dict:
-    """Common tag fields + technical info for the details box."""
-    tag, tech = {}, {}
-    try:
-        from mutagen import File as MFile
-
-        mf = MFile(str(path), easy=True)
-        if mf:
-            if mf.tags:
-                for k in (
-                    "title",
-                    "artist",
-                    "album",
-                    "albumartist",
-                    "genre",
-                    "date",
-                    "tracknumber",
-                    "discnumber",
-                    "composer",
-                    "bpm",
-                ):
-                    vals = mf.tags.get(k)
-                    if vals and str(vals[0]).strip():
-                        tag[k] = str(vals[0]).strip()
-            info = getattr(mf, "info", None)
-            if info is not None:
-                br = getattr(info, "bitrate", 0)
-                if br:
-                    tech["bitrate"] = f"{round(br / 1000)} kbps"
-                sr = getattr(info, "sample_rate", 0)
-                if sr:
-                    tech["sample rate"] = f"{sr} Hz"
-                ch = getattr(info, "channels", 0)
-                if ch:
-                    tech["channels"] = str(ch)
-                tech["format"] = type(mf).__name__
-    except Exception:  # nosec B110  # best-effort metadata read; degrade gracefully on odd files
-        pass
-    return {"tag": tag, "tech": tech}
-
+# Tag reading lives in metadata.py (ffprobe, not the GPL mutagen -- see that
+# module and docs/PROVENANCE.md). Re-exported here because this is where the rest
+# of the app has always imported it from.
+from .metadata import read_tags, read_title  # noqa: E402,F401  (public re-export)
 
 CAMELOT = {  # (key, scale) -> Camelot wheel position; enharmonics included
     ("C", "major"): "8B",
@@ -405,13 +308,13 @@ def _musical_features(audio44) -> dict:
     signal. BPM and key are best-effort (None on failure).
 
     Engine swap (Phase 4): BPM from the native TempoCNN (``tempo.estimate``,
-    resamples 44.1k->11025 itself) and key from the native Essentia-KeyExtractor
-    port (``key.estimate`` at 44100). Same dict shape as before. Note ``bpm``
+    resamples 44.1k->11025 itself) and key from our own detector
+    (``tonality.estimate`` at 44100; see docs/KEY_SPEC.md). Same dict shape as
+    before. Note ``bpm``
     stays a plain float and ``bpm_confidence`` a plain float; the confidence is now
     the TempoCNN mean peak softmax (0..1) rather than RhythmExtractor2013's (~0..5)
     -- a value-scale change, not a shape change."""
-    from . import key as keymod
-    from . import tempo
+    from . import tempo, tonality
 
     duration = float(len(audio44)) / 44100.0
 
@@ -426,7 +329,7 @@ def _musical_features(audio44) -> dict:
     key = scale = camelot = None
     key_strength = None
     try:
-        k, s, strength = keymod.estimate(audio44, 44100)
+        k, s, strength = tonality.estimate(audio44, 44100)
         key, scale, key_strength = str(k), str(s), float(strength)
         camelot = CAMELOT.get((key, scale))
     except Exception:  # nosec B110  # key extraction is best-effort; None on failure is fine

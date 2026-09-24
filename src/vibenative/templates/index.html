@@ -7,6 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
+<script>
+  // The chosen theme, applied before the first paint so the page never flashes
+  // the default. app.js owns the preference (PREFS.theme); this only reads it.
+  try {
+    var p = JSON.parse(localStorage.getItem('vibePrefs') || '{}') || {};
+    if (p.theme && p.theme !== 'neon') document.documentElement.dataset.theme = p.theme;
+  } catch (e) { /* private mode */ }
+</script>
 </head>
 <body>
 <!-- genre vocabulary backing the override input's dropdown; filled by map.js -->
@@ -66,43 +74,74 @@
   <div class="eq-bars" id="eq-bars"></div>
   <div class="hd-left">
     <h1>Vibe<em>dentify</em></h1>
-    <span class="sub">Scan and Sort!</span>
   </div>
   <nav class="tabs" id="tabs">
-    <button class="tab active" data-view="list" type="button">&#8801; List</button>
-    <button class="tab" data-view="library" type="button" title="browse every analyzed track in your library">&#8803; Library</button>
-    <button class="tab" data-view="map" type="button">&#10038; Map</button>
-    <button class="tab" data-view="genres" type="button" title="the genre taxonomy: families, keystones, BPM and your top tracks">&#9673; Genres</button>
-    <button class="tab" data-view="vibes" type="button" title="your own categories: what each vibe means, and its tracks">&#9672; Vibes</button>
-    <button class="tab" data-view="guide" type="button">&#9432; Guide</button>
-    <button class="tab" data-view="options" type="button" title="settings & status">&#9881; Options</button>
+    <button class="tab active" data-view="library" type="button" title="Your whole collection: every track that has been analysed, searchable and sortable">&#8803; Library</button>
+    <button class="tab" data-view="list" type="button" title="Drop in new music to analyse it — this is where tracks enter your library">&#8801; Analyzer</button>
+    <button class="tab" data-view="map" type="button" title="See your whole library as a star map, grouped by how the music actually sounds">&#10038; Map</button>
+    <button class="tab" data-view="genres" type="button" title="Every genre found in your library: what it is, how fast it runs, and your best tracks in it">&#9673; Genres</button>
+    <button class="tab" data-view="vibes" type="button" title="Your own custom categories — moods and sets you invent yourself">&#9672; Vibes</button>
+    <button class="tab" data-view="guide" type="button" title="How to use Vibedentify, start to finish">&#9432; Guide</button>
+    <button class="tab" data-view="options" type="button" title="Settings, folders and system status">&#9881; Options</button>
   </nav>
-  <div class="lensbar">
-    <span class="lblab">identity</span>
-    <select id="g-identity" title="overall genre read (side breakdown)">
-      <option value="v2">v2 · salience</option>
-      <option value="v1">v1 · flat %</option>
-    </select>
-    <span class="lblab">segmentation</span>
-    <select id="g-seg" title="waveform genre stream">
-      <option value="raw">raw</option>
-      <option value="hysteresis" selected>hysteresis</option>
-      <option value="sibling">sibling-merge</option>
-      <option value="family">family (PulseRoots)</option>
-      <option value="hyst+sib">hyst + sibling</option>
-    </select>
-    <button id="sib-btn" class="sib-btn" type="button" title="edit sibling-merge groups">siblings &#9881;</button>
-  </div>
 </header>
 
 <!-- ONE big drop-anywhere window; the list lives inside it -->
 <main id="drop" tabindex="0" aria-label="Drop audio files anywhere in this window">
+  <div class="an-bar">
+    <span class="an-lead">Drop audio files anywhere on this window to analyse them.</span>
+    <span class="spacer"></span>
+    <div class="an-advwrap">
+      <button id="an-adv-btn" class="an-adv" type="button"
+              title="How the genre is read. Defaults suit almost everyone.">&#9881; advanced</button>
+      <div id="an-adv-panel" class="map-panel" hidden>
+        <div class="mp-head">How genres are read</div>
+        <div class="mp-hint">These change how the analysis is <b>interpreted</b>, not how it is
+          run. Nothing is re-scanned and no files are touched. If you are not sure, leave them
+          alone — the defaults are what the rest of the app uses.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-field"><span>Overall genre</span>
+          <select id="g-identity" class="map-filter">
+            <option value="v2">weight by energy (default)</option>
+            <option value="v1">plain average</option>
+          </select></label>
+        <div class="mp-hint">Whether the loudest, most characteristic parts of a track count for
+          more than the quiet ones when deciding its genre.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-field"><span>Genre over time</span>
+          <select id="g-seg" class="map-filter">
+            <option value="raw">every change (raw)</option>
+            <option value="hysteresis" selected>steady (default)</option>
+            <option value="sibling">merge near-identical genres</option>
+            <option value="family">group into families</option>
+            <option value="hyst+sib">steady + merged</option>
+          </select></label>
+        <div class="mp-hint">How the coloured genre bands along the waveform are smoothed. The
+          default ignores one-off flickers so a track does not appear to change genre every
+          second.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-row"><input type="checkbox" id="an-rowlens">
+          <span>Per-track overrides</span></label>
+        <div class="mp-hint">Adds the two selectors above to every track, so one track can be
+          read differently from the rest. Off by default: they say &ldquo;global&rdquo; until you
+          change them, which is a lot of controls saying nothing.</div>
+        <div class="mp-btns">
+          <button id="sib-btn" class="sib-btn" type="button"
+                  title="Choose which genres count as the same thing">edit merge groups</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="listhead"><span>Track</span><span>BPM / Key</span><span>Genre</span></div>
   <div id="rows">
     <div id="empty">
-      <div class="big">Drop tracks here</div>
-      <div class="hint">Drag any number of audio files anywhere in this window,<br>
-        or use <b>Browse</b> below. MP3, FLAC, WAV, M4A, OGG, AIFF &amp; more.</div>
+      <div class="big">Drop your music here</div>
+      <div class="hint">Drag in any number of audio files &mdash; or click
+        <b>Add music</b> at the bottom.</div>
+      <div class="hint2">Vibedentify reads each track&rsquo;s genre, tempo and key. Your files are
+        never modified or moved.</div>
+      <div class="hint3">MP3 &middot; FLAC &middot; WAV &middot; M4A &middot; OGG &middot; AIFF
+        &middot; and more</div>
     </div>
   </div>
 </main>
@@ -153,27 +192,34 @@
 <!-- interactive genre constellation of the whole library -->
 <section id="map-view" hidden aria-label="Genre map">
   <div class="map-top">
+    <div class="mt-row">
     <div class="map-search-wrap">
       <input id="map-search" type="text" autocomplete="off" spellcheck="false"
              placeholder="Search a track, artist, or genre&hellip;">
       <div id="map-suggest" hidden></div>
     </div>
+    <div class="mt-group" role="group" aria-label="Layout">
     <div class="map-mode" id="map-mode" title="layout: genre regions vs. pure sonic similarity">
       <button class="mm active" data-mode="regions" type="button">&#9678; regions</button>
-      <button class="mm" data-mode="galaxy" type="button">&#10022; galaxy</button>
-      <button class="mm" data-mode="tree" type="button">&#8866; tree</button>
+      <button class="mm" data-mode="universe" type="button" title="Every track as a star, grouped into galaxies">&#10022; universe</button>
+      <button class="mm" data-mode="solar" type="button" title="One playlist as a solar system">&#9737; solar</button>
+      <button class="mm" data-mode="tree" type="button" title="A flat family tree of your genres">&#8866; tree</button>
     </div>
-    <button id="map-harmonic" class="map-toggle" type="button" title="harmonic mixing: with a track selected, highlight key + BPM compatible tracks">&#127911;</button>
-    <button id="map-edges" class="map-toggle on" type="button" title="show / hide the connection lines">&#8776;</button>
+    </div>
+    <div class="mt-group" role="group" aria-label="What is shown">
     <select id="map-filter" class="map-filter" title="show only one genre (or just the flagged reads)">
       <option value="">all genres</option>
     </select>
+    <button id="map-harmonic" class="map-toggle" type="button" title="harmonic mixing: with a track selected, highlight key + BPM compatible tracks">&#127911;</button>
+    <button id="map-edges" class="map-toggle on" type="button" title="show / hide the connection lines">&#8776;</button>
     <div class="map-lblwrap">
-      <button id="map-filt-btn" class="map-toggle" type="button" title="filter by artist, key, tags, playlist, BPM or length">&#9781;</button>
+      <button id="map-filt-btn" class="map-toggle" type="button" title="filter by artist, genre, key, tags, playlist, BPM or length">&#9781;</button>
       <div id="map-filt-panel" class="map-panel" hidden>
         <div class="mp-head">Filter</div>
         <label class="mp-field"><span>Artist</span>
           <input type="text" id="flt-artist" class="mp-text" placeholder="any" autocomplete="off" spellcheck="false"></label>
+        <label class="mp-field"><span>Genre</span>
+          <select id="flt-style" class="map-filter"><option value="">any genre</option></select></label>
         <label class="mp-field"><span>Key</span>
           <select id="flt-key" class="map-filter"><option value="">any key</option></select></label>
         <label class="mp-field"><span>Playlist</span>
@@ -191,19 +237,70 @@
             <input type="range" id="flt-len-lo" min="0" max="100" value="0">
             <input type="range" id="flt-len-hi" min="0" max="100" value="100">
           </div></div>
-        <div class="mp-hint">sliders at their ends mean "no limit"</div>
+        <div class="mp-hint">sliders at their ends mean &ldquo;no limit&rdquo;</div>
+        <div class="mp-sep"></div>
+        <div class="mp-field"><span>Genres <i id="flt-gen-v">all</i></span></div>
+        <div class="flt-genbtns">
+          <button id="flt-gen-all" type="button">all</button>
+          <button id="flt-gen-none" type="button">none</button>
+          <button id="flt-gen-elec" type="button"
+                  title="everything the genre taxonomy recognises as electronic">electronic</button>
+        </div>
+        <div id="flt-genres" class="flt-genres"></div>
+        <div class="mp-hint">Untick a genre to take it off the map. Counts are how many
+          tracks read as that genre.</div>
+        <div class="mp-sep"></div>
+        <label class="mp-row"><input type="checkbox" id="flt-playable">
+          <span>Only tracks with audio</span></label>
+        <div class="mp-hint">Hides stars whose audio file can&rsquo;t be found right now &mdash;
+          dragged-in tracks that were never linked to a folder, and tracks whose file has
+          moved or sits on a drive that isn&rsquo;t plugged in. They can&rsquo;t be previewed
+          or exported, so they are stars you can look at but not use.
+          <b>This only hides them.</b> Where every star sits is worked out from your whole
+          library, so the ones left keep their exact positions and their neighbours still
+          mean what they meant. Repair the paths under <b>Options</b> to bring them back;
+          after plugging a drive in, press <b>rebuild</b>.</div>
         <div class="mp-btns"><button id="flt-reset" type="button" class="mp-reset">clear filters</button></div>
+      </div>
+      <button id="map-recent-btn" class="map-toggle" type="button" title="stars you have looked at recently">&#9201;</button>
+      <div id="map-recent-panel" class="map-panel" hidden>
+        <div class="mp-head">Recently viewed</div>
+        <div id="map-recent-list" class="recent-list"></div>
+        <div class="mp-hint" id="map-recent-hint">Every star you open lands here, newest first.
+          Click one to go straight back to it.</div>
+        <div class="mp-btns"><button id="map-recent-clear" type="button" class="mp-reset">clear history</button></div>
       </div>
       <button id="map-lbl-btn" class="map-toggle" type="button" title="label options (hide, colour, spacing, transparency)">&#127991;</button>
       <div id="map-lbl-panel" class="map-panel" hidden>
-        <div class="mp-head">Labels</div>
+        <div class="mp-head">Text</div>
+        <label class="mp-row"><input type="checkbox" id="lbl-hidetext"><span>Hide all text</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-fam" checked><span>Genre labels</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-sub" checked><span>Subgenre labels</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-subalways"><span>Always show subgenres</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-color"><span>Colour-match genres</span></label>
         <label class="mp-row"><input type="checkbox" id="lbl-counts"><span>Show track counts</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-leaders"><span>Lines from labels to genres</span></label>
+        <label class="mp-field"><span>Label background</span>
+          <select id="lbl-lblstyle" class="map-filter">
+            <option value="halo">outline only</option>
+            <option value="pill">solid plate</option>
+          </select></label>
         <div class="mp-sep"></div>
-        <label class="mp-row"><input type="checkbox" id="lbl-flat"><span>Flat (2-D) view</span></label>
+        <div class="mp-head">Stars</div>
+        <label class="mp-field"><span>Glow <i id="lbl-shine-v">1.4&times;</i></span>
+          <input type="range" id="lbl-shine" min="0" max="250" value="140"></label>
+        <div class="mp-hint">How far each star's light spreads into the black around it.
+          At 0 they are plain discs.</div>
+        <label class="mp-field"><span>Flicker</span>
+          <select id="lbl-twinkle" class="map-filter">
+            <option value="off">off &mdash; steady</option>
+            <option value="subtle">subtle</option>
+            <option value="flicker">all stars flicker</option>
+          </select></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-rate"><span>Size stars by rating</span></label>
+        <label class="mp-row"><input type="checkbox" id="lbl-rate-artist" checked><span>&nbsp;&nbsp;&mdash; count artist ratings too</span></label>
+        <div class="mp-hint">Unrated tracks stay small but visible, so nothing disappears.</div>
+        <div class="mp-sep"></div>
         <label class="mp-field"><span>Line thickness <i id="lbl-lw-v">1.0&times;</i></span>
           <input type="range" id="lbl-lw" min="25" max="400" value="100"></label>
         <div class="mp-sep"></div>
@@ -226,34 +323,152 @@
         </div>
       </div>
     </div>
-    <button id="map-play" class="map-toggle on" type="button" title="pause / play the orbit (Space)">&#9208;</button>
-    <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
-      <input type="range" id="map-spin" min="0" max="100" value="10">
-    </label>
+    </div>
+    </div>
+    <div class="mt-row">
+    <div class="mt-group" role="group" aria-label="Motion">
+      <button id="map-play" class="map-toggle on" type="button" title="pause / play the orbit (Space)">&#9208;</button>
+      <label class="map-spin-wrap" title="orbit speed (drag to 0 to stop)">&#8635;
+        <input type="range" id="map-spin" min="0" max="100" value="10">
+      </label>
+      <button id="map-fly" class="map-toggle" type="button"
+              title="fly: stand in the field and move through it (V)">&#128640; fly</button>
+      <div class="map-lblwrap">
+        <button id="map-keys-head" class="map-toggle" type="button" title="navigation controls">&#9000; nav</button>
+        <div id="map-keys-body" class="map-panel" hidden>
+          <div class="mp-head">Orbit</div>
+          <div class="mk-row"><span>drag</span><b>orbit</b></div>
+          <div class="mk-row"><span>right-drag</span><b>pan</b></div>
+          <div class="mk-row"><span>scroll</span><b>zoom</b></div>
+          <div class="mk-row"><span>w / s</span><b>zoom</b></div>
+          <div class="mk-row"><span>a / d</span><b>orbit</b></div>
+          <div class="mk-row"><span>arrows</span><b>pan</b></div>
+          <div class="mk-row"><span>space</span><b>play / pause</b></div>
+          <div class="mk-row"><span>f / esc</span><b>fit / close</b></div>
+          <div class="mp-sep"></div>
+          <div class="mp-head">Fly (V)</div>
+          <div class="mk-row"><span>w / s</span><b>forward / back</b></div>
+          <div class="mk-row"><span>a / d</span><b>left / right</b></div>
+          <div class="mk-row"><span>q / e</span><b>down / up</b></div>
+          <div class="mk-row"><span>shift</span><b>faster</b></div>
+          <div class="mk-row"><span>drag / arrows</span><b>look</b></div>
+          <div class="mk-row"><span>scroll</span><b>speed</b></div>
+          <div class="mk-row"><span>f</span><b>land</b></div>
+        </div>
+      </div>
+    </div>
+    <!-- the active view's own controls: only while that view is on screen, so
+         the toolbar reads the same in every mode -->
+    <div id="map-modebar" class="mt-group map-modebar" hidden>
+    <span class="mb-cap" id="map-modebar-cap"></span>
+    <div class="mode-only" data-for="regions">
+      <div class="map-lblwrap">
+        <button id="reg-btn" class="map-toggle" type="button"
+                title="how far apart the genre clusters sit, and how far apart the stars inside them are">&#9678;&#8942;</button>
+        <div id="reg-panel" class="map-panel" hidden>
+          <div class="mp-head">Clusters</div>
+          <div class="mp-field"><span>Separation <i id="reg-sep-v">1.0&times;</i></span>
+            <input type="range" id="reg-sep" min="0" max="1000" value="0"></div>
+          <div class="mp-hint">How far from the middle the genre clusters sit. The biggest
+            genre stays at the core; the rest move out on their sphere.</div>
+          <div class="mp-sep"></div>
+          <div class="mp-head">Stars</div>
+          <div class="mp-field"><span>Spread <i id="reg-spread-v">1.0&times;</i></span>
+            <input type="range" id="reg-spread" min="0" max="1000" value="0"></div>
+          <div class="mp-hint">How far a cluster's stars reach from its centre, and its
+            subgenre knots from each other. Clusters stay put and grow into the space
+            between them, so raise Separation with it.</div>
+        </div>
+      </div>
+    </div>
+    <div class="mode-only" data-for="universe">
+    <select id="uni-by" class="map-filter"
+            title="What each galaxy in the Universe represents">
+      <option value="arch">galaxy = genre</option>
+      <option value="fam">galaxy = family</option>
+      <option value="vibe">galaxy = vibe</option>
+    </select>
+    <div class="map-lblwrap">
+      <button id="uni-btn" class="map-toggle" type="button"
+              title="how far apart the galaxies sit, how hard they pull on each other, and how far apart the stars inside them are">&#9737;&#8942;</button>
+      <div id="uni-panel" class="map-panel" hidden>
+        <div class="mp-head">Galaxies</div>
+        <div class="mp-field"><span>Separation <i id="uni-sep-v">1.0&times;</i></span>
+          <input type="range" id="uni-sep" min="0" max="1000" value="0"></div>
+        <div class="mp-hint">How much empty space the sky is made of. Bigger genres take
+          proportionally more room, so this stretches the gaps, not the galaxies.</div>
+        <div class="mp-sep"></div>
+        <div class="mp-field"><span>Gravity <i id="uni-grav-v">1.0&times;</i></span>
+          <input type="range" id="uni-grav" min="0" max="250" value="100"></div>
+        <div class="mp-hint">How hard genres that share tracks pull on each other. At 0 the
+          galaxies just spread out evenly; turn it up and the ones whose tracks are actually
+          each other&rsquo;s nearest neighbours drift together and start to swirl.</div>
+        <div class="mp-sep"></div>
+        <div class="mp-head">Stars</div>
+        <div class="mp-field"><span>Spread <i id="uni-spread-v">1.0&times;</i></span>
+          <input type="range" id="uni-spread" min="0" max="1000" value="0"></div>
+        <div class="mp-hint">How far apart the stars inside each galaxy sit. The galaxies stay
+          where they are and grow or shrink into the space between them &mdash; past about
+          1.5&times; neighbours start to touch, so raise Separation with it. Both dials go a
+          long way: Separation to 100&times;, Spread to 20&times;.</div>
+      </div>
+    </div>
+    </div>
+    <div class="mode-only" data-for="solar">
+    <select id="solar-pl" class="map-filter"
+            title="Which playlist to show as a solar system"></select>
+    <select id="solar-by" class="map-filter"
+            title="What decides how far out a track orbits">
+      <option value="similarity">rings: fit</option>
+      <option value="bpm">rings: tempo</option>
+      <option value="genre">rings: genre</option>
+    </select>
+    </div>
+    <div class="mode-only" data-for="tree">
+      <label class="mp-row mb-row" title="Keep only the genres the taxonomy recognises as electronic">
+        <input type="checkbox" id="tree-edm"><span>EDM only</span></label>
+      <div class="map-lblwrap">
+        <button id="tree-gen-btn" class="map-toggle" type="button" title="choose which genres are on the tree">&#9781; genres</button>
+        <div id="tree-gen-panel" class="map-panel" hidden>
+          <div class="mp-head">Genres on the tree</div>
+          <div class="flt-genbtns">
+            <button id="tree-gen-all" type="button">all</button>
+            <button id="tree-gen-none" type="button">none</button>
+          </div>
+          <div id="tree-gen-list" class="flt-genres"></div>
+          <div class="mp-hint">Untick a genre to take its branch off the tree. Counts are how
+            many tracks it holds.</div>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="mt-tail">
     <span class="map-hint" id="map-count">loading&hellip;</span>
-    <span class="spacer"></span>
-    <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
-    <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
+    <div class="mt-group" role="group" aria-label="Actions">
+      <button id="pl-btn-map" class="map-toggle pl-open" type="button" title="playlist">☰ <span class="pl-badge">0</span></button>
+      <button id="map-rebuild" type="button" title="rebuild the map from the library (after analysing new music elsewhere)">&#8635; rebuild</button>
+      <button id="map-reset" type="button" title="reset view">&#9737; view reset</button>
+    </div>
+    </div>
+    </div>
   </div>
   <div id="map-stage">
     <canvas id="map-canvas"></canvas>
     <div id="map-legend"></div>
-    <div id="map-keys">
-      <button id="map-keys-head" type="button" title="show / hide navigation controls">&#9000; nav</button>
-      <div id="map-keys-body">
-        <div class="mk-row"><span>drag</span><b>orbit</b></div>
-        <div class="mk-row"><span>right-drag</span><b>pan</b></div>
-        <div class="mk-row"><span>scroll</span><b>zoom</b></div>
-        <div class="mk-sep"></div>
-        <div class="mk-row"><span>w / s</span><b>zoom</b></div>
-        <div class="mk-row"><span>a / d</span><b>orbit</b></div>
-        <div class="mk-row"><span>arrows</span><b>pan</b></div>
-        <div class="mk-row"><span>space</span><b>play / pause</b></div>
-        <div class="mk-row"><span>f / esc</span><b>fit / close</b></div>
-      </div>
-    </div>
     <div id="map-tip" hidden></div>
     <div id="map-pop" hidden></div>
+    <!-- tree mode: clicking a branch samples a track from it -->
+    <div id="tree-card" hidden></div>
+    <!-- shown while /map is being built and downloaded; see loadMap() -->
+    <div id="map-loading" hidden>
+      <div class="ml-inner">
+        <div class="ml-title">Building your map</div>
+        <div class="ml-phase" id="ml-phase">Reading your library&hellip;</div>
+        <div class="ml-bar"><div class="ml-fill" id="ml-fill"></div></div>
+        <div class="ml-hint" id="ml-hint">The first load of a big library takes a few
+          seconds. It gets quicker after that.</div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -264,12 +479,27 @@
 
 <!-- bottom action bar -->
 <footer class="actionbar">
-  <label class="browse" for="picker">⊕ Browse files&hellip;</label>
-  <button id="batch-btn" type="button">⊕ batch folder</button>
-  <button id="vibe-btn" type="button">◈ vibes</button>
-  <button id="flag-btn" type="button" title="find likely-misread genres in your library">⚠ review reads</button>
-  <button id="label-btn" type="button" title="rank unlabeled tracks by similarity to a genre and confirm/reject them into training data">◎ label</button>
+  <label class="browse primary" for="picker" title="Pick audio files to analyse">⊕ Add music</label>
+  <button id="batch-btn" type="button" title="Analyse every audio file in a folder">⊕ Add a folder</button>
   <button id="pl-btn" class="pl-open" type="button" title="playlist">☰ playlist <span class="pl-badge">0</span></button>
+  <div class="an-morewrap">
+    <button id="an-more-btn" type="button" title="Less common tools">⋯ more</button>
+    <div id="an-more-panel" class="map-panel" hidden>
+      <div class="mp-head">More tools</div>
+      <button id="vibe-btn" class="an-moreitem" type="button">
+        <b>◈ Quick vibe panel</b>
+        <i>Add the tracks below to one of your vibes without leaving this tab.</i>
+      </button>
+      <button id="flag-btn" class="an-moreitem" type="button">
+        <b>⚠ Review likely misreads</b>
+        <i>Find tracks whose genre looks wrong, and fix them.</i>
+      </button>
+      <button id="label-btn" class="an-moreitem" type="button">
+        <b>◎ Teach a genre</b>
+        <i>Confirm or reject tracks to build training examples for a genre.</i>
+      </button>
+    </div>
+  </div>
   <span id="batch-status"></span>
   <span class="spacer"></span>
   <span id="count">0 tracks</span>
@@ -279,6 +509,32 @@
   <input id="picker" type="file" multiple
     accept=".mp3,.flac,.m4a,.mp4,.aac,.alac,.ogg,.oga,.opus,.wav,.aif,.aiff,.aifc,.wma,.wv,.ape,.mpc,.dsf,audio/*">
 </footer>
+
+<!-- the short clip the Map auditions for a selected track: its own transport and
+     volume, plus the switch deciding whether it or the full track is audible -->
+<div id="samplebar" aria-label="Sample">
+  <span class="sb-dot"></span>
+  <div class="sb-meta">
+    <div class="sb-title">—</div>
+    <div class="sb-sub">sample</div>
+  </div>
+  <button class="sb-btn sb-play" type="button" title="play / pause the sample">&#9654;</button>
+  <button class="sb-btn sb-replay" type="button" title="play the clip again">&#8635;</button>
+  <button class="sb-btn sb-stop" type="button" title="stop the sample">&#9632;</button>
+  <div class="sb-seek"><div class="sb-seekfill"></div></div>
+  <div class="vol sb-vol">
+    <button class="vol-mute" type="button" title="mute the sample">&#128266;</button>
+    <input class="vol-slider" type="range" min="0" max="100" step="1" value="70"
+           aria-label="sample volume">
+  </div>
+  <div class="sb-listen" hidden>
+    <span class="sb-lsn-lbl">listening to</span>
+    <button class="sb-lsn" type="button" data-listen="sample"
+            title="hear the sample of the selected track">sample</button>
+    <button class="sb-lsn" type="button" data-listen="track"
+            title="hear the track in the player below">track</button>
+  </div>
+</div>
 
 <!-- persistent now-playing bar (reflects List + Map playback) -->
 <div id="nowbar" aria-label="Now playing">
@@ -293,13 +549,21 @@
   <span class="nb-time nb-cur">0:00</span>
   <div class="nb-seek" title="seek"><div class="nb-seekfill"></div></div>
   <span class="nb-time nb-dur">0:00</span>
+  <button class="nb-btn nb-replay" type="button" title="play from the start">&#8635;</button>
+  <div class="vol nb-vol">
+    <button class="vol-mute" type="button" title="mute the track">&#128266;</button>
+    <input class="vol-slider" type="range" min="0" max="100" step="1" value="100"
+           aria-label="track volume">
+  </div>
   <button class="nb-btn nb-close" type="button" title="stop">&#10005;</button>
 </div>
 
 <!-- load order matters: app.js defines shared helpers used by the others;
-     nowbar.js needs PLAYER (player.js) and is used by map.js -->
+     nowbar.js needs PLAYER (player.js) and is used by map.js; audio.js needs
+     PLAYER and is called by nowbar.js and map.js -->
 <script src="/static/app.js"></script>
 <script src="/static/player.js"></script>
+<script src="/static/audio.js"></script>
 <script src="/static/panels.js"></script>
 <script src="/static/nowbar.js"></script>
 <script src="/static/playlist.js"></script>

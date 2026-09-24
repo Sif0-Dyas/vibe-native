@@ -57,3 +57,6 @@ desktop_backend.log.prev
 src/vibenative/data/genres_electronic.json
 # Cached HTTP responses, so re-runs cost the upstream sources nothing.
 .cache/
+
+# Evaluation datasets (GiantSteps clone + ~850 MB of audio) and PCP caches
+datasets/

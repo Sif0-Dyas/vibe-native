@@ -28,6 +28,14 @@ module.exports = [
         // Keep this list in sync with the files (grep for the names) -- a REAL
         // typo/rename across the split still trips no-undef in the caller.
         escapeHtml: "writable", // app.js  -> used by map.js, panels.js
+        adjustPanelHtml: "writable", // app.js -> used by map.js (the adjust panel)
+        wireAdjustPanel: "writable", // app.js -> used by map.js
+        fillGenreList: "writable", // app.js -> used by map.js (shared genre datalist)
+        nameHue: "writable", //     app.js -> used by map.js, vibes.js (name -> hue)
+        PREFS: "writable", //       app.js -> used by map.js, options.js (app-wide preferences)
+        setPref: "writable", //     app.js -> used by options.js
+        THEMES: "writable", //      app.js -> used by options.js
+        EQ_STYLES: "writable", //   app.js -> used by options.js
         familyOf: "writable", //   app.js  -> used by map.js
         fmtTime: "writable", //    app.js  -> used by player.js
         PLAYER: "writable", //     player.js -> used by app.js, panels.js
@@ -35,6 +43,7 @@ module.exports = [
         HASH_FILES: "writable", // player.js -> used by app.js, nowbar.js
         FSH: "writable", //        player.js -> used by app.js, nowbar.js (FS Access handles)
         attachPlayer: "writable", // player.js -> used by app.js
+        AUDIO: "writable", //      audio.js -> used by player.js, nowbar.js, map.js
         // Rows (app.js) <-> side panels (panels.js) split:
         styleInfo: "writable", //  app.js  -> used by panels.js (sibling editor dots)
         results: "writable", //    app.js  -> used by panels.js (sibling editor re-applies to rows)
@@ -44,6 +53,11 @@ module.exports = [
         renderTags: "writable", //       panels.js -> used by app.js (finishRow)
         renderLookup: "writable", //     panels.js -> used by app.js (finishRow)
         renderVibeMatches: "writable", // panels.js -> used by app.js (finishRow)
+        // Key notation (Camelot vs. musical): one preference, read wherever a
+        // key is written, so the map, the rows and the export cannot disagree.
+        KEYVIEW: "writable", //    app.js -> used by options.js (marks the live one)
+        keyText: "writable", //    app.js -> used by map.js (keyfmt, hover label)
+        setKeyView: "writable", // app.js -> used by options.js (the control)
       },
     },
     rules: {

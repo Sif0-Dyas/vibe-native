@@ -168,3 +168,31 @@ def test_restore_skips_an_override_whose_track_is_gone(snap):
 def test_restore_rejects_an_unknown_id(snap):
     with pytest.raises(FileNotFoundError):
         snap.restore("20990101-000000-nope")
+
+
+def test_same_tick_snapshots_still_list_newest_first(snap, monkeypatch):
+    """Windows' wall clock ticks every 15.6 ms, so two snapshots taken back to
+    back record an identical `created` -- and a sort on that alone falls back to
+    the filesystem's alphabetical order, putting "...-first" ahead of the newer
+    "...-second". Freeze the clock so the tie is certain rather than 84% likely.
+    """
+    monkeypatch.setattr(snap.time, "time", lambda: 1_700_000_000.0)
+    a = snap.create("first")
+    b = snap.create("second")
+    assert a["created"] == b["created"], "the clock was meant to be frozen"
+
+    ids = [m["id"] for m in snap.list_all()]
+    assert ids[:2] == [b["id"], a["id"]]
+
+
+def test_snapshots_from_older_versions_still_list(snap):
+    """Snapshots written before `seq` existed carry no such key; they must still
+    sort (against each other and against new ones) instead of raising."""
+    new = snap.create("new")
+    old = snap.SNAPSHOT_DIR / "20200101-000000-legacy"
+    old.mkdir(parents=True)
+    (old / "meta.json").write_text(
+        json.dumps({"id": old.name, "label": "legacy", "created": 1.0}), encoding="utf-8"
+    )
+    ids = [m["id"] for m in snap.list_all()]
+    assert ids[0] == new["id"] and old.name in ids

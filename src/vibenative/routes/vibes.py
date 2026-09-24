@@ -229,21 +229,91 @@ def vibes_members(vid):
     )
 
 
+@bp.get("/vibes/membership")
+def vibes_membership():
+    """Every vibe with the hashes of its member tracks, in one request.
+
+    The map's Universe view can cluster by vibe, which means it needs the whole
+    membership table before it can lay out a single frame. Walking
+    ``/vibes/<id>/members`` per vibe would be one request per vibe on every map
+    open; this is one query total.
+
+    Returns hashes only -- no titles, no weights. The map already holds every
+    track it draws and looks them up by hash, so anything more would be payload
+    it throws away.
+    """
+    with _db_lock, closing(db()) as conn, conn as c:
+        rows = c.execute(
+            "SELECT v.id, v.name, vt.hash FROM vibes v "
+            "LEFT JOIN vibe_tracks vt ON vt.vibe_id = v.id ORDER BY v.name"
+        ).fetchall()
+    out = {}
+    for vid, name, h in rows:
+        if vid not in out:
+            out[vid] = {"id": vid, "name": name, "hashes": []}
+        if h:
+            out[vid]["hashes"].append(h)
+    return jsonify(list(out.values()))
+
+
+def _vibe_centroids():
+    """[(id, name, centroid)] for every vibe that has one. Computed once per
+    request: a centroid is a pass over the vibe's members, and asking for it
+    per track would repeat that for every row on screen."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        vibes = c.execute("SELECT id, name FROM vibes").fetchall()
+    out = []
+    for vid, name in vibes:
+        cen = vibe_centroid(vid)
+        if cen is not None:
+            out.append((vid, name, cen))
+    return out
+
+
+def _matches(emb, centroids):
+    out = [
+        {"id": vid, "name": name, "sim": round(cosine(emb, cen), 4)} for vid, name, cen in centroids
+    ]
+    out.sort(key=lambda x: -x["sim"])
+    return out
+
+
 @bp.get("/vibes/match/<h>")
 def vibes_match(h):
     """Similarity of one track against every vibe's centroid."""
     emb = track_embedding(h)
     if emb is None:
         return jsonify({"error": "track not in database"}), 404
+    return jsonify(_matches(emb, _vibe_centroids()))
+
+
+@bp.get("/vibes/match")
+def vibes_match_batch():
+    """``?hashes=a,b,c`` -> ``{hash: [{id, name, sim}, ...]}``.
+
+    The Analyzer asks for every row that scrolls into view together: one
+    request, the centroids computed once, and a track with no embedding is
+    simply absent from the answer rather than a 404 for the lot.
+    """
+    import numpy as np
+
+    from .tags import _hashes_arg
+
+    hashes = _hashes_arg()
+    if not hashes:
+        return jsonify({})
+    centroids = _vibe_centroids()
+    out = {}
     with _db_lock, closing(db()) as conn, conn as c:
-        vibes = c.execute("SELECT id, name FROM vibes").fetchall()
-    out = []
-    for vid, name in vibes:
-        cen = vibe_centroid(vid)
-        if cen is None:
-            continue
-        out.append({"id": vid, "name": name, "sim": round(cosine(emb, cen), 4)})
-    out.sort(key=lambda x: -x["sim"])
+        for i in range(0, len(hashes), 500):
+            chunk = hashes[i : i + 500]
+            q = ",".join("?" * len(chunk))
+            for h, blob in c.execute(
+                f"SELECT hash, embedding FROM tracks WHERE hash IN ({q})",  # nosec B608
+                chunk,
+            ):
+                if blob is not None:
+                    out[h] = _matches(np.frombuffer(blob, dtype=np.float32), centroids)
     return jsonify(out)
 
 

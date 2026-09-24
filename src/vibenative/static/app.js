@@ -13,6 +13,113 @@
    The WebView renderer can crash on its own (e.g. OOM during a big batch),
    taking its console with it — so POST milestones + uncaught errors to the
    backend, where they persist in the log file. */
+/* The little waveform mark that fronts a tile on the Genres and Vibes tabs.
+
+   Drawn deterministically FROM THE NAME rather than from random noise, so it is
+   that genre's mark -- stable across reloads and identical on every machine --
+   instead of decoration that reshuffles on each render.
+
+   Shared rather than copied into both tabs: the two tabs are supposed to look
+   like one product, and a duplicated drawing primitive is exactly what drifts
+   apart the next time either side is touched. */
+function vibeWaveSvg(color, seed){
+  var n = 26, bars = [], acc = 0, i;
+  for (i = 0; i < String(seed).length; i++) acc = (acc * 31 + String(seed).charCodeAt(i)) % 9973;
+  for (i = 0; i < n; i++){
+    acc = (acc * 1103515245 + 12345) % 2147483648;
+    var h = 3 + (acc % 100) / 100 * 15;                    // 3..18 of a 22 box
+    bars.push('<rect x="' + (i * 2.2) + '" y="' + ((22 - h) / 2).toFixed(1) +
+              '" width="1.3" height="' + h.toFixed(1) + '" rx="0.6"/>');
+  }
+  return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
+         'style="color:' + escapeHtml(color == null ? '' : color) + '">' + bars.join('') + '</svg>';
+}
+window.vibeWaveSvg = vibeWaveSvg;
+
+/* A stable hue (0..359) from a name. Anything with no palette entry -- a
+   genre family the palette does not slot, a vibe -- is coloured by this, and
+   it is one function so a vibe's swatch on the Vibes tab and its galaxy in
+   the Universe are the same colour by construction, not by coincidence. */
+/* exported nameHue */ // used by map.js and vibes.js (shared scope)
+function nameHue(name){
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return ((h % 360) + 360) % 360;
+}
+
+/* The Genres and Vibes tabs share one card grid: select a tile to expand its
+   card, one at a time -- an open card spans the full grid row, so several at
+   once undoes the grid. `onOpen(cardEl)` runs for the card that just opened. */
+function wireTileToggle(body, tiles, onOpen){
+  tiles.forEach(function (t) {
+    t.onclick = function () {
+      var cardEl = t.closest('.gen-key');
+      var wasOpen = cardEl.classList.contains('open');
+      body.querySelectorAll('.gen-key.open').forEach(function (o) {
+        o.classList.remove('open');
+        o.querySelector('.gen-detail').hidden = true;
+      });
+      if (wasOpen) return;
+      cardEl.classList.add('open');
+      cardEl.querySelector('.gen-detail').hidden = false;
+      if (onOpen) onOpen(cardEl);
+    };
+  });
+}
+window.wireTileToggle = wireTileToggle;
+
+/* Folding cards. Any .opt-fold card closes and opens from its heading; the
+   state is remembered per heading so a tab comes back the way you left it.
+   "How this works" starts closed (the class is in its markup), everything
+   else starts open. Wired once, on the document, so a card re-rendered by its
+   tab needs nothing further -- the tab calls applyFolds() after rendering. */
+let FOLDS = {};
+try { FOLDS = JSON.parse(localStorage.getItem('vibeFolds') || '{}') || {}; } catch (_) { /* private mode */ }
+// Keyed on the heading's own words, not its count badge: "House 2472 · 40%"
+// changes with the library, and the fold should survive that.
+const foldKey = card => {
+  const h = card.querySelector('h3');
+  if (!h) return '';
+  const t = h.firstChild && h.firstChild.nodeType === 3 ? h.firstChild.textContent : h.textContent;
+  return t.trim();
+};
+document.addEventListener('click', e => {
+  const h = e.target.closest('.opt-fold > h3');
+  if (!h) return;
+  const card = h.parentElement;
+  const closed = card.classList.toggle('collapsed');
+  FOLDS[foldKey(card)] = closed;
+  try { localStorage.setItem('vibeFolds', JSON.stringify(FOLDS)); } catch (_) { /* private mode */ }
+});
+window.applyFolds = root => {
+  for (const card of root.querySelectorAll('.opt-fold')){
+    const k = foldKey(card);
+    if (k in FOLDS) card.classList.toggle('collapsed', !!FOLDS[k]);
+  }
+};
+
+/* The counter card's ranked bars, shared by the Genres and Vibes tabs so the
+   two read as one product. `rows` is [{name, count, color, badge?, title?}],
+   biggest first; the bar is scaled against the BIGGEST row, not against 100%,
+   or in a library with one dominant genre every other row renders as a
+   sliver. `badge` is extra markup after the name; `title` the row's tooltip. */
+function statRowsHtml(rows, total){
+  var max = rows.length ? Math.max(1, rows[0].count) : 1;
+  return rows.map(function (r) {
+    var pct = total ? (r.count / total) * 100 : 0;
+    var title = r.title || (r.name + ' — ' + r.count + ' track' + (r.count === 1 ? '' : 's'));
+    return '<div class="gen-stat-row" title="' + escapeHtml(title) + '">' +
+      '<span class="gen-stat-name"><i class="gen-stat-dot" style="background:' +
+        escapeHtml(r.color) + '"></i>' + escapeHtml(r.name) + (r.badge || '') + '</span>' +
+      '<span class="gen-stat-bar"><span style="width:' + ((r.count / max) * 100).toFixed(1) +
+        '%;background:' + escapeHtml(r.color) + '"></span></span>' +
+      '<span class="gen-stat-n">' + r.count + '</span>' +
+      '<span class="gen-stat-pct">' + pct.toFixed(1) + '%</span>' +
+    '</div>';
+  }).join('');
+}
+window.statRowsHtml = statRowsHtml;
+
 function clientLog(msg, level){
   try {
     fetch('/clientlog', {
@@ -120,12 +227,61 @@ function mainGenreSet(segments, expand){
 function bandColor(g, mainSet){ return (mainSet && !mainSet.has(g)) ? OTHER_COLOR : colorFor(g); }
 function bandLabel(g, mainSet){ return (mainSet && !mainSet.has(g)) ? 'Other' : g; }
 
+/* ===================== PREFERENCES ================================
+   The app-wide settings the Options tab edits, in one persisted object. Each
+   screen keeps its own view state (map labels, the Universe sliders, the
+   library columns) under its own key; these are the choices that cut across
+   screens or that a screen has no natural place to ask about. Read them
+   through PREFS; change them through setPref, which persists and applies. */
+const PREFS_DEFAULTS = {
+  sampleSeconds: 22,        // how long a preview clip runs
+  sampleFrom: 'drop',       // 'drop' | 'middle' | 'start' -- where it starts
+  autoSample: true,         // cue a clip when a star is selected on the map
+  defaultMap: 'regions',    // the map view the Map tab opens on
+  uiScale: 100,             // whole-app zoom, percent
+  theme: 'neon',            // see THEMES at the end of app.css
+  eqStyle: 'bars',          // the header graphic: bars | blocks | dots | glow | wave | stars | vinyl | off
+  analyzerIdentity: 'v2',   // the Analyzer's default lenses (see GLOBAL)
+  analyzerSeg: 'hysteresis',
+};
+const PREFS = Object.assign({}, PREFS_DEFAULTS);
+try { Object.assign(PREFS, JSON.parse(localStorage.getItem('vibePrefs') || '{}') || {}); } catch (_) { /* private mode */ }
+const PREF_LISTENERS = [];        // (key, value) => void, for screens that react live
+function setPref(key, value){
+  if (!(key in PREFS_DEFAULTS)) return;
+  PREFS[key] = value;
+  try { localStorage.setItem('vibePrefs', JSON.stringify(PREFS)); } catch (_) { /* private mode */ }
+  if (key === 'uiScale') applyUiScale();
+  if (key === 'theme') applyTheme();
+  if (key === 'eqStyle') applyEqStyle();
+  for (const fn of PREF_LISTENERS) fn(key, value);
+}
+/* UI scale is a CSS zoom on the body: the app is laid out in pixels, so a
+   root font-size would only scale the text. Chromium honours zoom, and both
+   the browser and the desktop shell are Chromium. */
+function applyUiScale(){
+  const z = Math.max(60, Math.min(160, Number(PREFS.uiScale) || 100));
+  document.body.style.zoom = z === 100 ? '' : (z / 100);
+}
+applyUiScale();
+/* The theme is a data attribute on the root; the stylesheet does the rest.
+   The page head applies it before the first paint from the same preference. */
+const THEMES = [['neon', 'Neon'], ['light', 'Light'], ['midnight', 'Midnight'],
+                ['synthwave', 'Synthwave'], ['forest', 'Forest'], ['ember', 'Ember']];
+function applyTheme(){
+  const t = THEMES.some(([k]) => k === PREFS.theme) ? PREFS.theme : 'neon';
+  if (t === 'neon') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+}
+applyTheme();
+
 /* ===================== ANALYZER LENSES ===========================
    Two independent switches, both recomputed from the per-frame top-k data:
      identity  : 'v2' (salience) | 'v1' (flat % of track)   -> side breakdown
      seg       : 'raw' | 'hysteresis' | 'sibling'           -> waveform stream
-   GLOBAL holds the defaults; each row may override either. */
-const GLOBAL = {identity: 'v2', seg: 'hysteresis'};
+   GLOBAL holds the defaults (from PREFS, so they survive a restart and the
+   Options tab can set them); each row may override either. */
+const GLOBAL = {identity: PREFS.analyzerIdentity, seg: PREFS.analyzerSeg};
 
 // near-synonym clusters that flicker; member -> canonical name. Editable.
 const SIBLING_GROUPS = {
@@ -253,6 +409,121 @@ window.loadTrackByHash = async (hash) => {
   }catch(_){ return false; }
 };
 
+/* How a key is written. Camelot ("8A") is what you mix by; the musical name
+   ("A min") is what you read. The app showed both, everywhere, always -- fine on
+   one row and noise across a library -- so which of them you see is a choice.
+   Per browser, not per track: it is a reading preference, not data. */
+const KEYVIEW = { mode: 'both' };                  // 'both' | 'camelot' | 'musical'
+const KEYVIEW_MODES = ['both', 'camelot', 'musical'];
+try {
+  const m = localStorage.getItem('vibeKeyView');
+  if (KEYVIEW_MODES.includes(m)) KEYVIEW.mode = m;
+} catch (_) { /* private mode */ }
+
+/* One track's key, written the way you asked to read it. `t` is anything
+   carrying camelot / key / scale: an analysis payload, a map node, a saved row.
+   Each mode falls back to the other notation rather than rendering blank -- a
+   track the analyser found a key for but no Camelot code still has a key, and
+   showing nothing would read as "no key" instead of "not in that notation".
+   keyParts() decides which notations to show ({cam, mus}, either may be
+   empty); keyText() joins them, and the Analyzer row marks them up. */
+function keyParts(t){
+  const cam = (t && t.camelot) ? String(t.camelot) : '';
+  const mus = (t && t.key) ? `${t.key} ${(t.scale || '').slice(0, 3)}`.trim() : '';
+  if (KEYVIEW.mode === 'camelot') return { cam, mus: cam ? '' : mus };
+  if (KEYVIEW.mode === 'musical') return { cam: mus ? '' : cam, mus };
+  return { cam, mus };
+}
+/* Correcting a key. The detector is a trained model (docs/KEY_SPEC.md) and its
+   training set is whatever music it was fitted on -- public EDM key sets
+   disagree with each other by several points, so the labels that describe THIS
+   library best are the ones its owner makes. Every correction here is stored
+   apart from the analysis (so re-analysis cannot wipe it) and is a training
+   example `tools/train_key_templates.py --dataset library` can learn from.
+   Picking the same key again clears the correction, restoring the detector's. */
+const KEY_CHOICES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+let keyMenu = null;
+function closeKeyMenu(){ if (keyMenu){ keyMenu.remove(); keyMenu = null; } }
+document.addEventListener('click', e => {
+  if (keyMenu && !keyMenu.contains(e.target) && !e.target.closest('.keyrow')) closeKeyMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKeyMenu(); });
+
+function openKeyMenu(anchorEl, track, repaint){
+  if (keyMenu && keyMenu._anchor === anchorEl){ closeKeyMenu(); return; }
+  closeKeyMenu();
+  if (!track || !track.hash) return;
+  keyMenu = document.createElement('div');
+  keyMenu._anchor = anchorEl;
+  keyMenu.className = 'keymenu';
+  const cells = mode => KEY_CHOICES.map(k => {
+    const on = track.key === k && track.scale === mode;
+    return `<button type="button" class="keypick${on ? ' on' : ''}" data-key="${k}" data-scale="${mode}">` +
+      `${escapeHtml(k)}</button>`;
+  }).join('');
+  keyMenu.innerHTML =
+    `<div class="keymenu-lbl">minor</div><div class="keymenu-grid">${cells('minor')}</div>` +
+    `<div class="keymenu-lbl">major</div><div class="keymenu-grid">${cells('major')}</div>` +
+    (track.key_source === 'manual'
+      ? `<button type="button" class="keymenu-clear">use the detector's key</button>` : '') +
+    `<div class="keymenu-msg"></div>`;
+  document.body.appendChild(keyMenu);
+  const r = anchorEl.getBoundingClientRect();
+  keyMenu.style.left = Math.max(4, Math.min(window.innerWidth - keyMenu.offsetWidth - 4, r.left)) + 'px';
+  keyMenu.style.top = (window.scrollY + r.bottom + 4) + 'px';
+
+  const msg = keyMenu.querySelector('.keymenu-msg');
+  async function send(body){
+    msg.textContent = 'saving\u2026';
+    try {
+      const res = await fetch(`/key/${track.hash}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+      });
+      const j = await res.json();
+      if (!res.ok) { msg.textContent = j.error || 'could not save'; return; }
+      track.key = j.key; track.scale = j.scale; track.camelot = j.camelot; track.key_source = j.key_source;
+      closeKeyMenu();
+      if (repaint) repaint();
+      if (window.reloadLibrary) window.reloadLibrary();
+    } catch (_) { msg.textContent = 'could not reach the app'; }
+  }
+  keyMenu.querySelectorAll('.keypick').forEach(b => b.addEventListener('click', () => {
+    const same = b.classList.contains('on') && track.key_source === 'manual';
+    send(same ? {key: null} : {key: b.dataset.key, scale: b.dataset.scale});
+  }));
+  const clear = keyMenu.querySelector('.keymenu-clear');
+  if (clear) clear.addEventListener('click', () => send({key: null}));
+}
+
+function keyText(t){
+  const k = keyParts(t);
+  return [k.cam, k.mus].filter(Boolean).join(' ');
+}
+
+/* exported setKeyView */ // called from options.js's Appearance card (shared scope)
+/* Change it everywhere at once. The rows re-render in place; the map is told so
+   an open popup and the hover label stop disagreeing with the setting. */
+function setKeyView(mode){
+  if (!KEYVIEW_MODES.includes(mode) || mode === KEYVIEW.mode) return;
+  KEYVIEW.mode = mode;
+  try { localStorage.setItem('vibeKeyView', mode); } catch (_) { /* private mode */ }
+  for (const r of results) if (r.row && r.row._renderKey) r.row._renderKey();
+  if (typeof window.vibeKeyViewChanged === 'function') window.vibeKeyViewChanged();
+}
+
+/* Mark a row you were just pointed at. A track that was already analysed does
+   no work when you drop it again, so without this the list looks identical and
+   the drop reads as ignored. Self-clearing, or a session's worth of drops would
+   leave every row you ever re-added wearing the marker. */
+function flashRow(row){
+  if (!row || !row.isConnected) return;
+  row.classList.remove('justfound');
+  void row.offsetWidth;                       // restart the animation
+  row.classList.add('justfound');
+  clearTimeout(row._flashT);
+  row._flashT = setTimeout(() => row.classList.remove('justfound'), 2000);
+}
+
 function addRow(file){
   emptyEl.style.display = 'none';
   const row = document.createElement('div');
@@ -314,7 +585,7 @@ function drawWave(canvas, peaks, fallbackColor, segments, focus, mainSet, overri
     if (overrides && overrides.length){
       for (const o of overrides){ if (f >= o.a && f < o.b){ ov = o; break; } }
     }
-    if (ov){ color = colorFor(ov.genre); label = 'ovr ' + ov.genre; }
+    if (ov){ color = colorFor(ov.genre); label = 'ovr:' + ov.genre; }
     // boundary tick where the displayed genre changes (Other counts as one genre)
     if (label !== lastLabel && lastLabel !== null){
       ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(255,255,255,.20)';
@@ -449,6 +720,26 @@ function finishRow(row, data, file){
   const pcol = colorFor(primary.style);
   row.querySelector('.title').textContent = data.title;
 
+  /* The genre cell is a rendered body plus a fixed strip of controls. They were
+     the same element, so every re-render of the blend -- a recolour, a lens
+     change, an adjustment -- wiped the buttons underneath it. Splitting them
+     means the read can redraw as often as it likes and the controls stay put. */
+  const genreCell = row.children[2];
+  genreCell.innerHTML = '';
+  const genreBody = document.createElement('div');
+  genreBody.className = 'genre-body';
+  genreCell.appendChild(genreBody);
+
+  // A blend the user has bent by hand (see wireRowAdjust). Sent with the payload
+  // so a track adjusted on the map already reads adjusted here, with no round-trip.
+  row._adjusted = (data.adjusted && data.adjusted.length) ? data.adjusted : null;
+  // A manual override outranks both, which is the server's own precedence
+  // (routes/_shared.py: override > adjustments > relabel > salience). It was
+  // never read here, so a track you overrode last week came back to the Analyzer
+  // still showing the model's read -- the Map and the Library called it one thing
+  // and this screen called it another.
+  row._override = data.override || null;
+
   /* waveform under the title, painted by per-segment genre, with magnifier */
   let renderGenreCell = () => {};   // assigned below; called on smoothing change
   if (data.waveform && data.waveform.length){
@@ -475,9 +766,9 @@ function finishRow(row, data, file){
 
     const controls = document.createElement('div');
     controls.className = 'wavehint';
-    controls.innerHTML = `<span class="restag" title="genre-boundary resolution">~2s</span>` +
-      `<button class="finebtn" type="button" title="re-analyze this track at ~0.5s resolution (slower)">\u2295 fine detail</button>` +
-      `<span class="smoothnote" title="single-frame genre flickers are smoothed out (~1s)">smoothed ~1s</span>`;
+    controls.innerHTML = `<span class="restag" title="Each coloured band along the waveform covers about two seconds of audio.">2s bands</span>` +
+      `<button class="finebtn" type="button" title="Re-read this track in finer slices (~0.5s). Slower, but catches short sections.">\u2295 closer look</button>` +
+      `<span class="smoothnote" title="One-off single-frame genre flickers are ignored, so the bands do not strobe.">steady view</span>`;
     const resTag = controls.querySelector('.restag');
     const fineBtn = controls.querySelector('.finebtn');
 
@@ -540,14 +831,29 @@ function finishRow(row, data, file){
     applySmoothing();
     requestAnimationFrame(() => redraw(null));
 
-    // upgrade to the DAW-style min/max/rms waveform: render the stored envelope
+    // Upgrade to the DAW-style min/max/rms waveform: render the stored envelope
     // instantly, then fetch the detailed one (pre-cached for new tracks, decoded
-    // once for older ones) and repaint. A 404 (no server audio) keeps the envelope.
-    if (data.hash){
-      fetch(`/waveform/${data.hash}`).then(r => r.ok ? r.json() : null).then(mm => {
+    // once for older ones) and repaint.
+    //
+    // A 404 means the server can't reach this track's audio -- no cached
+    // waveform and no file path, which is every track that was dragged in and
+    // analysed without ever being linked to a folder. Those used to be stuck on
+    // the coarse envelope permanently. When the drop is what put the row here we
+    // are holding the audio, so send it: one decode, cached for good, and the
+    // row redraws at full detail. Without a file in hand the envelope stands.
+    row._fetchWave = async () => {
+      try {
+        let r = await fetch(`/waveform/${data.hash}`);
+        if (r.status === 404 && file){
+          const fd = new FormData();
+          fd.append('file', file);
+          r = await fetch(`/waveform/${data.hash}`, {method: 'POST', body: fd});
+        }
+        if (!r.ok) return;
+        const mm = await r.json();
         if (mm && mm.max && mm.max.length){ waveState.mm = mm; redraw(null); }
-      }).catch(() => {});
-    }
+      } catch (_) { /* offline, or the row went away -- the envelope stands */ }
+    };
 
     function showAt(clientX){
       const rect = c.getBoundingClientRect();
@@ -755,13 +1061,25 @@ function finishRow(row, data, file){
   } else {
     bpmHtml = `<div><span class="bpm">${data.bpm.toFixed(1)}</span><span class="unit">BPM</span></div>`;
   }
-  const keyHtml = data.key
-    ? `<div class="keyrow">` +
-      (data.camelot ? `<span class="camelot">${escapeHtml(data.camelot)}</span>` : '') +
-      `${escapeHtml(data.key)} ${escapeHtml((data.scale||'').slice(0,3))}</div>`
-    : `<div class="keyrow">no key</div>`;
-  row.children[1].innerHTML = bpmHtml + keyHtml +
-    `<div class="dur">${fmtDur(data.duration)}</div>`;
+  // Split so the notation can change under a row that is already on screen --
+  // rebuilding the whole cell would take the waveform's neighbours with it.
+  const keyHtmlFor = () => {
+    const k = keyParts(data);              // same notation rule as keyText
+    const fixed = data.key_source === 'manual';
+    const title = fixed ? 'key corrected by hand \u2014 click to change' : 'click to correct the key';
+    const inner = (!k.cam && !k.mus) ? 'no key'
+      : (k.cam ? `<span class="camelot">${escapeHtml(k.cam)}</span>` : '') + escapeHtml(k.mus);
+    return `<div class="keyrow${fixed ? ' keyfixed' : ''}" title="${title}" role="button" tabindex="0">` +
+      inner + `</div>`;
+  };
+  const paintMusical = () => {
+    row.children[1].innerHTML = bpmHtml + keyHtmlFor() +
+      `<div class="dur">${fmtDur(data.duration)}</div>`;
+    const kr = row.children[1].querySelector('.keyrow');
+    if (kr) kr.addEventListener('click', () => openKeyMenu(kr, data, paintMusical));
+  };
+  paintMusical();
+  row._renderKey = paintMusical;
 
   /* genre cell -- driven by the smoothed timeline when segments exist, else
      by the model's averaged confidences. Re-runs when the smoothing changes. */
@@ -769,14 +1087,32 @@ function finishRow(row, data, file){
     const ws = row._waveState;
     const useTimeline = ws && ws.segments && ws.segments.length;
     let shown, srcLabel;
+    if (row._override){
+      // One word, by your own hand. No blend to draw: the whole point of an
+      // override is that it replaced the read rather than bending it.
+      const oc = colorFor(row._override), oi = styleInfo(row._override);
+      genreBody.innerHTML =
+        `<div class="genre-src">manual override</div>` +
+        `<span class="chip overridden" style="--c:${oc}" title="manually set">` +
+        `<span class="dot ${oi.shape}" style="background:${oc}"></span>` +
+        `${escapeHtml(row._override)}</span>`;
+      row._genreList = [{style: row._override, score: 1}];
+      return;
+    }
     const idMode = (row._idOverride || GLOBAL.identity);
-    if (idMode === 'v2' && data.salience && data.salience.length){
+    if (row._adjusted && row._adjusted.length){
+      // Hand adjustments outrank every automatic read: they ARE the read now.
+      // Shown whole rather than thresholded -- a genre you pushed down to 1%
+      // disappearing from the list makes the press look like it did nothing.
+      shown = row._adjusted.map(s => ({style:s.style, score:s.score, other:false}));
+      srcLabel = 'genre · adjusted by hand';
+    } else if (idMode === 'v2' && data.salience && data.salience.length){
       const named = data.salience.filter(s => s.score >= 0.03);
       const namedSum = named.reduce((a, s) => a + s.score, 0);
       const otherSum = Math.max(0, 1 - namedSum);
       shown = named.map(s => ({style:s.style, score:s.score, other:false}));
       if (otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
-      srcLabel = 'v2 · genre identity (energy-weighted)';
+      srcLabel = 'genre · weighted by energy';
     } else if (useTimeline){
       // v1: flat % of track by frame count, over the lens-processed stream
       const all = timelinePercents(ws.segments);
@@ -832,7 +1168,7 @@ function finishRow(row, data, file){
     const headFam = head.other ? null : familyOf(head.style);
     const famHtml = (headFam && headFam.toLowerCase() !== head.style.toLowerCase())
       ? `<span class="famtag" title="PulseRoots family roll-up">\u25c7 ${escapeHtml(headFam)}</span>` : '';
-    row.children[2].innerHTML =
+    genreBody.innerHTML =
       `<div class="genre-src">${srcLabel}</div>` +
       `<span class="chip" style="--c:${hcol}"
         title="${escapeHtml(head.style)} \u2014 ${srcLabel}">
@@ -846,28 +1182,46 @@ function finishRow(row, data, file){
   row._renderGenre = renderGenreCell;
 
   // click a genre swatch to recolor it everywhere (delegated; survives re-renders)
-  if (!row.children[2]._recolorBound){
-    row.children[2]._recolorBound = true;
-    row.children[2].addEventListener('click', e => {
+  if (!genreCell._recolorBound){
+    genreCell._recolorBound = true;
+    genreCell.addEventListener('click', e => {
       const sw = e.target.closest('.swc');
       if (!sw) return;
       openColorPicker(sw.dataset.genre.toLowerCase(), sw.dataset.hex, sw);
     });
   }
 
+  /* ---- adjust: bend the blend instead of replacing it ----
+     An override answers "what is this track" with one word and throws away
+     everything the model got right. This nudges each genre's share up or down
+     and renormalises, so "this is a VERY house track" and "that Tech Trance is a
+     misread" are both sayable without flattening the rest to zero. Same endpoint
+     and the same stored steps the map's popup writes, so a track adjusted on one
+     screen reads identically on the other. */
+  const adjBtn = document.createElement('button');
+  adjBtn.className = 'override-btn adj-btn';
+  adjBtn.textContent = '⚖ adjust';
+  adjBtn.title = 'nudge how much of each genre this track is — keeps the rest of the read';
+  genreCell.appendChild(adjBtn);
+
+  const adjBox = document.createElement('div');
+  adjBox.className = 'pop-adj row-adj';
+  adjBox.hidden = true;
+  adjBox.innerHTML = adjustPanelHtml();
+
   /* ---- manual genre override ---- */
   const overrideBtn = document.createElement('button');
   overrideBtn.className = 'override-btn';
   overrideBtn.textContent = '✎ override';
   overrideBtn.title = 'set the genre yourself — persists across reloads + saved as training data';
-  row.children[2].appendChild(overrideBtn);
+  genreCell.appendChild(overrideBtn);
 
   /* ---- omit: delete this analysis entirely (e.g. a bogus read) ---- */
   const omitBtn = document.createElement('button');
   omitBtn.className = 'override-btn omit-btn';
   omitBtn.textContent = '✕ omit';
   omitBtn.title = 'delete this analysis — remove the track from your library (audio untouched)';
-  row.children[2].appendChild(omitBtn);
+  genreCell.appendChild(omitBtn);
   omitBtn.addEventListener('click', async () => {
     if (!window.confirm(`Remove "${data.title}" from your library?\n\n`
       + `Deletes its analysis (genre, BPM, key) and takes it off the map. `
@@ -875,7 +1229,7 @@ function finishRow(row, data, file){
     const res = getResult();
     if (res && res.hash){ try{ await fetch(`/forget/${res.hash}`, {method:'POST'}); }catch(_){} }
     results = results.filter(r => r.row !== row);
-    row.remove();
+    EXTRAS.forget(row); row.remove();
     if (!rowsEl.querySelector('.row')) emptyEl.style.display = '';
     refreshFooter();
   });
@@ -885,12 +1239,12 @@ function finishRow(row, data, file){
   lookupBtn.className = 'override-btn lookup-btn';
   lookupBtn.textContent = '🔎 lookup';
   lookupBtn.title = 'look up genres/tags for this track from Discogs, MusicBrainz & Last.fm';
-  row.children[2].appendChild(lookupBtn);
+  genreCell.appendChild(lookupBtn);
 
   const lookupPanel = document.createElement('div');
   lookupPanel.className = 'lookup-panel';
   lookupPanel.style.display = 'none';
-  row.children[2].appendChild(lookupPanel);
+  genreCell.appendChild(lookupPanel);
 
   let lookupLoaded = false;
   lookupBtn.addEventListener('click', async () => {
@@ -918,11 +1272,47 @@ function finishRow(row, data, file){
   const oCancel = document.createElement('button');
   oCancel.className = 'ovr-cancel'; oCancel.textContent = 'cancel';
   editor.append(oInput, oSave, oCancel);
-  row.children[2].appendChild(editor);
+  genreCell.appendChild(editor);
 
   const trainBadge = document.createElement('div');
   trainBadge.className = 'train-badge';
-  row.children[2].appendChild(trainBadge);
+  genreCell.appendChild(trainBadge);
+
+  // Appended after the whole button strip so opening it drops a panel below the
+  // controls rather than shoving half of them onto the next line.
+  genreCell.appendChild(adjBox);
+
+  /* Vibes and tags share one wrapping strip. They used to be two separate
+     blocks, each claiming a full-width band of a column only 300px wide, so a
+     track with two vibes and three tags spent five short lines saying very
+     little and pushed everything under it down the row. As one flow they fill
+     each line before starting another. Both holders are created here, in a
+     fixed order, because panels.js fills them from two independent fetches --
+     whichever landed first used to decide which appeared on top. */
+  const chipsRow = document.createElement('div');
+  chipsRow.className = 'rowchips';
+  const vibesHolder = document.createElement('div');
+  vibesHolder.className = 'vibematches';
+  const tagsHolder = document.createElement('div');
+  tagsHolder.className = 'tagchips';
+  chipsRow.append(vibesHolder, tagsHolder);
+  genreCell.appendChild(chipsRow);
+  /* The row's adjust panel: same widget as the map popup's (wireAdjustPanel),
+     same /weights endpoint, same stored steps, so a track nudged on either
+     screen reads the same on both. `hashOf` is a getter because a just-dropped
+     row gets its hash from the server a moment after the row exists;
+     re-rendering the genre cell is what makes the percentages move as you
+     press. */
+  const showAdjusted = state => { applyAdjusted(row, state); renderGenreCell(); };
+  wireAdjustPanel(adjBtn, adjBox, {
+    hashOf: () => data.hash || ((getResult() || {}).hash || null),
+    // Only redraw the cell when there is actually an adjustment to show.
+    // Merely opening the panel must not repaint a row -- on an overridden
+    // track that would swap the override chip for the model read nobody asked
+    // to see again.
+    onLoaded: state => { if (row._adjusted || adjustHasEdits(state)) showAdjusted(state); },
+    onSaved: showAdjusted,
+  });
 
   overrideBtn.addEventListener('click', () => {
     editor.style.display = 'flex';
@@ -948,7 +1338,7 @@ function finishRow(row, data, file){
       oInput.value = nc.suggested_style;
       oInput.focus();
     });
-    row.children[2].appendChild(warn);
+    genreCell.appendChild(warn);
   }
 
   // find this track's result entry so we can use the stored file/filepath
@@ -958,19 +1348,18 @@ function finishRow(row, data, file){
     const genre = oInput.value.trim();
     if (!genre) return;
 
-    // 1. update the displayed chip to show the override
-    const overrideEl = document.createElement('div');
-    const hcol = colorFor(genre);
-    const hinfo = styleInfo(genre);
-    overrideEl.innerHTML =
-      `<div class="genre-src">manual override</div>` +
-      `<span class="chip overridden" style="--c:${hcol}" title="manually set">` +
-      `<span class="dot ${hinfo.shape}" style="background:${hcol}"></span>${escapeHtml(genre)}</span>`;
-    row.children[2].innerHTML = '';
-    row.children[2].appendChild(overrideEl);
-    row.children[2].appendChild(trainBadge);
-    // re-attach recolor delegation
-    row.children[2]._recolorBound = false;
+    // 1. show it. Through renderGenreCell like every other read, so a saved
+    //    override and one loaded from the database can't drift apart.
+    row._override = genre;
+    renderGenreCell();
+    // An override supersedes any hand adjustment -- the steps stay on the server,
+    // but this row now reads as the one word you gave it. Only the body is
+    // rewritten, so adjust / omit / lookup stay where they were: changing your
+    // mind afterwards doesn't mean reloading the track to get the controls back.
+    row._adjusted = null;
+    adjBox.hidden = true;
+    editor.style.display = 'none';
+    overrideBtn.style.display = '';
 
     // update results so export uses the override label
     const res = getResult();
@@ -1009,42 +1398,6 @@ function finishRow(row, data, file){
     } catch(err){
       trainBadge.textContent = `⚠ save failed: ${err.message}`;
       trainBadge.classList.add('show');
-    }
-  });
-
-  /* ---- compare engines: EffNet vs MAEST vs merged (on-demand) ---- */
-  const cmpBtn = document.createElement('button');
-  cmpBtn.className = 'compare-btn';
-  cmpBtn.textContent = '⚖ compare engines';
-  cmpBtn.title = 'run MAEST (transformer) alongside EffNet and merge them — slower (~15s), on demand';
-  const cmpBox = document.createElement('div');
-  cmpBox.className = 'compare-box';
-  cmpBox.style.display = 'none';
-  row.children[2].appendChild(cmpBtn);
-  row.children[2].appendChild(cmpBox);
-
-  cmpBtn.addEventListener('click', async () => {
-    if (cmpBox.style.display !== 'none' && cmpBox.dataset.done){   // toggle closed
-      cmpBox.style.display = 'none'; cmpBox.dataset.done = ''; return;
-    }
-    cmpBtn.disabled = true; cmpBtn.textContent = 'running MAEST…';
-    cmpBox.style.display = 'block';
-    cmpBox.innerHTML = '<div class="cmp-wait">running MAEST transformer (~15s on CPU)…</div>';
-    try {
-      const fd = new FormData();
-      const res = getResult();
-      if (res && res.filepath) fd.append('filepath', res.filepath);
-      else if (file) fd.append('file', file);
-      else { cmpBox.innerHTML = '<div class="cmp-wait">no file available to compare</div>'; return; }
-      const r = await fetch('/compare', {method:'POST', body:fd});
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || r.statusText);
-      renderCompareInto(cmpBox, j);
-      cmpBox.dataset.done = '1';
-    } catch(err){
-      cmpBox.innerHTML = `<div class="cmp-wait">compare failed: ${escapeHtml(err.message)}</div>`;
-    } finally {
-      cmpBtn.disabled = false; cmpBtn.textContent = '⚖ compare engines';
     }
   });
 
@@ -1091,12 +1444,294 @@ function finishRow(row, data, file){
     }
   }
 
-  /* vibe matches for this track */
-  if (data.hash) renderVibeMatches(row, data.hash);
-
-  /* manual tags for this track */
-  if (data.hash) renderTags(row, data.hash);
+  /* vibe matches, tags and the detailed waveform: asked for when the row
+     scrolls into view, batched with whatever else comes into view with it. */
+  if (data.hash) EXTRAS.want(row, data.hash);
   refreshFooter();
+}
+
+/* ---- per-row extras, fetched on sight --------------------------------------
+   Every finished row wants three things the server has to be asked for: its
+   tags, which vibes it matches, and the detailed waveform. Asked per row the
+   moment the row existed, re-dropping a folder of already-analysed tracks was
+   three requests per row -- nine thousand for a big folder -- almost all for
+   rows below the bottom of the screen. So a row registers what it wants and
+   is asked for it when it comes into view, and the rows that come into view
+   together share one /tags/for and one /vibes/match request between them. */
+const EXTRAS = (() => {
+  const pending = new Map();       // row -> hash, registered but not yet seen
+  const due = [];                  // [row, hash] seen and waiting for the next flush
+  let timer = null;
+  const io = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+    for (const e of entries){
+      if (!e.isIntersecting || !pending.has(e.target)) continue;
+      due.push([e.target, pending.get(e.target)]);
+      pending.delete(e.target); io.unobserve(e.target);
+    }
+    if (due.length && !timer) timer = setTimeout(flush, 40);   // let the scroll settle
+  }, { rootMargin: '240px 0px' }) : null;
+
+  async function flush(){
+    timer = null;
+    const batch = due.splice(0).filter(([row]) => row.isConnected);
+    if (!batch.length) return;
+    const q = encodeURIComponent([...new Set(batch.map(([, h]) => h))].join(','));
+    const grab = url => fetch(url).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    const [tags, vibes] = await Promise.all([grab(`/tags/for?hashes=${q}`), grab(`/vibes/match?hashes=${q}`)]);
+    for (const [row, h] of batch){
+      if (!row.isConnected) continue;
+      renderVibeMatches(row, h, vibes[h] || []);
+      renderTags(row, h, tags[h] || []);
+      if (row._fetchWave) row._fetchWave();
+    }
+  }
+  return {
+    want(row, hash){
+      if (!io){ due.push([row, hash]); if (!timer) timer = setTimeout(flush, 0); return; }
+      pending.set(row, hash); io.observe(row);
+    },
+    forget(row){ pending.delete(row); if (io) io.unobserve(row); },
+  };
+})();
+
+/* Every genre name the app can offer: the library's own keystones and their
+   subgenres, fetched once, plus whatever the rows on screen actually read as.
+   Feeds the shared <datalist> behind "add a genre it missed" -- the same list
+   the map's override box uses, so both screens complete the same names. */
+let GENRE_NAMES = null;
+async function fillGenreList(extra){
+  const dl = document.getElementById('ovr-genre-list');
+  if (!dl) return;
+  // Painted twice on the first call: once now, from what is already known (the
+  // caller's names and the rows on screen), and again when the library's own
+  // list lands -- that fetch is a whole-library pass and the box should
+  // complete something while it runs.
+  const paint = () => {
+    const set = new Set([...(GENRE_NAMES || []), ...(extra || [])]);
+    for (const r of results) for (const st of (r.styles || [])) if (st && st.style) set.add(st.style);
+    dl.innerHTML = [...set].sort((a, b) => a.localeCompare(b))
+      .map(g => `<option value="${escapeHtml(g)}"></option>`).join('');
+  };
+  paint();
+  if (GENRE_NAMES !== null) return;
+  GENRE_NAMES = [];                         // set first: a slow fetch shouldn't
+  try {                                     // start a second one on the next click
+    const j = await fetch('/genres?flat=1&top=0').then(r => r.json());
+    if (Array.isArray(j)){
+      const set = new Set();
+      for (const g of j){
+        if (g && g.keystone) set.add(g.keystone);
+        for (const sg of (g.subgenres || [])) if (sg && sg.style) set.add(sg.style);
+      }
+      GENRE_NAMES = [...set];
+    }
+  } catch(_){ /* offline, or an empty library -- typing a name still works */ }
+  paint();
+}
+
+/* Hand a row its adjusted blend, or take it away again. Cleared when no step is
+   left, so undoing every adjustment restores exactly what the model said rather
+   than freezing the last adjusted numbers in place. */
+function applyAdjusted(row, state){
+  row._adjusted = (adjustHasEdits(state) && state.adjusted && state.adjusted.length)
+    ? state.adjusted.map(e => ({style: e.style, score: e.score}))
+    : null;
+}
+
+/* ---- the adjust panel -----------------------------------------------------
+   One widget, used by the map popup and by every Analyzer row. An override
+   answers "what is this" with one word and throws away everything the model
+   got right; this bends the read instead: each genre carries a step you raise
+   or lower, so "this is a VERY house track" and "that Tech Trance is a
+   misread" are both sayable without flattening the rest to zero. The step is
+   what's stored, never the multiplier it computes -- the server can retune
+   the curve without silently rewriting what you meant by it.
+
+   `wireAdjustPanel(btn, box, opts)`:
+     hashOf()          the track's hash, or null if it has none yet (a getter,
+                       because a just-dropped row learns its hash later)
+     genres()          extra names to offer in the "add a genre" completion
+     complete(text)    a completer for the add box (Tab / on add); optional
+     onOpen/onClose()  the panel showed / hid -- for chrome around it
+     onLoaded(state)   the track's read arrived
+     onSaved(state)    the server accepted a press; state.adjusted is current */
+function adjustPanelHtml(){
+  return `<div class="ovr-h">how much of each genre is this?</div>
+    <div class="adj-rows"><span class="pop-bar">\u2026</span></div>
+    <div class="ovr-typed">
+      <input class="adj-add-in" type="text" placeholder="add a genre it missed\u2026" list="ovr-genre-list"
+             autocomplete="off" spellcheck="false">
+      <button class="adj-add">add</button>
+      <button class="adj-close" title="done">\u2715</button>
+    </div>
+    <div class="ovr-hint">Nudges the read instead of replacing it \u2014 use <b>override</b> if it's flat wrong.</div>`;
+}
+
+/* Whether a panel state carries any edit at all. */
+function adjustHasEdits(state){
+  return !!(state && ((state.steps && Object.keys(state.steps).length)
+                   || (state.drops && state.drops.length)));
+}
+
+function wireAdjustPanel(btn, box, opts){
+  const rowsEl_ = box.querySelector('.adj-rows');
+  const addIn = box.querySelector('.adj-add-in');
+  const call = (k, ...a) => { if (typeof opts[k] === 'function') return opts[k](...a); };
+  let state = null;      // {steps, drops, base, adjusted, max_step, words}
+  let saving = null;     // in-flight POST, so rapid presses coalesce in order
+
+  const wordFor = st => (state && state.words && state.words[String(st)]) || 'as read';
+
+  function render(){
+    if (!state){ rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`; return; }
+    const drops = state.drops || [];
+    const shown = new Map();
+    for (const e of state.adjusted || []) shown.set(e.style, e.score);
+    // A genre pushed all the way down falls out of the top-N. Keep its row on
+    // screen anyway, or the press that removed it leaves nothing to undo it with.
+    for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
+    for (const g of drops) shown.delete(g);          // removed: listed below instead
+    const max = state.max_step || 3;
+    const rowsHtml = [...shown.entries()].map(([style, score]) => {
+      const step = (state.steps || {})[style] || 0;
+      const pct = Math.round((score || 0) * 100);
+      return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
+        <button class="adj-step" data-d="-1" ${step <= -max ? 'disabled' : ''} title="less">\u2212</button>
+        <button class="adj-step" data-d="1" ${step >= max ? 'disabled' : ''} title="more">\uff0b</button>
+        <span class="adj-meter" title="${escapeHtml(style)} \u2014 ${escapeHtml(wordFor(step))}">
+          <i style="width:${pct}%"></i>
+          <b>${escapeHtml(style)}</b>${step ? `<em>${escapeHtml(wordFor(step))}</em>` : ''}
+        </span>
+        <span class="adj-pct">${pct}%</span>
+        <button class="adj-drop" title="remove ${escapeHtml(style)} from this track">\u2715</button>
+      </div>`;
+    }).join('');
+    // Removed genres are named, not merely gone. A remove you cannot see is a
+    // remove you cannot undo, and "why is this track missing a genre" is a
+    // question the panel should still be able to answer a week later.
+    const dropHtml = drops.length
+      ? `<div class="adj-dropped"><span class="ovr-h">removed</span>` +
+        drops.map(g => `<button class="adj-restore" data-g="${escapeHtml(g)}"` +
+          ` title="put ${escapeHtml(g)} back on this track">${escapeHtml(g)} \u21a9</button>`).join('') +
+        `</div>`
+      : '';
+    if (!shown.size && !drops.length){
+      rowsEl_.innerHTML = `<div class="ovr-h">nothing read for this track</div>`;
+      return;
+    }
+    rowsEl_.innerHTML = rowsHtml + dropHtml;
+    for (const b of rowsEl_.querySelectorAll('.adj-step')){
+      b.onclick = () => bump(b.closest('.adj-row').dataset.g, Number(b.dataset.d));
+    }
+    for (const b of rowsEl_.querySelectorAll('.adj-drop')){
+      b.onclick = () => drop(b.closest('.adj-row').dataset.g);
+    }
+    for (const b of rowsEl_.querySelectorAll('.adj-restore')){
+      b.onclick = () => restore(b.dataset.g);
+    }
+  }
+
+  // Remove a genre outright. Not the same press as -3: "not at all" leaves it in
+  // the read at a trace, this takes it off the track entirely. The share it held
+  // is redistributed by the server, so the rest of the blend closes the gap.
+  function drop(style){
+    if (!state) return;
+    const drops = state.drops || [];
+    if (drops.includes(style)) return;
+    state.drops = [...drops, style];
+    state.steps = {...(state.steps || {})};
+    delete state.steps[style];             // "more of this" and "none of this"
+    render();                              //  cannot both be what you meant
+    save();
+  }
+
+  function restore(style){
+    if (!state) return;
+    state.drops = (state.drops || []).filter(g => g !== style);
+    render();
+    save();
+  }
+
+  // Optimistic: the meter moves on the press and the server's answer replaces it
+  // a moment later. Waiting for the round-trip made +/- feel broken.
+  function bump(style, delta){
+    if (!state) return;
+    const max = state.max_step || 3;
+    const next = Math.max(-max, Math.min(max, ((state.steps || {})[style] || 0) + delta));
+    state.steps = {...(state.steps || {})};
+    if (next) state.steps[style] = next; else delete state.steps[style];
+    render();
+    save();
+  }
+
+  function save(){
+    const hash = opts.hashOf();
+    if (!hash) return;
+    const steps = state.steps || {};
+    const drops = state.drops || [];
+    saving = (saving || Promise.resolve()).then(async () => {
+      try {
+        const r = await fetch(`/weights/${hash}`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({steps, drops})});
+        const body = await r.json();
+        // Identity, not equality: a press during the round-trip replaced both
+        // objects, and its own save is already queued behind this one.
+        if (steps !== state.steps || drops !== state.drops) return;
+        state.steps = body.steps || {};
+        state.drops = body.drops || [];
+        state.adjusted = (body.adjusted && body.adjusted.length) ? body.adjusted : state.base;
+        render();
+        call('onSaved', state);
+      } catch(_){ /* the meter already moved; the next press retries */ }
+    });
+  }
+
+  const close = () => { box.hidden = true; call('onClose'); };
+
+  btn.onclick = async () => {
+    if (!box.hidden){ close(); return; }
+    box.hidden = false;
+    call('onOpen');
+    fillGenreList([...(call('genres') || []), ...Object.keys((state && state.steps) || {})]);
+    const hash = opts.hashOf();
+    if (!hash){ rowsEl_.innerHTML = `<div class="ovr-h">no hash for this track yet</div>`; return; }
+    rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`;
+    try { state = await (await fetch(`/weights/${hash}`)).json(); }
+    catch(_){ rowsEl_.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
+    if (state && state.error){
+      rowsEl_.innerHTML = `<div class="ovr-h">${escapeHtml(state.error)}</div>`;
+      state = null; return;
+    }
+    render();
+    call('onLoaded', state);
+  };
+  box.querySelector('.adj-close').onclick = close;
+
+  const complete = text => (opts.complete ? opts.complete(text) : null);
+  const addGenre = () => {
+    const g = complete(addIn.value) || (addIn.value || '').trim();
+    if (!g || !state) return;
+    addIn.value = '';
+    // Enters at "moderately": a genre you had to type out is one you mean, and
+    // +1 read as barely-there next to everything the model already found.
+    if (!(state.steps || {})[g]){
+      state.steps = {...(state.steps || {}), [g]: 2};
+      render(); save();
+    }
+  };
+  box.querySelector('.adj-add').onclick = addGenre;
+  addIn.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); addGenre(); }
+    else if (e.key === 'Escape'){ close(); }
+    else if (e.key === 'Tab' && addIn.value.trim()){
+      const hit = complete(addIn.value);
+      if (hit && hit.toLowerCase() !== addIn.value.trim().toLowerCase()){
+        e.preventDefault(); addIn.value = hit;
+        addIn.setSelectionRange(hit.length, hit.length);
+      }
+    }
+  });
 }
 
 function failRow(row, msg){
@@ -1121,9 +1756,23 @@ async function pump(){
       // playable across restarts — even on a cache hit, which has no other source.
       if (handle && data.hash) FSH.put(data.hash, handle);
       if (resp.ok && data.cached){
-        // already analyzed (this session or a previous one) -> keep it out of
-        // the list entirely. (TODO: make this behaviour configurable later.)
-        row.remove();
+        // Already analyzed, this session or a previous one. It used to be pulled
+        // out of the list entirely, which read as "nothing happened": you dropped
+        // a track in and got back the same empty screen. It stays now, marked
+        // `· cached`, carrying every row control a fresh analysis gets --
+        // which is the only way to reach adjust / override / omit for a track you
+        // already know about without going hunting for it in the Library.
+        const dupe = data.hash && results.find(r => r.hash === data.hash);
+        if (dupe && dupe.row){
+          // Same audio under a second filename. One row, revealed, rather than
+          // two rows of the same track disagreeing about which one you edited.
+          row.remove();
+          dupe.row.scrollIntoView({behavior: 'smooth', block: 'center'});
+          flashRow(dupe.row);
+        } else {
+          finishRow(row, data, file);
+          flashRow(row);
+        }
         known++;
         continue;
       }
@@ -1138,8 +1787,8 @@ async function pump(){
   if (known){
     const bs = document.getElementById('batch-status');
     if (bs){
-      bs.textContent = `skipped ${known} already analyzed`;
-      setTimeout(() => { if (bs.textContent.startsWith('skipped')) bs.textContent = ''; }, 3000);
+      bs.textContent = `✓ ${known} already analyzed · loaded from your library`;
+      setTimeout(() => { if (bs.textContent.startsWith('✓')) bs.textContent = ''; }, 4000);
     }
   }
   refreshFooter();
@@ -1148,7 +1797,9 @@ async function pump(){
 /* dedupe the drop/browse list by name+size, so re-dropping a file already in
    the list is a no-op (the server would cache-hit it anyway; this just avoids a
    redundant row). Cleared by "Clear list". */
-const listKeys = new Set();
+// key -> the row it produced, so re-dropping a file already on screen can point
+// at it instead of reporting a silent "skipped 1 duplicate" and doing nothing.
+const listKeys = new Map();
 const fileKey = f => `${f.name}::${f.size}`;
 
 // Accepts a list of File objects, or {file, handle} pairs where handle is a
@@ -1159,15 +1810,24 @@ function enqueue(items){
     const f = it.file || it;                 // File, or {file, handle}
     const handle = it.handle || null;
     const key = fileKey(f);
-    if (listKeys.has(key)){ skipped++; continue; }   // already in the list
-    listKeys.add(key);
-    queue.push({file:f, handle, row:addRow(f)});
+    if (listKeys.has(key)){                          // already in the list
+      skipped++;
+      const prev = listKeys.get(key);
+      if (prev && prev.isConnected){
+        prev.scrollIntoView({behavior: 'smooth', block: 'center'});
+        flashRow(prev);
+      }
+      continue;
+    }
+    const newRow = addRow(f);
+    listKeys.set(key, newRow);
+    queue.push({file:f, handle, row:newRow});
   }
   if (skipped){
     const bs = document.getElementById('batch-status');
     if (bs){
-      bs.textContent = `skipped ${skipped} duplicate${skipped > 1 ? 's' : ''}`;
-      setTimeout(() => { if (bs.textContent.startsWith('skipped')) bs.textContent = ''; }, 2600);
+      bs.textContent = `${skipped} already on this list`;
+      setTimeout(() => { if (bs.textContent.includes('already on this list')) bs.textContent = ''; }, 2600);
     }
   }
   pump();
@@ -1255,8 +1915,8 @@ exportB.addEventListener('click', () => {
             .map(s => `${s.style} ${(s.score*100).toFixed(0)}%`).join(' | ')
         : '';
       const bpm = r.bpm != null ? `${r.bpmText} BPM` : '--- BPM';
-      const key = r.camelot ? `${r.camelot} (${r.key} ${(r.scale||'').slice(0,3)})`
-                            : (r.key ? `${r.key} ${(r.scale||'').slice(0,3)}` : '---');
+      // The file is for reading, so it is written in the notation you read in.
+      const key = keyText(r) || '---';
       return `${r.title}  \u2014  ${bpm}  \u2014  ${key}  \u2014  ${fmtDur(r.duration)}  \u2014  ${blend}${custom}`;
     }),
     ''
@@ -1279,27 +1939,59 @@ clearB.addEventListener('click', () => {
   // still play after the list is cleared (playSrc recreates a fresh blob URL).
   results = []; queue = [];
   listKeys.clear();
-  rowsEl.querySelectorAll('.row').forEach(r => r.remove());
+  rowsEl.querySelectorAll('.row').forEach(r => { EXTRAS.forget(r); r.remove(); });
   emptyEl.style.display = '';
   refreshFooter();
 });
 
-/* ---- EQ bars: build the header signature element ---- */
-(function(){
+/* ---- the header graphic: the strip behind the app's name ----------------
+   One of several small scenes, chosen under Options -> Appearance. The bar
+   styles share one set of 48 animated spans and differ only in the paint; the
+   wave, starfield and record are their own markup. Rebuilt on every change,
+   so a style is never a leftover of the one before it. */
+const EQ_STYLES = [['bars', 'bars'], ['blocks', 'LED blocks'], ['dots', 'bubbles'], ['glow', 'soft glow'],
+                   ['wave', 'waveform'], ['stars', 'starfield'], ['vinyl', 'vinyl'], ['off', 'off']];
+const EQ_COLORS = ['#22D3EE','#5DE9FF','#38BDF8','#7C5CFF','#67E8F9','#818CF8','#22D3EE'];
+function applyEqStyle(){
   const el = document.getElementById('eq-bars');
   if (!el) return;
-  const COLORS = ['#22D3EE','#5DE9FF','#38BDF8','#7C5CFF','#67E8F9','#818CF8','#22D3EE'];
-  for (let i = 0; i < 48; i++){
-    const s = document.createElement('span');
-    const lo = Math.round(8 + Math.random()*20);
-    const hi = Math.round(35 + Math.random()*60);
-    const dur = (0.5 + Math.random()*1.2).toFixed(2);
-    const del = (Math.random()*1.0).toFixed(2);
-    s.style.cssText = `--lo:${lo}%;--hi:${hi}%;--d:${dur}s;--dl:${del}s;` +
-      `background:${COLORS[i % COLORS.length]}`;
-    el.appendChild(s);
+  const s = EQ_STYLES.some(([k]) => k === PREFS.eqStyle) ? PREFS.eqStyle : 'bars';
+  el.className = 'eq-bars eq-' + s;
+  el.innerHTML = '';
+  // Seeded, so the scene is the same one every time the header is built.
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  if (s === 'bars' || s === 'blocks' || s === 'dots' || s === 'glow'){
+    for (let i = 0; i < 48; i++){
+      const b = document.createElement('span');
+      const lo = Math.round(8 + rnd()*20), hi = Math.round(35 + rnd()*60);
+      b.style.cssText = `--lo:${lo}%;--hi:${hi}%;--d:${(0.5 + rnd()*1.2).toFixed(2)}s;` +
+        `--dl:${rnd().toFixed(2)}s;--c:${EQ_COLORS[i % EQ_COLORS.length]}`;
+      el.appendChild(b);
+    }
+  } else if (s === 'wave'){
+    // Two periods of a sine across half the width; the CSS slides it by one.
+    let d = '';
+    for (let i = 0; i <= 400; i++){
+      const x = i / 400 * 2000, y = 27 + Math.sin(i / 400 * Math.PI * 8) * 14 + Math.sin(i / 400 * Math.PI * 26) * 4;
+      d += (i ? ' L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    el.innerHTML = `<svg viewBox="0 0 2000 54" preserveAspectRatio="none">
+      <defs><linearGradient id="eq-wave-grad" x1="0" x2="1"><stop offset="0" stop-color="${EQ_COLORS[0]}"/>
+      <stop offset=".5" stop-color="${EQ_COLORS[3]}"/><stop offset="1" stop-color="${EQ_COLORS[0]}"/></linearGradient></defs>
+      <path d="${d}"/></svg>`;
+  } else if (s === 'stars'){
+    for (let i = 0; i < 70; i++){
+      const st = document.createElement('i');
+      st.style.cssText = `left:${(rnd()*100).toFixed(1)}%;top:${(rnd()*100).toFixed(1)}%;` +
+        `--d:${(1.5 + rnd()*3).toFixed(2)}s;--dl:${(rnd()*3).toFixed(2)}s;--c:${EQ_COLORS[i % EQ_COLORS.length]};` +
+        `transform:scale(${(0.6 + rnd()).toFixed(2)})`;
+      el.appendChild(st);
+    }
+  } else if (s === 'vinyl'){
+    el.appendChild(document.createElement('i'));
   }
-})();
+}
+applyEqStyle();
 
 /* ---- Batch folder analysis ---- */
 const batchBtn = document.getElementById('batch-btn');
@@ -1396,71 +2088,79 @@ async function runBatch(folderPath){
   }
 }
 
+/* The Analyzer's two popovers.
+
+   Both hold things that used to sit permanently on screen: the genre-reading
+   switches (once pinned to the header, in vocabulary that only made sense if
+   you already understood the system) and the specialist tools (once four
+   equal-weight buttons in a row with "add music", so nothing signalled which
+   was the thing to press first).
+
+   Wired the same way the map's panels are: the button toggles, clicks inside
+   do not close it, a click anywhere else does. */
+function wirePopover(btnId, panelId){
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  if (!btn || !panel) return;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    // Close any other open Analyzer popover first -- two at once overlap.
+    document.querySelectorAll('.an-advwrap .map-panel, .an-morewrap .map-panel')
+      .forEach(o => { if (o !== panel) o.hidden = true; });
+    panel.hidden = !panel.hidden;
+    btn.classList.toggle('on', !panel.hidden);
+  });
+  panel.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => {
+    panel.hidden = true;
+    btn.classList.remove('on');
+  });
+}
+wirePopover('an-adv-btn', 'an-adv-panel');
+wirePopover('an-more-btn', 'an-more-panel');
+
+/* Per-track lens overrides, off by default.
+
+   They were on every row permanently, reading "identity: global / segment:
+   global" -- two selectors per track whose whole message was "this track
+   follows the setting you have not been shown". The capability is real, so it
+   is a switch rather than a deletion, and it lives beside the global controls
+   it overrides. */
+(function () {
+  const box = document.getElementById('an-rowlens');
+  if (!box) return;
+  let on = false;
+  try { on = localStorage.getItem('vibeRowLens') === 'on'; } catch (_) { /* private mode */ }
+  const apply = () => {
+    box.checked = on;
+    document.body.classList.toggle('rowlens-on', on);
+  };
+  apply();
+  box.addEventListener('change', () => {
+    on = box.checked;
+    try { localStorage.setItem('vibeRowLens', on ? 'on' : 'off'); } catch (_) { /* private */ }
+    apply();
+  });
+})();
+
 const gId = document.getElementById('g-identity');
 const gSeg = document.getElementById('g-seg');
 gId.value = GLOBAL.identity; gSeg.value = GLOBAL.seg;
 gId.addEventListener('change', () => {
-  GLOBAL.identity = gId.value;
+  GLOBAL.identity = gId.value; setPref('analyzerIdentity', gId.value);
   for (const r of results){ if (r.ok && r.row && r.row._applyModes && !r.row._idOverride) r.row._applyModes(); }
 });
 gSeg.addEventListener('change', () => {
-  GLOBAL.seg = gSeg.value;
+  GLOBAL.seg = gSeg.value; setPref('analyzerSeg', gSeg.value);
   for (const r of results){ if (r.ok && r.row && r.row._applyModes && !r.row._segOverride) r.row._applyModes(); }
 });
+// The same two lenses set from the Options tab: the selects are the source of
+// truth for the rows, so route the change through them.
+PREF_LISTENERS.push((k, v) => {
+  if (k === 'analyzerIdentity' && gId.value !== v){ gId.value = v; gId.dispatchEvent(new Event('change')); }
+  if (k === 'analyzerSeg' && gSeg.value !== v){ gSeg.value = v; gSeg.dispatchEvent(new Event('change')); }
+});
 
-
-/* render one engine's ranked genre list for the compare panel */
-function cmpList(arr){
-  if (!arr || !arr.length) return '<span class="cmp-none">—</span>';
-  return arr.slice(0, 5).map(s => {
-    const col = colorFor(s.style);
-    return `<span class="cmp-item"><span class="sw ${styleInfo(s.style).shape}" style="background:${col}"></span>` +
-      `<b>${escapeHtml(s.style)}</b> ${(s.score*100).toFixed(0)}%</span>`;
-  }).join('');
-}
-/* top-5 [{style,score}] from the pairs list, scored by fn(pair) */
-function topScored(pairs, fn, k){
-  return pairs.map(p => ({style:p.style, score:fn(p)}))
-              .sort((a,b) => b.score - a.score).slice(0, k || 5);
-}
-/* build the compare panel into `box`, with a live EffNet↔MAEST weight slider.
-   Re-mixing the merge is instant client-side math — MAEST does NOT re-run. */
-function renderCompareInto(box, j){
-  if (!j.maest_available){
-    box.innerHTML = `<div class="cmp-note">MAEST model not installed — showing EffNet only.</div>` +
-      `<div class="cmp-col"><div class="cmp-h">EffNet</div>${cmpList(j.effnet)}</div>`;
-    return;
-  }
-  const pairs = j.pairs || [];
-  let w = j.weight ?? 0.5;                                    // EffNet share (0..1)
-  box.innerHTML =
-    `<div class="cmp-grid">` +
-      `<div class="cmp-col"><div class="cmp-h">EffNet <span>CNN</span></div>${cmpList(topScored(pairs, p=>p.eff))}</div>` +
-      `<div class="cmp-col"><div class="cmp-h">MAEST <span>transformer</span></div>${cmpList(topScored(pairs, p=>p.mae))}</div>` +
-      `<div class="cmp-col merged"><div class="cmp-h">Merged <span class="cmp-w"></span></div><div class="cmp-mergedlist"></div></div>` +
-    `</div>` +
-    `<div class="cmp-slider"><span>EffNet</span>` +
-      `<input type="range" class="cmp-range" min="0" max="100" step="5">` +
-      `<span>MAEST</span></div>` +
-    `<div class="cmp-note"></div>`;
-  const range = box.querySelector('.cmp-range');
-  const wLab  = box.querySelector('.cmp-w');
-  const mList = box.querySelector('.cmp-mergedlist');
-  const note  = box.querySelector('.cmp-note');
-  const effTop = topScored(pairs, p=>p.eff, 1)[0];
-  const maeTop = topScored(pairs, p=>p.mae, 1)[0];
-  const agree = effTop && maeTop && effTop.style === maeTop.style;
-  function paint(){
-    mList.innerHTML = cmpList(topScored(pairs, p => w*p.eff + (1-w)*p.mae, 6));
-    wLab.textContent = `${Math.round(w*100)}/${Math.round((1-w)*100)}`;
-    note.textContent = agree
-      ? `✓ both engines agree on the top genre (${effTop.style})`
-      : `⚠ engines disagree — EffNet: ${effTop.style} · MAEST: ${maeTop.style}. The slider blends them.`;
-  }
-  range.value = Math.round(w*100);
-  range.addEventListener('input', () => { w = range.value/100; paint(); });
-  paint();
-}
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c =>

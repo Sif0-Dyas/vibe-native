@@ -14,12 +14,16 @@ GPU works in the packaged build). Validated against the WSL build as the oracle:
   embeddings to **cosine > 0.999 on all 121 tracks** (worst 0.99932); the converted
   head matches the oracle's top styles exactly (worst |Δscore| 5.96e-08).
 - **Tempo** — TempoCNN within 2% or an octave for **96.7%** of tracks (≥95% bar).
-- **Key** — a faithful port of Essentia's KeyExtractor matches key + scale on
-  **121/121 tracks (100%)**.
+- **Key** — our own detector (`tonality.py`, written from the published papers,
+  see [`docs/KEY_SPEC.md`](docs/KEY_SPEC.md)): multi-band pitch-class profiles
+  scored by templates trained on the human-labelled GiantSteps EDM set, where it
+  reaches **66.6% exact / MIREX 0.730** (5-fold CV) vs 64.1% / 0.725 for
+  Essentia's KeyExtractor and 67.2% / 0.742 for Mixed In Key. It agrees with the
+  old Essentia port on 88/121 of the oracle tracks.
 - **App** — same routes, DB schema, and frontend as Vibe_Identify; the whole Flask
   app + the pywebview desktop shell run on one Windows venv in dev, or as a single
-  packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. GPU falls out for free
-  (`DmlExecutionProvider`, loud CPU fallback).
+  packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. Inference runs on CPU
+  by default; DirectML (`DmlExecutionProvider`) is opt-in with `VIBE_PROVIDER=gpu`.
 
 Design + phase-by-phase details (historical, now complete):
 [`docs/history/PROJECT_PLAN.md`](docs/history/PROJECT_PLAN.md) and
@@ -33,7 +37,7 @@ Standard `src/` layout — the importable `vibenative` package lives under `src/
 
 ```
 src/vibenative/        the package: Flask app factory + config/db, the ONNX engine
-                       (decode · frontend_mel · onnx_engine · tempo · key), and
+                       (decode · frontend_mel · onnx_engine · tempo · tonality), and
   routes/              one Blueprint, split by domain: analysis, library, vibes,
                        tags, playlists, map, training
   templates/ static/   the web UI (bundled into the exe as data files)
@@ -50,15 +54,17 @@ Vibe Identify.spec     PyInstaller onedir spec (packages src/vibenative + assets
 
 ## Running it
 
-Native Windows, no WSL. One-time setup (the venv runs both the engine and the
-desktop shell):
+Native Windows, no WSL. Dependencies are declared in `pyproject.toml` and pinned in
+`uv.lock`. Install [uv](https://docs.astral.sh/uv/) once (`winget install astral-sh.uv`);
+then one command builds the project `.venv` (it runs both the engine and the desktop
+shell), with the package installed editable so `python -m vibenative` works:
 
 ```
-py -3.12 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m pip install -r desktop\requirements-desktop.txt
-.venv\Scripts\python -m pip install -e .        # makes `python -m vibenative` importable
+uv sync --group desktop
 ```
+
+`uv sync` alone gives the engine + dev tools; `--group desktop` adds pywebview and
+PyInstaller. The Python version comes from `.python-version` (3.12).
 
 Requires **ffmpeg** on PATH (`winget install Gyan.FFmpeg`) for audio decode, and
 the ONNX models in `models/` (`python tools/convert_models.py`). The Edge WebView2
@@ -71,12 +77,11 @@ ready. See `desktop/README.md` for the folder-picker / security details.
 **Browser / headless** — run the backend yourself and open it in a browser:
 
 ```
-.venv\Scripts\python -m vibenative        # serves http://127.0.0.1:5005
+uv run python -m vibenative        # serves http://127.0.0.1:5005
 ```
 
 `FAKE_ANALYZER=1` serves instant fake results (no models). The library database is
-read from `GENRE_DB` (default `%USERPROFILE%\genre_v2.db`); bring an existing WSL
-library over once with `python tools/db_cutover.py`.
+read from `GENRE_DB` (default `%USERPROFILE%\genre_v2.db`).
 
 **ffmpeg** is required for audio decode. In dev it's found on PATH (or the WinGet
 Links dir). In a packaged build it sits **next to the exe** — `tools/prepare_dist.py`
@@ -92,16 +97,17 @@ and warns that new analysis needs it.
 Run the same gate CI does before pushing:
 
 ```
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-ruff check . && ruff format --check .    # lint + format (CI fails the build on either)
-pytest -q                                 # tests (FAKE_ANALYZER covers the model-free path)
+uv run ruff check . && uv run ruff format --check .   # lint + format (CI fails on either)
+uv run pytest -q                                       # tests (FAKE_ANALYZER covers the model-free path)
 ```
+
+To change a dependency, edit `pyproject.toml`, run `uv lock`, and commit both files.
 
 **Pre-commit hooks** make the format gate structurally impossible to miss — install
 them once and `git commit` auto-runs `ruff check` + `ruff format` on staged files:
 
 ```
-pip install pre-commit && pre-commit install
+uv run pre-commit install
 ```
 
 The hook config lives in `.pre-commit-config.yaml` (Python/ruff only; the JS eslint
@@ -134,8 +140,8 @@ target machine. The desktop shell runs Flask in-process (a daemon thread), so th
 whole thing is one process behind `Vibe Identify.exe`.
 
 ```
-.venv\Scripts\python -m pip install -r requirements-dev.txt   # brings PyInstaller
-.venv\Scripts\python tools\build_exe.py
+uv sync --group desktop              # brings PyInstaller
+uv run python tools\build_exe.py
 ```
 
 That runs PyInstaller against `Vibe Identify.spec` (one-folder / **onedir**), then
@@ -148,8 +154,11 @@ Notes:
   temp dir on every launch (slow) and breaks exe-adjacent resource resolution; onedir
   keeps `models\` and `ffmpeg.exe` in a stable folder next to the exe. See the spec
   header.
-- **GPU** — the DirectML EP (`DirectML.dll`) is bundled; the app uses
-  `DmlExecutionProvider` and falls back to CPU (logged loudly) only if it can't load.
+- **GPU** — the DirectML EP (`DirectML.dll`) is bundled, but the app runs on **CPU by
+  default**: the DML path faults inside the NVIDIA driver part-way through a batch scan,
+  for a ~5% speedup (see `onnx_engine.provider_order`). Set `VIBE_PROVIDER=gpu` to opt
+  in to `DmlExecutionProvider` (or use `Vibe Identify (GPU).bat`); if it then can't
+  load, the fallback to CPU is logged loudly.
 - **models** — must exist in `models\` first (`python tools\convert_models.py`).
 - **ffmpeg licensing** — see the ffmpeg note above; a `ffmpeg-NOTICE.txt` ships in the
   folder.
@@ -160,7 +169,7 @@ Notes:
 Wrap the folder in a proper Windows installer (Inno Setup):
 
 ```
-.venv\Scripts\python tools\build_installer.py --build
+uv run python tools\build_installer.py --build
 ```
 
 `--build` runs `tools\build_exe.py` first; then it stamps the version from
@@ -194,7 +203,11 @@ false-positive on unsigned PyInstaller executables — if flagged, allow/exclude
 
 This repository's **first-party code is MIT-licensed** (see [`LICENSE`](LICENSE)).
 That covers the app, routes, desktop shell, build tooling, and tests. It does **not**
-cover the following third-party components, which keep their own licenses:
+cover the following third-party components, which keep their own licenses.
+
+**[`docs/PROVENANCE.md`](docs/PROVENANCE.md) is the full inventory** — every
+component, what reaches a customer, and what would have to change to sell this.
+Read that one before shipping anything; the summary below is the short version.
 
 - **ML models** — the genre (Discogs-EffNet / Discogs-400), tempo (TempoCNN), and
   related models are **MTG's**, released under **CC BY-NC-ND 4.0** (non-commercial,
@@ -202,17 +215,34 @@ cover the following third-party components, which keep their own licenses:
   `models/`, and are **not** covered by this repo's MIT license. Their terms —
   including the **non-commercial** restriction — govern any use or redistribution of
   the models themselves.
-- **Essentia-derived algorithm ports** — `src/vibenative/key.py` and parts of
-  `src/vibenative/frontend_mel.py` were **ported stage-for-stage from Essentia**
-  (MTG), which is licensed **AGPL-3.0**. As derivative works of AGPL code, these files
-  follow **Essentia's AGPL-3.0** upstream license, **not** MIT. If you reuse or
-  redistribute them, treat them as AGPL-3.0.
+- **The mel frontend** — `src/vibenative/frontend_mel.py` produces the exact input
+  MTG's models expect, and its header cites Essentia source for those parameter
+  *values*. Whether that makes it a derivative work of Essentia (**AGPL-3.0**) is
+  the open question in `PROVENANCE.md`: the code itself is textbook DSP — a Hann
+  window, Slaney's published 1998 mel constants, `numpy.fft` — and parameter values
+  are facts. Treat it as AGPL until someone qualified says otherwise. (The former
+  `key.py`, which really was a function-by-function port, is gone: `tonality.py`
+  replaced it clean-room and is MIT like the rest.)
 - **Crawled genre reference** — `src/vibenative/data/genres_electronic.json` (built by
   `tools/crawl_genres.py`) is a derived aggregate of **Wikidata** and the **MusicBrainz**
   genre list (both **CC0**) and of **DBpedia** / **English Wikipedia** text
-  (**CC BY-SA**). It is git-ignored rather than committed; the file's own `licences`
-  block and each record's `sources` field carry the attribution CC BY-SA requires if
-  you redistribute it.
+  (**CC BY-SA**). The file's own `licences` block and per-record `sources` carry the
+  attribution, and the app surfaces it under **Options → Credits and licences**.
+  Note it is git-ignored but **still shipped** — PyInstaller bundles the whole data
+  directory — so being out of git is not a redistribution mitigation. The same is
+  true of `data/enao.json`, whose licence is unresolved (`PROVENANCE.md` item 6).
 - **ffmpeg** — invoked as a separate program (never linked), so it stays a mere
   aggregation; a bundled build ships with its own `ffmpeg-NOTICE.txt`. Prefer an
   **LGPL** shared build for redistribution (see the ffmpeg note under *Running it*).
+- **Tag reading** — uses the bundled **ffprobe**, not the GPL `mutagen`, which was
+  removed for exactly that reason.
+
+## Coming from the WSL build
+
+The predecessor ([Vibe_Identify](https://github.com/Sif0-Dyas/Vibe_Identify)) ran
+under WSL and kept its library in the same SQLite schema. `python
+tools/db_cutover.py` copies that database across once, reading the original and
+leaving it in place as a rollback; the first launch rewrites its `/mnt/...` paths
+to Windows ones. A fresh install needs none of this — see
+[`src/vibenative/legacy.py`](src/vibenative/legacy.py), which is all of it.
+

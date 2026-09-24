@@ -20,9 +20,8 @@ echo(
 echo   Project venv not found at:
 echo     %VENV_PYW%
 echo(
-echo   Create it and install the runtime + shell deps, then re-run:
-echo     py -m venv .venv
-echo     .venv\Scripts\python -m pip install -r requirements.txt
-echo     .venv\Scripts\python -m pip install -r desktop\requirements-desktop.txt
+echo   Create it from uv.lock (runtime + desktop shell deps), then re-run:
+echo     uv sync --group desktop
+echo   (uv itself: winget install astral-sh.uv)
 echo(
 pause

@@ -13,6 +13,7 @@ import json
 
 import pytest
 
+from conftest import seed_track
 from vibenative import taxonomy
 
 
@@ -74,6 +75,18 @@ def test_edits_on_disk_are_picked_up_without_a_restart():
     assert taxonomy.family_override("Industrial") == "Bass"
     write(f, {"family": {"Industrial": "Chill"}})
     assert taxonomy.family_override("Industrial") == "Chill"
+
+
+def test_a_pinned_block_holds_one_overlay_for_its_whole_length():
+    """A whole-library build classifies every track against the same file --
+    and does not stat() it once per lookup to find that out."""
+    f = taxonomy.path()
+    write(f, {"family": {"Industrial": "Bass"}})
+    with taxonomy.pinned():
+        assert taxonomy.family_override("Industrial") == "Bass"
+        f.write_text(json.dumps({"family": {"Industrial": "Chill"}}), encoding="utf-8")
+        assert taxonomy.family_override("Industrial") == "Bass"  # held
+    assert taxonomy.family_override("Industrial") == "Chill"  # released
 
 
 # --- surviving a hand-edited file ---------------------------------------------
@@ -238,10 +251,9 @@ def test_an_invented_archgenre_gets_a_place_in_the_order():
 def test_no_group_can_fall_off_the_genres_tab(client):
     """The route must list every group it built, not only the ones the built-in
     order anticipated. Losing tracks silently is the worst failure here."""
-    from vibenative.db import cache_put
 
     for h, style in (("t1", "Halftime"), ("t2", "Techno")):
-        cache_put(h, f"{h}.mp3", "", h, {"salience": [{"style": style, "score": 1.0}]}, None)
+        seed_track(h, {"salience": [{"style": style, "score": 1.0}]})
 
     def listed():
         body = client.get("/genres?by=archgenre&top=0").get_json()

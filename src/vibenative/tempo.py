@@ -27,7 +27,6 @@ PATCH, PATCH_HOP = 256, 128
 # Cap patches per Session.run (see onnx_engine.EMB_BATCH): a long track's full patch
 # stack fed to the DirectML EP at once can balloon memory and OOM-crash a batch scan.
 PATCH_BATCH = 64
-PROVIDER_ORDER = ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 
 def _mel_filterbank() -> np.ndarray:
@@ -86,13 +85,14 @@ def _session():  # -> onnxruntime.InferenceSession (imported lazily below, so no
     # suite at collection (see tests/test_import_safety.py, the guard for this).
     import onnxruntime as ort
 
+    from . import onnx_engine  # lazy for the same reason: it imports onnxruntime at top
+
     if "sess" not in _engine:
         path = MODELS / "tempocnn.onnx"
         if not path.exists():
             raise FileNotFoundError("tempocnn.onnx missing — run tools/convert_models.py")
-        avail = set(ort.get_available_providers())
-        providers = [p for p in PROVIDER_ORDER if p in avail] or ["CPUExecutionProvider"]
-        s = ort.InferenceSession(str(path), providers=providers)
+        # One provider policy for every session: CPU unless VIBE_PROVIDER=gpu.
+        s = ort.InferenceSession(str(path), providers=onnx_engine.resolve_providers())
         _engine.update(sess=s, inn=s.get_inputs()[0].name, outn=s.get_outputs()[0].name)
     return _engine["sess"]
 

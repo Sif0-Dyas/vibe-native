@@ -34,7 +34,7 @@ def _audio_ready():
     import sys
 
     sys.path.insert(0, str(ROOT / "src"))
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     index = json.loads((ORACLE / "index.json").read_text())
     for h in _subset(index):
@@ -53,8 +53,8 @@ def _cos(a, b):
 @pytest.mark.skipif(not _READY, reason=_WHY)
 def test_embeddings_match_oracle():
     from vibenative.decode import decode_16k_mono
+    from vibenative.legacy import wsl_to_windows
     from vibenative.onnx_engine import get_engine
-    from vibenative.paths import wsl_to_windows
 
     embedder = get_engine()["embedder"]
     index = json.loads((ORACLE / "index.json").read_text())

@@ -7,9 +7,10 @@ with its name, aliases, a one-line description, a prose excerpt, its place in th
 genre hierarchy (parents/children/influences), when and where it started, and its
 IDs in the other four genre vocabularies this project touches:
 
-* **Every Noise at Once** (Wikidata P9881) -- joins straight onto the snapshot
-  ``tools/build_enao.py`` builds, so a crawled genre can inherit ENAO's canonical
-  colour and map coordinates.
+* **Every Noise at Once** (Wikidata P9881) -- the ID only. The ENAO data itself
+  (colour, map coordinates) is deliberately NOT joined in: it carries no licence,
+  and this file ships in the app. ``tools/strip_enao_fields.py`` removes it from a
+  file written by an older version of this crawler.
 * **MusicBrainz** (P8052), **Discogs style** (P9219) -- the latter is the same
   vocabulary the Discogs-400 classifier emits, so this is a route from a model
   label to a described, dated, placed genre.
@@ -57,8 +58,6 @@ applied consistently.
    published 1-request/second limit, but it is not this script's call to make
    silently -- so it is off by default and the flag says what it does.
 
-5. **The local Every Noise snapshot**, if present. Never fetched; read off disk from
-   ``src/vibenative/data/enao.json``, joined by P9881. Absent file = skipped field.
 
 Being a polite crawler
 ----------------------
@@ -97,7 +96,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPO_ROOT / "src" / "vibenative" / "data" / "genres_electronic.json"
 DEFAULT_CACHE = REPO_ROOT / ".cache" / "genre-crawl"
-ENAO_SNAPSHOT = REPO_ROOT / "src" / "vibenative" / "data" / "enao.json"
 
 USER_AGENT = "vibenative-genre-crawler/1.0 (+https://github.com/Sif0-Dyas/vibe-native)"
 
@@ -125,7 +123,6 @@ LICENCES = {
     "dbpedia": "CC-BY-SA-3.0 / GFDL (DBpedia, derived from Wikipedia infoboxes)",
     "wikipedia": "CC-BY-SA-4.0 (English Wikipedia, via api.wikimedia.org)",
     "musicbrainz": "CC0-1.0 (MusicBrainz genre vocabulary)",
-    "everynoise": "no licence; local snapshot only, never redistributed",
 }
 
 WD = "http://www.wikidata.org/entity/"
@@ -195,16 +192,6 @@ def norm(name):
     s = s.replace("&", " and ")
     s = re.sub(r"[^a-z0-9]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
-
-
-def id_key(value):
-    """Fold an external ID for comparison: alphanumerics only, lowercased.
-
-    Every Noise IDs come through as ``acidhouse`` while the snapshot spells the
-    same genre ``acid house``; this makes the two comparable without asserting
-    which form either side uses.
-    """
-    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
 def qid(iri):
@@ -379,7 +366,7 @@ def subclass_depth(parents, root, max_depth=64):
     return depth
 
 
-def build_records(wd_items, wd_edges, wd_ids, dbp, wiki, enao, label_of):
+def build_records(wd_items, wd_edges, wd_ids, dbp, wiki, label_of):
     """Merge every source into the final per-genre records. Pure.
 
     Kept free of I/O so the whole merge -- including the ID joins and the
@@ -387,8 +374,6 @@ def build_records(wd_items, wd_edges, wd_ids, dbp, wiki, enao, label_of):
     """
     parents = {q: list(wd_edges.get(q, {}).get("parents", [])) for q in wd_items}
     depth = subclass_depth(parents, ELECTRONIC_MUSIC)
-
-    enao_by_id = {id_key(k): v for k, v in (enao or {}).items()}
 
     records = []
     for q, item in sorted(wd_items.items(), key=lambda kv: kv[1]["name"].lower()):
@@ -463,17 +448,6 @@ def build_records(wd_items, wd_edges, wd_ids, dbp, wiki, enao, label_of):
             # can tell "no coverage" apart from "covered elsewhere".
             if page.get("covered_by"):
                 rec["wikipedia_covered_by"] = page["covered_by"]
-
-        # Every Noise, joined on P9881 -- the whole reason that property is worth
-        # collecting. Falls back to the folded genre name when the ID is absent.
-        hit = None
-        if rec.get("everynoise_id"):
-            hit = enao_by_id.get(id_key(rec["everynoise_id"]))
-        if hit is None:
-            hit = enao_by_id.get(id_key(item["name"]))
-        if hit is not None:
-            rec["everynoise"] = hit
-            rec["sources"].append("everynoise")
 
         records.append(rec)
     return records
@@ -930,32 +904,12 @@ def fetch_musicbrainz(fetcher):
     return [ln.strip() for ln in body.decode("utf-8", "replace").splitlines() if ln.strip()]
 
 
-def load_enao(path=ENAO_SNAPSHOT):
-    """The local Every Noise snapshot as ``{genre name: {x, y, color, size}}``.
-
-    Absent file -> ``{}``, matching how ``vibenative.enao`` degrades: the crawl
-    simply omits the ``everynoise`` field rather than failing.
-    """
-    try:
-        blob = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    out = {}
-    for g in blob.get("genres", ()):
-        name = g.get("name")
-        if name:
-            out[name] = {k: g[k] for k in ("x", "y", "color", "size", "example") if k in g}
-    return out
-
-
 # --------------------------------------------------------------------------- #
 # orchestration
 # --------------------------------------------------------------------------- #
 
 
-def crawl(
-    fetcher, limit=None, wikipedia=True, musicbrainz=False, verbose=False, enao_path=ENAO_SNAPSHOT
-):
+def crawl(fetcher, limit=None, wikipedia=True, musicbrainz=False, verbose=False):
     """Run every enabled source and return ``(records, report)``."""
     say = print if verbose else (lambda *a, **k: None)
 
@@ -991,13 +945,7 @@ def crawl(
         wiki = fetch_wikipedia(fetcher, titles, verbose=verbose)
         print(f"  {len(wiki)} articles")
 
-    enao = load_enao(enao_path)
-    if enao:
-        print(f"everynoise: {len(enao)} genres in the local snapshot")
-    else:
-        print("everynoise: no local snapshot -- skipping (run tools/build_enao.py first)")
-
-    records = build_records(items, edges, ids, dbp, wiki, enao, label_of)
+    records = build_records(items, edges, ids, dbp, wiki, label_of)
 
     report = {"musicbrainz_matched": None, "musicbrainz_unmatched": []}
     if musicbrainz:
@@ -1040,7 +988,6 @@ def summarise(records):
         "fusion_genres",
         "other_names",
         "instruments",
-        "everynoise",
         "everynoise_id",
         "musicbrainz_id",
         "discogs_style_id",
@@ -1080,12 +1027,6 @@ def build_parser():
         help="also fetch the MusicBrainz genre vocabulary (robots.txt disallows /ws -- see module docstring)",
     )
     ap.add_argument(
-        "--enao",
-        type=Path,
-        default=ENAO_SNAPSHOT,
-        help="local Every Noise snapshot to join against",
-    )
-    ap.add_argument(
         "-v", "--verbose", action="store_true", help="per-phase progress and retry detail"
     )
     return ap
@@ -1118,7 +1059,6 @@ def main(argv=None):
             wikipedia=not args.no_wikipedia,
             musicbrainz=args.musicbrainz,
             verbose=args.verbose,
-            enao_path=args.enao,
         )
     except RobotsDenied as exc:
         print(f"error: {exc}", file=sys.stderr)

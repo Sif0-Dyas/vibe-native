@@ -277,9 +277,7 @@ def colors_for(name, mode="dark", keystones=None):
         # A full wheel wraps, so the last hue must not land back on the first;
         # a partial arc should reach its end, so it spans inclusively.
         frac = (j / per) if (hi - lo) >= 360 else (j / max(1, per - 1))
-        out[k] = oklch_hex(
-            light if i < per else light2, chroma, (lo + (hi - lo) * frac) % 360
-        )
+        out[k] = oklch_hex(light if i < per else light2, chroma, (lo + (hi - lo) * frac) % 360)
     return out
 
 

@@ -121,11 +121,11 @@ def _migration_2(c):
     The WSL app stored server-side paths as ``/mnt/<drive>/...``; on Windows those
     don't resolve, so audio preview, on-demand waveforms, and segment extraction
     would break for inherited rows. Rewrite only the mnt-prefixed ``tracks.filepath``
-    values via the same ``paths.wsl_to_windows`` helper the routes use
+    values via the same ``legacy.wsl_to_windows`` helper the routes use
     (``/mnt/c/Users/x`` -> ``C:\\Users\\x``). ``tracks.filepath`` is the only stored
     filesystem path in the schema. Idempotent: a translated path no longer matches
     the ``/mnt/%`` filter, so a re-run touches nothing."""
-    from .paths import wsl_to_windows
+    from .legacy import wsl_to_windows
 
     rows = c.execute("SELECT rowid, filepath FROM tracks WHERE filepath LIKE '/mnt/%'").fetchall()
     for rowid, fp in rows:
@@ -170,6 +170,81 @@ def _migration_5(c):
         c.execute("ALTER TABLE vibes ADD COLUMN description TEXT DEFAULT ''")
 
 
+def _migration_6(c):
+    """v6 -- per-ARTIST ratings, alongside the per-track ones from v4.
+
+    A track rating and an artist rating answer different questions: "is this
+    record good" versus "is this producer worth my time". Neither implies the
+    other -- a favourite artist still puts out a weak track -- so they are
+    separate rows rather than one derived from the average of the other.
+
+    Keyed on a NORMALISED artist name (casefolded, whitespace collapsed) because
+    tags are not consistent: "Skrillex", "skrillex" and "SKRILLEX " are one
+    artist and must not become three ratings. ``display`` keeps the spelling the
+    user actually saw when they rated, so the UI can show it back to them
+    unchanged.
+
+    Deliberately NOT a foreign key to tracks: an artist is a string on a track,
+    not a row anywhere, and a rating should survive every track by that artist
+    being removed and re-added under a different filename.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS artist_ratings(
+        artist_key TEXT PRIMARY KEY, display TEXT DEFAULT '',
+        stars INTEGER DEFAULT 0, grade TEXT DEFAULT '',
+        note TEXT DEFAULT '', updated REAL)""")
+
+
+# The tables the map is built from. A write to any of them bumps library_rev.
+_LIBRARY_TABLES = ("tracks", "tags", "track_tags")
+
+
+def _migration_7(c):
+    """v7 -- a library revision, bumped by trigger on every write to a table the
+    map is built from.
+
+    The map cache used to be keyed on a digest of every track row, which meant
+    that even asking "is my map still current" read and hashed the whole
+    payload column -- a quarter of a gigabyte and half a second on a large
+    library, paid on every visit to the Map tab. A counter the database itself
+    maintains answers the same question in microseconds, and cannot be bypassed
+    by a write path that forgot to bump it: the triggers fire for every INSERT,
+    UPDATE and DELETE, including snapshot restores and bulk deletes.
+
+    Ratings, vibes, playlists and the waveform cache are deliberately not
+    covered -- they are overlays the map fetches separately, and a write to
+    them must not invalidate a map that is still exactly right.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS library_rev(
+        id INTEGER PRIMARY KEY CHECK (id = 1), rev INTEGER NOT NULL)""")
+    c.execute("INSERT OR IGNORE INTO library_rev(id, rev) VALUES (1, 0)")
+    for t in _LIBRARY_TABLES:
+        for op in ("INSERT", "UPDATE", "DELETE"):
+            c.execute(
+                f"CREATE TRIGGER IF NOT EXISTS {t}_rev_{op.lower()} AFTER {op} ON {t} "  # nosec B608
+                "BEGIN UPDATE library_rev SET rev = rev + 1 WHERE id = 1; END"
+            )
+
+
+def _migration_8(c):
+    """v8 -- corrected keys.
+
+    The key detector (`tonality.py`) is a trained model, and the training data
+    that matters most is this library's own music: public EDM key sets disagree
+    with each other by ~6 points, so a model fitted to one of them is
+    mis-calibrated for anyone else's collection. Every key a person corrects
+    here is one labelled example from the distribution that actually matters,
+    which `tools/eval_key.py --dataset library` reads back and
+    `tools/train_key_templates.py` trains on.
+
+    Kept out of the payload deliberately: the payload is the analyser's output
+    and gets overwritten on re-analysis, whereas a human judgement must outlive
+    that. Routes read the label and present it in place of the detected key.
+    """
+    c.execute("""CREATE TABLE IF NOT EXISTS key_labels(
+        hash TEXT PRIMARY KEY, key TEXT NOT NULL, scale TEXT NOT NULL,
+        source TEXT, created REAL)""")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -177,6 +252,9 @@ MIGRATIONS = [
     (3, _migration_3),
     (4, _migration_4),
     (5, _migration_5),
+    (6, _migration_6),
+    (7, _migration_7),
+    (8, _migration_8),
 ]
 
 
@@ -200,6 +278,12 @@ def init_db():
             c.execute("UPDATE schema_version SET version=?", (current,))
 
 
+def library_rev(c) -> int:
+    """The current library revision (see _migration_7), on an open cursor."""
+    row = c.execute("SELECT rev FROM library_rev WHERE id = 1").fetchone()
+    return int(row[0]) if row else 0
+
+
 def file_hash(path) -> str:
     """Content hash: same song caches regardless of filename or location."""
     h = hashlib.sha1()  # nosec B324  # content cache key (dedupe by audio), not security
@@ -221,9 +305,75 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
     blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute(
-            "INSERT OR REPLACE INTO tracks VALUES(?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, created) "
+            "VALUES(?,?,?,?,?,?,?)",
             (h, filename, filepath or "", title, json.dumps(payload), blob, time.time()),
         )
+
+
+def key_label_get(h: str):
+    """The corrected (key, scale) for a track, or None."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT key, scale FROM key_labels WHERE hash=?", (h,)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def key_label_put(h: str, key: str, scale: str, source: str = "manual"):
+    with _db_lock, closing(db()) as conn, conn as c:
+        c.execute(
+            "INSERT OR REPLACE INTO key_labels(hash, key, scale, source, created) VALUES(?,?,?,?,?)",
+            (h, key, scale, source, time.time()),
+        )
+
+
+def key_label_delete(h: str):
+    """Drop a correction; the detector's own answer stands again."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        c.execute("DELETE FROM key_labels WHERE hash=?", (h,))
+
+
+# Every table holding per-track rows, keyed by the content hash in a `hash`
+# column. forget_track deletes from all of them; test_db checks this list against
+# the live schema, so a new per-track table cannot be silently left behind.
+TRACK_TABLES = (
+    "tracks",
+    "track_tags",
+    "vibe_tracks",
+    "segment_overrides",
+    "lookup_cache",
+    "waveform_cache",
+    "ratings",
+    "training_labels",
+    "training_rejects",
+    "key_labels",
+)
+
+
+def forget_track(h: str) -> int:
+    """Delete everything stored about one track, in one transaction. Returns how
+    many `tracks` rows went (0 or 1). The tracks/track_tags triggers bump
+    library_rev, so the map cache rebuilds. The audio file is never touched."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        deleted = c.execute("DELETE FROM tracks WHERE hash=?", (h,)).rowcount
+        for t in TRACK_TABLES[1:]:
+            c.execute(f"DELETE FROM {t} WHERE hash=?", (h,))  # nosec B608  # t from TRACK_TABLES
+    return deleted
+
+
+def key_labels_map():
+    """{hash: (key, scale)} for every correction -- one query for a whole listing."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        return {r[0]: (r[1], r[2]) for r in c.execute("SELECT hash, key, scale FROM key_labels")}
+
+
+def key_labels_all():
+    """[(hash, filepath, key, scale)] for every corrected track that still has a
+    file on disk recorded -- the training set tools/eval_key.py reads."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        return c.execute(
+            "SELECT l.hash, t.filepath, l.key, l.scale FROM key_labels l "
+            "JOIN tracks t ON t.hash = l.hash WHERE t.filepath != ''"
+        ).fetchall()
 
 
 def waveform_cache_get(h: str):

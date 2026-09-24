@@ -1,4 +1,4 @@
-"""Analysis routes: analyze / refine / compare / batch, plus the audio and
+"""Analysis routes: analyze / refine / batch, plus the audio and
 waveform media endpoints and their upload helpers."""
 
 import os
@@ -11,13 +11,9 @@ from flask import Response, jsonify, request, send_file
 from .. import insight
 from ..analysis import (
     FINE_HOP_SECONDS,
-    _lock,
     analyze,
     build_payload,
-    get_engine,
-    get_maest,
     load_samples_for_waveform,
-    maest_genre,
     read_tags,
     read_title,
     refine_segments,
@@ -37,7 +33,7 @@ from ._shared import bp
 
 
 # ----------------------------------------------------------------------------
-# Upload plumbing shared by /analyze, /refine, /compare: validate the audio
+# Upload plumbing shared by /analyze, /refine: validate the audio
 # upload, stage it to a temp file, and always clean up.
 # ----------------------------------------------------------------------------
 class UploadError(Exception):
@@ -74,6 +70,25 @@ def saved_upload(f, missing_msg="no file received"):
             pass
 
 
+def _apply_key_correction(h, payload):
+    """Overlay a human-corrected key onto an analysis payload (in place).
+    Corrections live outside the payload so re-analysis cannot clobber them, so
+    every path that serves a payload has to put them back."""
+    from ..db import key_label_get
+
+    correction = key_label_get(h)
+    if not correction:
+        payload.setdefault("key_source", "detector")
+        return payload
+    from ..analysis import CAMELOT
+
+    key, scale = correction
+    payload["key"], payload["scale"] = key, scale
+    payload["camelot"] = CAMELOT.get((key, scale))
+    payload["key_source"] = "manual"
+    return payload
+
+
 @bp.post("/analyze")
 def analyze_route():
     f = request.files.get("file")
@@ -83,10 +98,9 @@ def analyze_route():
             h = file_hash(p)
             cached = cache_get(h)
             if cached:
-                cached["hash"] = h
-                cached["cached"] = True
-                cached["segment_overrides"] = _segment_overrides(h)
-                return jsonify(cached)
+                _apply_key_correction(h, cached)
+                _backfill_waveform(h, p)
+                return jsonify(_cached_response(cached, h))
 
             title = read_title(p) or Path(f.filename).stem
             tags = read_tags(p)
@@ -163,104 +177,6 @@ def refine_route():
         return jsonify({"error": "internal error"}), 500
 
 
-def _top_styles(vec, labels, k=6, thresh=0.02):
-    """Top-k [{parent,style,score}] from a 400-dim genre vector."""
-    import numpy as np
-
-    order = np.argsort(vec)[::-1][:k]
-    out = []
-    for i in order:
-        if float(vec[int(i)]) < thresh:
-            break
-        parent, child = labels[int(i)].split("---", 1)
-        out.append({"parent": parent, "style": child, "score": round(float(vec[int(i)]), 4)})
-    return out
-
-
-def compare_engines(path: Path, weight=0.5):
-    """Run EffNet and MAEST on one track. Returns, for the union of each engine's
-    top styles, BOTH per-style scores -- so the client can re-mix the merge at any
-    weight live (the models are the slow part; averaging is instant). Both models
-    share the identical 400-label order, so the merge is a plain weighted average."""
-    import numpy as np
-
-    from .. import decode
-
-    eng = get_engine()
-    labels = eng["labels"]
-    # decode + one-time model builds stay OUTSIDE the inference lock (matching
-    # analyze); only the shared inference pass is serialized, so a /compare during a
-    # batch no longer freezes the workers for the whole decode. MAEST is not ported
-    # to the native engine yet -> get_maest() returns None and /compare degrades to
-    # an EffNet-only read (maest_available: false).
-    audio16 = decode.decode_16k_mono(path)
-    get_maest()  # warm MAEST (if installed) before taking the lock
-    with _lock:
-        eff = np.mean(eng["classifier"](eng["embedder"](audio16)), axis=0)
-        mae = maest_genre(audio16)
-    if mae is None:
-        return {"maest_available": False, "effnet": _top_styles(eff, labels)}
-    # union of each engine's top-K, wide enough that the merged top-5 for ANY
-    # weight is contained in it; carry both scores per style
-    K = 15
-    idx = sorted(
-        set(np.argsort(eff)[::-1][:K]) | set(np.argsort(mae)[::-1][:K]),
-        key=lambda i: -max(float(eff[i]), float(mae[i])),
-    )
-    pairs = [
-        {
-            "parent": labels[i].split("---", 1)[0],
-            "style": labels[i].split("---", 1)[1],
-            "eff": round(float(eff[i]), 4),
-            "mae": round(float(mae[i]), 4),
-        }
-        for i in idx
-    ]
-    return {"maest_available": True, "weight": weight, "pairs": pairs}
-
-
-@bp.post("/compare")
-def compare_route():
-    """A/B the EffNet genre read against MAEST + their merge for one track.
-    On demand only (MAEST is ~10x slower); does NOT touch the analysis cache.
-    Accepts a file upload (dropped tracks) or a server-side filepath (batch)."""
-    if FAKE:
-        import random
-
-        rng = random.Random(42)  # nosec B311  # seeds deterministic FAKE-mode data, not security
-        pool = ["Drum n Bass", "Dance-pop", "House", "Deep House", "Techno", "Trance", "Dubstep"]
-        pairs = [
-            {
-                "parent": "Electronic",
-                "style": s,
-                "eff": round(rng.uniform(0.03, 0.45), 3),
-                "mae": round(rng.uniform(0.03, 0.45), 3),
-            }
-            for s in pool
-        ]
-        return jsonify({"maest_available": True, "weight": 0.5, "pairs": pairs})
-
-    filepath = (request.form.get("filepath") or "").strip()
-    try:
-        if filepath:
-            p = Path(filepath)
-            if not p.is_file():
-                return jsonify({"error": f"file not found: {filepath}"}), 404
-            return jsonify(compare_engines(p))  # locks only its own inference pass
-        with saved_upload(request.files.get("file"), "no file or filepath provided") as p:
-            return jsonify(compare_engines(p))  # locks only its own inference pass
-    except UploadError as e:
-        return jsonify({"error": str(e)}), e.status
-    except Exception:
-        log.exception("request failed")
-        return jsonify({"error": "internal error"}), 500
-
-
-# ----------------------------------------------------------------------------
-# Segment-level overrides: label a drag-selected time range of a track a genre.
-# Records the span (repainted on the waveform, persisted across cache hits) and
-# extracts just that range into ~/genre_training/<genre>/ with ffmpeg.
-# ----------------------------------------------------------------------------
 def _backfill_filepath(h, path):
     """Record or repair a cached track's server-side path on a re-scan:
 
@@ -293,6 +209,45 @@ def _segment_overrides(h):
     return [{"id": r[0], "start_s": r[1], "end_s": r[2], "genre": r[3]} for r in rows]
 
 
+def _backfill_waveform(h, upload):
+    """Render the detailed waveform from an upload we are already holding.
+
+    A track dragged in and analysed without ever being linked to a folder has
+    no file the server can reach, so its waveform can only ever come from the
+    browser's copy. The client used to discover that by asking GET /waveform,
+    getting a 404, and then re-uploading the same file to POST /waveform --
+    which the server hashed a second time. On a cache hit the upload is right
+    here, already hashed, so the one decode happens now and the second upload
+    never has to.
+    """
+    if waveform_cache_get(h) is not None:
+        return
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    if row and row[0] and Path(row[0]).is_file():
+        return  # GET /waveform can decode that itself
+    try:
+        waveform_cache_put(h, waveform_minmax(load_samples_for_waveform(upload)))
+    except Exception:
+        log.exception("waveform backfill failed for %s", h)  # the envelope stands
+
+
+def _cached_response(cached, h, **extra):
+    """A cached payload dressed the way every cache hit is returned.
+
+    ``adjusted`` is the blend after the track's manual weight adjustments (or
+    None), sent with every cached payload so a track nudged on the map reads
+    the same the moment it lands in the Analyzer -- the alternative was a
+    second round-trip per row just to find out most rows had nothing to say.
+    """
+    from ..weights import read_with_steps
+
+    cached.update({"hash": h, "cached": True, **extra})
+    cached["segment_overrides"] = _segment_overrides(h)
+    cached["adjusted"] = read_with_steps(cached)
+    return cached
+
+
 @bp.get("/track/<h>")
 def track_route(h):
     """Return a cached track's full analysis payload by content hash — the same shape
@@ -301,10 +256,7 @@ def track_route(h):
     cached = cache_get(h)
     if not cached:
         return jsonify({"error": "not in library"}), 404
-    cached["hash"] = h
-    cached["cached"] = True
-    cached["segment_overrides"] = _segment_overrides(h)
-    return jsonify(cached)
+    return jsonify(_cached_response(cached, h))
 
 
 # ----------------------------------------------------------------------------
@@ -367,6 +319,48 @@ def waveform_route(h):
         samples = load_samples_for_waveform(Path(filepath))  # decode stays outside the DB lock
     except Exception:
         log.exception("waveform decode failed for %s", h)
+        return jsonify({"error": "could not decode this track's audio"}), 500
+    data = waveform_minmax(samples)
+    waveform_cache_put(h, data)
+    return jsonify(data)
+
+
+@bp.post("/waveform/<h>")
+def waveform_upload_route(h):
+    """Build a track's detailed waveform from an uploaded copy of its audio.
+
+    The GET above can only serve tracks it can reach: one with a cached waveform,
+    or one with a server-side file to decode. A track dragged in and analysed
+    without ever being linked to a folder has neither, so it was stuck drawing
+    the coarse envelope forever -- there was no path by which it could ever get
+    the detailed one, however many times you re-added it.
+
+    The browser is holding the audio in those exact cases, so it sends it here.
+    The upload is used for the waveform and thrown away -- no path is recorded
+    (a temp file is not where the track lives) and the analysis is not touched.
+    The result is cached permanently, so this happens once per track.
+    """
+    cached = waveform_cache_get(h)
+    if cached:
+        return jsonify(cached)  # raced another tab; nothing to do
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
+    # Only for tracks already in the library: this must not become a way to have
+    # the server decode arbitrary uploads under an arbitrary key.
+    if not row:
+        return jsonify({"error": "track not in database"}), 404
+    try:
+        with saved_upload(request.files.get("file")) as up:
+            # The hash has to match, or a mistake (or a crafted request) would
+            # file one track's waveform under another's name and the row would
+            # draw someone else's audio.
+            if file_hash(up) != h:
+                return jsonify({"error": "this audio is not that track"}), 400
+            samples = load_samples_for_waveform(up)
+    except UploadError as e:
+        return jsonify({"error": str(e)}), e.status
+    except Exception:
+        log.exception("waveform upload decode failed for %s", h)
         return jsonify({"error": "could not decode this track's audio"}), 500
     data = waveform_minmax(samples)
     waveform_cache_put(h, data)
@@ -451,7 +445,7 @@ def batch_route():
     import json as _json
     import time as _time
 
-    from ..paths import wsl_to_windows
+    from ..legacy import wsl_to_windows
 
     data = request.get_json(silent=True) or {}
     folder = Path(wsl_to_windows(str(data.get("path", "")))).expanduser()
@@ -489,9 +483,8 @@ def batch_route():
             h = file_hash(path)
             cached = cache_get(h)
             if cached:
-                cached = dict(cached)
-                cached.update({"ok": True, "hash": h, "cached": True, "filepath": str(path)})
-                cached["segment_overrides"] = _segment_overrides(h)
+                _apply_key_correction(h, cached)
+                cached = _cached_response(dict(cached), h, ok=True, filepath=str(path))
                 # backfill a server-side path for older drop-analyzed rows (which
                 # stored none) so audio preview / DAW waveform / section overrides
                 # light up for the whole library on a re-scan -- no re-analysis.

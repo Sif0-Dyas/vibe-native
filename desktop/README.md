@@ -30,10 +30,9 @@ Everything else — the list, the Map, waveforms, playback — is the unchanged 
 ## One-time setup
 
 1. Install the runtime + shell deps into the **project venv** (the same venv that
-   runs the analysis engine):
+   runs the analysis engine) from `uv.lock`:
    ```
-   .venv\Scripts\python -m pip install -r requirements.txt
-   .venv\Scripts\python -m pip install -r desktop\requirements-desktop.txt
+   uv sync --group desktop
    ```
    (The Edge WebView2 runtime is already on Windows 11.)
 2. Double-click **`Vibe Identify.bat`** at the project root.
@@ -116,8 +115,8 @@ backend, no pywebview needed — this is what CI runs.
 PyInstaller could later fold this into a single `Vibedentify.exe`:
 
 ```
-py -m pip install pyinstaller
-py -m PyInstaller --noconsole --onefile --name Vibedentify desktop\genre_app.pyw
+uv sync --group desktop
+uv run pyinstaller --noconsole --onefile --name Vibedentify desktop\genre_app.pyw
 ```
 
 The resulting `dist\Vibedentify.exe` launches like installed software (still needs

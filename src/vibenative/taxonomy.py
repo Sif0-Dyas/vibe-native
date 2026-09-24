@@ -24,9 +24,11 @@ Hand-editing is expected, so the file is re-read whenever it changes on disk and
 a broken one degrades to "no overlay" rather than taking the app down with it.
 """
 
+import contextvars
 import json
 import os
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from .config import log
@@ -46,6 +48,17 @@ _SCALARS = ("palette",)
 _lock = threading.Lock()
 _cache = None  # the parsed overlay
 _stamp = None  # (mtime, size) of the file it came from
+# NOTE: an earlier version of this file cached the stat() for half a second to
+# avoid ~47,000 syscalls per /map build. It was reverted: it made an external
+# write invisible for up to that long, which is a real semantic change (a write
+# followed immediately by a read could return the old overlay), and it bought
+# only ~0.47s of a ~6s request. The large win was caching path resolution in
+# paths.settings_ini(), which removed ~3.1s and changes no semantics at all.
+# Those syscalls are now avoided a different way -- see pinned() -- by holding
+# ONE overlay for the length of a whole-library build, which is not a change
+# in semantics but an improvement: every track in one map is classified
+# against the same file.
+_pinned = contextvars.ContextVar("taxonomy_pinned", default=None)
 
 
 def path():
@@ -100,6 +113,25 @@ def _clean(raw):
     return out
 
 
+@contextmanager
+def pinned():
+    """Hold one overlay for the duration of a block.
+
+    Inside it every lookup answers from the overlay as it was on entry, without
+    touching the disk. For a whole-library pass (the map, the Genres tab) that
+    turns tens of thousands of ``stat`` calls into one -- and guarantees the
+    pass is internally consistent, where before an edit saved mid-build would
+    have classified the first half of the library against one file and the
+    rest against another. Reads only: don't write the overlay inside a pinned
+    block and expect ``load()`` to see it.
+    """
+    token = _pinned.set(load())
+    try:
+        yield _pinned.get()
+    finally:
+        _pinned.reset(token)
+
+
 def load(force=False):
     """The current overlay, re-read when the file has changed on disk.
 
@@ -108,6 +140,10 @@ def load(force=False):
     save the file and the app follows, without a restart.
     """
     global _cache, _stamp
+    if not force:
+        held = _pinned.get()
+        if held is not None:
+            return held
     p = path()
     try:
         st = p.stat()

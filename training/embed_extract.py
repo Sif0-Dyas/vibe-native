@@ -2,7 +2,8 @@
 """Extract EffNet embeddings from a labeled training-audio tree.
 
 Walks ``<data_dir>/<genre>/*`` (the folders the app's override feature fills),
-runs each audio file through the same Discogs-EffNet embedder the app uses,
+runs each audio file through the same Discogs-EffNet embedder the app uses
+(the native ONNX engine: ``decode`` + ``onnx_engine``),
 and caches one ``.npy`` of frame embeddings (n_frames x 1280) per file under
 ``<data_dir>/_cache/``. Writes ``<data_dir>/manifest.json`` mapping each genre
 to its cached files -- the input ``train_head.py`` consumes.
@@ -13,7 +14,10 @@ Usage:
     python training/embed_extract.py                # ~/genre_training
     python training/embed_extract.py /path/to/tree
 
-Requires the app's runtime deps (essentia-tensorflow); run inside the venv.
+Requires the app's runtime deps (onnxruntime, ffmpeg) and the ONNX models in
+the repo's models/ (effnet.onnx); run inside the venv. The output format is unchanged from the old
+Essentia-based extractor, and the ONNX embedder is oracle-validated against the
+same EffNet model, so existing caches and trained heads stay valid.
 """
 
 import argparse
@@ -41,12 +45,11 @@ def iter_labeled_files(data_dir: Path):
 def embed_file(path: Path):
     """Frame embeddings (n_frames x 1280) via the app's shared engine."""
     import numpy as np
-    from essentia.standard import MonoLoader
 
-    from vibenative.analysis import get_engine
+    from vibenative import decode, onnx_engine
 
-    audio16 = MonoLoader(filename=str(path), sampleRate=16000, resampleQuality=4)()
-    embs = get_engine()["embedder"](audio16)
+    audio16 = decode.decode_16k_mono(path)
+    embs = onnx_engine.get_engine()["embedder"](audio16)
     return np.asarray(embs, dtype=np.float32)
 
 

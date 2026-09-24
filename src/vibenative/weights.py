@@ -27,6 +27,14 @@ track the model called 90% something else lifts it to a strong second, not to
 first -- if you disagree with a read that confident, an override is the honest
 tool. That ceiling is deliberate: it keeps a step from meaning "and also discard
 the analysis".
+
+A genre can also be **dropped** outright. That is a different statement from
+-3, not a stronger one: "not at all" says the track is barely this, and leaves
+it in the read at a trace; a drop says the genre isn't on the track and takes it
+off the list. Both were needed -- a misread you want quieter and a misread you
+want gone look nothing alike in a panel, and pushing something to 1% and having
+it sit there anyway reads as the press not working. They are stored separately
+so undoing one doesn't undo the other.
 """
 
 # Multiplier per step, tuned against a real read rather than picked: on a track
@@ -81,18 +89,61 @@ def describe(step):
     return STEP_WORDS.get(clamp_step(step), "as read")
 
 
-def apply(entries, steps, topk=8):
-    """Apply per-genre steps to a ranked style read.
+def clean_drops(drops):
+    """The stored form of a drop list: named genres, no blanks, no duplicates,
+    order preserved so the UI lists them back the way they were removed."""
+    out = []
+    for d in drops or []:
+        # `str(None)` is "None", a genre name a bad client would then have stored
+        # on the track forever. Only strings are names.
+        name = d.strip() if isinstance(d, str) else ""
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def surviving_drops(entries, drops):
+    """The drops that actually take effect against this read, in order.
+
+    A track with every genre removed has no identity at all, which is not
+    something a per-genre remove should be able to say -- and the read it would
+    fall back to is the unedited one, so the last press would look like it undid
+    every press before it. So the press that would empty the read is refused:
+    the last reading standing survives, and its drop is left out of the list so
+    the panel never shows a genre as removed while the map still carries it.
+
+    Drops of genres the read never held are kept -- they take nothing off, and
+    a later relabel may yet bring the genre in.
+    """
+    left = {(e or {}).get("style") for e in entries or []}
+    left.discard(None)
+    out = []
+    for d in clean_drops(drops):
+        if d in left and len(left) == 1:
+            continue
+        left.discard(d)
+        out.append(d)
+    return out
+
+
+def apply(entries, steps, drops=None, topk=8):
+    """Apply per-genre steps and drops to a ranked style read.
 
     ``entries`` is ``[{"style", "score"}, ...]`` -- salience or flat styles.
-    ``steps`` is ``{style: int}``. Returns a new ranked list, renormalised so the
-    scores still read as shares of one.
+    ``steps`` is ``{style: int}``; ``drops`` is a list of genres to take off the
+    read entirely. Returns a new ranked list, renormalised so the scores still
+    read as shares of one.
 
     Genres named in ``steps`` but absent from the read are introduced at
     ``ENTRY_FRACTION`` of the track's total weight before scaling, so "the model
     missed this entirely" is expressible. Only *raised* genres are introduced --
     lowering something that isn't there is already true, and adding it just to
     shrink it would put a genre on the track that nobody claimed was present.
+
+    A dropped genre is removed before anything is weighed, so the share it held
+    is redistributed rather than left as a hole. Its step, if it had one, goes
+    with it: "more of this" and "none of this" cannot both be what you meant.
+    The drop that would empty the read is refused (see :func:`surviving_drops`).
     """
     steps = {k: clamp_step(v) for k, v in (steps or {}).items() if clamp_step(v) != 0}
     scored = {}
@@ -104,6 +155,11 @@ def apply(entries, steps, topk=8):
             scored[style] = max(0.0, float(e.get("score") or 0))
         except (TypeError, ValueError):
             continue
+
+    drops = surviving_drops(entries, drops)
+    if drops:
+        steps = {k: v for k, v in steps.items() if k not in drops}
+        scored = {s: v for s, v in scored.items() if s not in drops}
     # Relative to the total, not the top reading. Scaling off the top looked
     # proportional but wasn't: the result is renormalised against a sum that also
     # varies, so "moderately" landed at 43% on a confident track and 30% on an
@@ -136,21 +192,23 @@ def apply(entries, steps, topk=8):
     return out
 
 
-def read_with_steps(payload, topk=8):
-    """The track's blend after its stored adjustments, or None if it has none.
+def base_read(payload):
+    """The ranked style read a track's adjustments apply to.
 
-    Reads the same source ``_dominant_style`` prefers, so an adjustment nudges
-    whatever the track currently reads as rather than resurrecting an older
-    analysis underneath it.
+    A hand relabel outranks the salience read, which outranks the flat style
+    list -- the same precedence ``_dominant_style`` uses, so an adjustment
+    nudges whatever the track currently reads as rather than resurrecting an
+    older analysis underneath it. Named once here because every caller that
+    spelled the chain out for itself was one tier away from disagreeing.
     """
+    p = payload or {}
+    return ((p.get("relabel") or {}).get("styles")) or p.get("salience") or p.get("styles") or []
+
+
+def read_with_steps(payload, topk=8):
+    """The track's blend after its stored adjustments, or None if it has none."""
     steps = (payload or {}).get("weights") or {}
-    if not steps:
+    drops = (payload or {}).get("drops") or []
+    if not steps and not drops:
         return None
-    base = (
-        ((payload.get("relabel") or {}).get("styles"))
-        or payload.get("salience")
-        or payload.get("styles")
-        or []
-    )
-    out = apply(base, steps, topk=topk)
-    return out or None
+    return apply(base_read(payload), steps, drops, topk=topk) or None

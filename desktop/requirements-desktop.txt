@@ -1,6 +1,0 @@
-# Windows desktop shell dependency. Install into the PROJECT VENV (the same
-# .venv that runs the analysis engine), so one interpreter runs both the shell
-# and the backend:
-#   .venv\Scripts\python -m pip install -r desktop\requirements-desktop.txt
-# Needs the Edge WebView2 runtime, which ships with Windows 11 by default.
-pywebview>=5.0

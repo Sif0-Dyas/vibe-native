@@ -19,6 +19,7 @@ guard against a mis-click reaching it, not security -- the route layer asks the
 user to type it.
 """
 
+import itertools
 import json
 import os
 import shutil
@@ -71,6 +72,18 @@ def _capture():
     return state
 
 
+# Windows' wall clock ticks every 15.6 ms (`time.get_clock_info("time").resolution`),
+# and no clock available here does better -- time_ns and monotonic share it. Two
+# snapshots taken back to back therefore record the SAME `created`, and a sort on
+# that alone falls back to whatever order the filesystem lists them in, which is
+# alphabetical by label: "...-first" ahead of a newer "...-second". This counter
+# records the order within a process so the tie can be broken correctly. Across
+# process restarts it resets, which is harmless: two runs landing in the same
+# 15.6 ms tick is vanishingly unlikely, and snapshots from different runs are
+# separated by the wall clock long before the tie-break is consulted.
+_seq = itertools.count()
+
+
 def create(label="manual"):
     """Snapshot the current training state. Returns the snapshot's metadata.
 
@@ -92,6 +105,7 @@ def create(label="manual"):
         "label": label,
         "created": time.time(),
         "created_human": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "seq": next(_seq),  # tie-break only; see _seq above
         "overrides": len(state["overrides"]),
         "rows": {t: len(v["rows"]) for t, v in state["tables"].items()},
         "custom_head": head_saved,
@@ -115,7 +129,9 @@ def list_all():
             out.append(json.loads((d / "meta.json").read_text(encoding="utf-8")))
         except (OSError, ValueError):
             log.warning("snapshot %s is unreadable; skipping", d.name)
-    return sorted(out, key=lambda m: m.get("created", 0), reverse=True)
+    # `seq` orders snapshots the coarse wall clock stamped identically; snapshots
+    # written before it existed default to 0 and keep their previous order.
+    return sorted(out, key=lambda m: (m.get("created", 0), m.get("seq", 0)), reverse=True)
 
 
 def _clear():

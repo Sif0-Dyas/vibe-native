@@ -1,11 +1,31 @@
 # Pre-commit hooks — keep the format/lint gate green locally so CI never goes red
 # on style again. Python-only (ruff); the JS/eslint check stays in CI. Install once:
-#     pip install pre-commit && pre-commit install
+#     uv run pre-commit install
 # Then `git commit` runs ruff on staged files automatically.
+#
+# ruff runs as a LOCAL hook through `uv run`, so it is the exact version in
+# uv.lock -- the same one CI runs. There is deliberately no ruff-pre-commit
+# `rev:` to keep in step with it.
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0 # keep in sync with the ruff pin in requirements-dev.txt
+  - repo: local
     hooks:
-      - id: ruff-check # lint — mirrors CI's `ruff check .`
-        args: [--fix]
-      - id: ruff-format # format — mirrors CI's `ruff format --check .`
+      - id: ruff-check # lint — mirrors CI's `uv run ruff check .`
+        name: ruff check
+        language: system
+        entry: uv run ruff check --fix --force-exclude
+        files: '\.pyw?$'
+      - id: ruff-format # format — mirrors CI's `uv run ruff format --check .`
+        name: ruff format
+        language: system
+        entry: uv run ruff format --force-exclude
+        files: '\.pyw?$'
+      # A stray control byte (a literal NUL once sat in app.js) makes git call the
+      # file binary, so diffs and blame stop showing it. Tab, LF and CR are allowed.
+      # `types: [file]` overrides the default text-only filter, which would skip
+      # exactly the files this hook exists to catch.
+      - id: no-control-chars
+        name: no control characters in source
+        language: pygrep
+        entry: '[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]'
+        files: '\.(js|py|pyw|html|css)$'
+        types: [file]

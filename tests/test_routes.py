@@ -24,7 +24,11 @@ def test_map_empty_db(client):
     r = client.get("/map")
     assert r.status_code == 200
     body = r.get_json()
-    assert body == {"nodes": [], "edges": []}
+    assert body["nodes"] == []
+    assert body["edges"] == []
+    # The stamp travels with the map so the client can ask whether the one it is
+    # holding is still the current one -- see /map/stamp.
+    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
 
 
 def test_tags_empty(client):
@@ -93,6 +97,46 @@ def test_vibes_create_and_duplicate(client):
     assert r1.get_json()["name"] == "Test Vibe"
     r2 = client.post("/vibes", json={"name": "Test Vibe"})
     assert r2.status_code == 409
+
+
+def test_forget_clears_every_per_track_table(client):
+    # One row per per-track table for A and for B; forgetting A must empty A from
+    # all of them in one go and leave B alone. The table list is read from the live
+    # schema, so a new per-track table fails here until forget_track covers it.
+    from contextlib import closing
+
+    from vibenative.db import TRACK_TABLES, db, library_rev
+
+    with closing(db()) as conn, conn as c:
+        keyed = {
+            t
+            for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            if any(col[1] == "hash" for col in c.execute(f"PRAGMA table_info({t})"))
+        }
+        assert keyed == set(TRACK_TABLES)
+        for h in ("A" * 40, "B" * 40):
+            c.execute("INSERT INTO tracks(hash, payload, created) VALUES(?, '{}', 0)", (h,))
+            c.execute("INSERT INTO track_tags(tag_id, hash) VALUES(1, ?)", (h,))
+            c.execute("INSERT INTO vibe_tracks(vibe_id, hash) VALUES(1, ?)", (h,))
+            c.execute(
+                "INSERT INTO segment_overrides(hash, start_s, end_s, genre) VALUES(?, 0, 1, 'x')",
+                (h,),
+            )
+            c.execute("INSERT INTO lookup_cache(hash, source) VALUES(?, 'discogs')", (h,))
+            c.execute("INSERT INTO waveform_cache(hash, data_json) VALUES(?, '{}')", (h,))
+            c.execute("INSERT INTO ratings(hash, stars) VALUES(?, 3)", (h,))
+            c.execute("INSERT INTO training_labels(hash, genre) VALUES(?, 'x')", (h,))
+            c.execute("INSERT INTO training_rejects(hash, genre) VALUES(?, 'y')", (h,))
+            c.execute("INSERT INTO key_labels(hash, key, scale) VALUES(?, 'C', 'major')", (h,))
+        rev_before = library_rev(c)
+
+    assert client.post(f"/forget/{'A' * 40}").get_json()["deleted"] == 1
+
+    with closing(db()) as conn, conn as c:
+        for t in TRACK_TABLES:
+            counts = dict(c.execute(f"SELECT hash, COUNT(*) FROM {t} GROUP BY hash").fetchall())
+            assert counts == {"B" * 40: 1}, t
+        assert library_rev(c) > rev_before  # the map cache sees the change
 
 
 def test_forget_deletes_track(client):
@@ -173,16 +217,46 @@ def test_batch_missing_dir_400(client):
     assert client.post("/batch", json={"path": "/no/such/dir"}).status_code == 400
 
 
-def test_compare_fake_shape(client):
-    # FAKE mode returns canned EffNet-vs-MAEST pairs without running a model.
-    r = client.post("/compare")
+def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
+    # A file that stalls ffmpeg/ffprobe must fail on its own, not pin a batch worker.
+    # Runs the REAL analyze() path (FAKE off for the analysis module) with every
+    # child process timing out.
+    import subprocess
+
+    from conftest import seed_track
+    from vibenative import analysis, decode, metadata
+    from vibenative.db import file_hash
+
+    def hang(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+    monkeypatch.setattr(subprocess, "run", hang)
+    monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
+    monkeypatch.setattr(metadata, "find_tool", lambda name: name)
+    monkeypatch.setattr(analysis, "FAKE", False)
+    monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
+
+    hung = tmp_path / "a_hung.wav"
+    hung.write_bytes(_tiny_wav_bytes(sample=1))
+    ok = tmp_path / "b_ok.wav"
+    ok.write_bytes(_tiny_wav_bytes(sample=2))
+    seed_track(file_hash(ok), {"key": "C", "scale": "major", "styles": []})
+
+    # (a) decode turns the timeout into a RuntimeError that names the file;
+    # a probe timeout in metadata is just empty tags.
+    with pytest.raises(RuntimeError, match="a_hung.wav") as exc:
+        decode.decode_16k_mono(hung)
+    assert isinstance(exc.value.__cause__, subprocess.TimeoutExpired)
+    assert metadata.read_tags(hung)["tag"] == {}
+
+    # (b) /batch reports the hung file as a failure line and keeps going.
+    r = client.post("/batch", json={"path": str(tmp_path), "workers": 1})
     assert r.status_code == 200
-    body = r.get_json()
-    assert body["maest_available"] is True
-    assert isinstance(body["pairs"], list) and body["pairs"]
-    for p in body["pairs"]:
-        for key in ("parent", "style", "eff", "mae"):
-            assert key in p
+    lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
+    assert lines[0] == {"total": 2}
+    first, second = lines[1:]
+    assert first["ok"] is False and first["filename"] == "a_hung.wav"
+    assert second["ok"] is True and second["cached"] is True
 
 
 def test_map_populated(client):
@@ -255,6 +329,9 @@ def test_vibe_match_and_playlist(client):
     # match: the track scored against every vibe's centroid
     m = client.get(f"/vibes/match/{h}").get_json()
     assert any(x["id"] == vid and "sim" in x for x in m)
+    # the batch form answers the same for the hashes it knows and skips the rest
+    b = client.get(f"/vibes/match?hashes={h},nobody").get_json()
+    assert set(b) == {h} and b[h] == m
     # playlist: whole-DB ranking vs the vibe centroid (the lone member scores ~1.0)
     pl = client.get(f"/vibes/{vid}/playlist").get_json()
     assert isinstance(pl, list) and any(row["hash"] == h for row in pl)
@@ -313,6 +390,33 @@ def test_second_style_falls_back_to_styles():
     assert _second_style({"salience": [], "styles": styles}, "Techno", 0.5) == ["House", 0.375]
     assert _second_style({"salience": [], "styles": []}, "Techno", 0.5) is None  # both empty
     assert _second_style({}, "Techno", 0.5) is None  # neither key present
+
+
+def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
+    """The label, the colour blend and the override candidates all come from one
+    ranked read. A relabel used to move the label but leave the blend and the
+    candidates on the pre-relabel salience, so the dot argued with its own name."""
+    from vibenative.routes import _second_style
+    from vibenative.routes._shared import _dominant_style
+    from vibenative.routes.map import _override_candidates
+
+    payload = {
+        "salience": [{"style": "Techno", "score": 0.6}, {"style": "House", "score": 0.4}],
+        "relabel": {
+            "styles": [
+                {"style": "Trance", "score": 0.7},
+                {"style": "Progressive House", "score": 0.3},
+            ]
+        },
+    }
+    style, score = _dominant_style(payload)
+    assert style == "Trance"
+    assert _second_style(payload, style, score) == ["Progressive House", 0.3]
+    assert [c["style"] for c in _override_candidates(payload, style)] == ["Progressive House"]
+    # ...and a genre removed by hand is not offered back as a one-click correction.
+    payload["drops"] = ["Progressive House"]
+    style, score = _dominant_style(payload)
+    assert style == "Trance" and _override_candidates(payload, style) == []
 
 
 def test_second_style_zero_top_score_no_zero_division():
@@ -909,3 +1013,62 @@ def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
     import inspect
 
     assert "signature" in inspect.getsource(summarise)
+
+
+def test_key_correction_overrides_the_detector(client):
+    """A corrected key replaces the detected one everywhere a track is served,
+    carries the right Camelot code, survives re-analysis (it lives outside the
+    payload), and can be cleared."""
+    from tests.conftest import seed_track
+
+    h = seed_track("k" * 40, {"key": "C", "scale": "major", "camelot": "8B", "styles": []})
+
+    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert (row["key"], row["scale"], row["key_source"]) == ("C", "major", "detector")
+
+    r = client.post(f"/key/{h}", json={"key": "Eb", "scale": "minor"})
+    assert r.status_code == 200, r.data
+    assert r.get_json() == {
+        "ok": True,
+        "key": "Eb",
+        "scale": "minor",
+        "camelot": "2A",
+        "key_source": "manual",
+    }
+
+    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert (row["key"], row["scale"], row["camelot"], row["key_source"]) == (
+        "Eb",
+        "minor",
+        "2A",
+        "manual",
+    )
+
+    # clearing restores the detector's own answer from the payload
+    assert client.post(f"/key/{h}", json={"key": None}).get_json()["key"] == "C"
+    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert (row["key"], row["key_source"]) == ("C", "detector")
+
+
+def test_key_correction_rejects_nonsense(client):
+    from tests.conftest import seed_track
+
+    h = seed_track("j" * 40, {"key": "C", "scale": "major", "styles": []})
+    assert client.post(f"/key/{h}", json={"key": "H", "scale": "minor"}).status_code == 400
+    assert client.post(f"/key/{h}", json={"key": "C", "scale": "lydian"}).status_code == 400
+    assert client.post("/key/nosuchtrack", json={"key": "C", "scale": "minor"}).status_code == 404
+
+
+def test_notices_lists_what_the_build_ships(client):
+    """Attribution is owed to whoever runs the product, so it has to be reachable
+    from inside it. The list is built from what is actually present, so it never
+    credits a file this build does not have."""
+    r = client.get("/notices")
+    assert r.status_code == 200
+    items = r.get_json()
+    assert items and all({"name", "what", "licence", "url"} <= set(i) for i in items)
+
+    names = " ".join(i["name"] for i in items)
+    assert "FFmpeg" in names  # LGPL: the one with a hard obligation
+    licences = " ".join(i["licence"] for i in items)
+    assert "LGPL" in licences

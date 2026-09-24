@@ -25,6 +25,20 @@ def _isolated_taxonomy(tmp_path, monkeypatch):
     monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
 
 
+def seed_track(h, payload):
+    """Put one analysed track in the scratch DB, keyed by content hash.
+
+    The three test modules that build a library each spelled out the same
+    ``cache_put`` call; this is the one place that knows its argument order.
+    Imported lazily because ``client`` re-imports the package per test, so a
+    top-level import would bind to a module the app is no longer using.
+    """
+    from vibenative.db import cache_put
+
+    cache_put(h, f"{h}.mp3", "", h, payload, None)
+    return h
+
+
 @pytest.fixture()
 def client():
     os.environ["FAKE_ANALYZER"] = "1"

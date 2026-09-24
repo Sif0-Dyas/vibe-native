@@ -97,18 +97,24 @@ async function fetchTags(force){
   return _allTags;
 }
 
-async function renderTags(row, hash){
+/* `mine` may be passed in by a caller that already fetched this track's tags
+   as part of a batch (see EXTRAS in app.js); otherwise it is asked for here. */
+async function renderTags(row, hash, mine){
   try {
-    const [all, mine] = await Promise.all([
-      fetchTags(), fetch(`/tags/for/${hash}`).then(r => r.ok ? r.json() : [])
+    const [all, got] = await Promise.all([
+      fetchTags(), mine || fetch(`/tags/for/${hash}`).then(r => r.ok ? r.json() : [])
     ]);
+    mine = got;
     const mineIds = new Set(mine.map(t => t.id));
 
+    // finishRow lays out a `.rowchips` strip with a holder already in it, so the
+    // chips land beside the vibes instead of on their own line. Falling back to
+    // the cell keeps this working for any row built without one.
     let holder = row.querySelector('.tagchips');
     if (!holder){
       holder = document.createElement('div');
       holder.className = 'tagchips';
-      row.children[2].appendChild(holder);
+      (row.querySelector('.rowchips') || row.children[2]).appendChild(holder);
     }
     holder.innerHTML = '';
 
@@ -487,13 +493,20 @@ async function renderVibePanel(){
 }
 
 /* per-row: show which vibes this track matches + add-to-vibe button */
-async function renderVibeMatches(row, hash){
+/* `found` may be passed in by a caller that already fetched this track's
+   matches as part of a batch (see EXTRAS in app.js); otherwise asked for here. */
+async function renderVibeMatches(row, hash, found){
   try {
-    const prev = row.children[2].querySelector('.vibematches');
-    if (prev) prev.remove();            // avoid stacking holders on refresh
-    const r = await fetch(`/vibes/match/${hash}`);
-    const holder = document.createElement('div');
+    // Refilled in place rather than removed and re-appended: the holder's
+    // position in the `.rowchips` strip is set by finishRow, and rebuilding it
+    // dropped the vibes below the tags every time a thumb was pressed.
+    if (!found){
+      const r = await fetch(`/vibes/match/${hash}`);
+      found = r.ok ? await r.json() : [];
+    }
+    const holder = row.querySelector('.vibematches') || document.createElement('div');
     holder.className = 'vibematches';
+    holder.innerHTML = '';
     async function feedback(vid, weight){
       // per-song 👍/👎: sets THIS track's weight inside that vibe (Rocchio),
       // then re-ranks -- 👍 pulls the vibe toward the song, 👎 pushes it away.
@@ -502,8 +515,8 @@ async function renderVibeMatches(row, hash){
         body: JSON.stringify({vibe_id: vid, hash, weight})});
       renderVibeMatches(row, hash);
     }
-    if (r.ok){
-      const matches = (await r.json()).filter(m => m.sim >= 0.55).slice(0, 3);
+    {
+      const matches = found.filter(m => m.sim >= 0.55).slice(0, 3);
       if (matches.length){
         const lead = document.createElement('span');
         lead.className = 'vm-lead'; lead.textContent = 'vibes:';
@@ -571,7 +584,7 @@ async function renderVibeMatches(row, hash){
     });
     holder.appendChild(addBtn);
     row._vibeholder = holder;
-    row.children[2].appendChild(holder);
+    if (!holder.isConnected) (row.querySelector('.rowchips') || row.children[2]).appendChild(holder);
   } catch(e){ /* vibe UI is best-effort; never break the row */ }
 }
 

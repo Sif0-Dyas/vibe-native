@@ -27,7 +27,7 @@ def _ready():
     import sys
 
     sys.path.insert(0, str(ROOT / "src"))
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     idx = json.loads((ORACLE / "index.json").read_text())
     for h in _subset(idx):
@@ -47,7 +47,7 @@ def _within(bpm, oref):
 def test_tempo_matches_oracle():
     from vibenative import tempo
     from vibenative.decode import decode_mono
-    from vibenative.paths import wsl_to_windows
+    from vibenative.legacy import wsl_to_windows
 
     index = json.loads((ORACLE / "index.json").read_text())
     keys = _subset(index)

@@ -45,16 +45,53 @@ def tags_toggle():
         if row:
             c.execute("DELETE FROM track_tags WHERE tag_id=? AND hash=?", (tid, h))
             return jsonify({"tagged": False})
-        c.execute("INSERT OR IGNORE INTO track_tags VALUES(?,?)", (tid, h))
+        c.execute("INSERT OR IGNORE INTO track_tags(tag_id, hash) VALUES(?,?)", (tid, h))
         return jsonify({"tagged": True})
+
+
+def tags_for_many(hashes):
+    """{hash: [{id, name}, ...]} for every hash given, in one query per 500.
+
+    Every hash asked for is a key in the answer, tagged or not, so a caller
+    can tell "no tags" from "not asked".
+    """
+    out = {h: [] for h in hashes}
+    keys = list(out)
+    with _db_lock, closing(db()) as conn, conn as c:
+        for i in range(0, len(keys), 500):
+            chunk = keys[i : i + 500]
+            q = ",".join("?" * len(chunk))
+            for h, tid, name in c.execute(
+                f"SELECT tt.hash, t.id, t.name FROM track_tags tt JOIN tags t ON t.id=tt.tag_id "  # nosec B608
+                f"WHERE tt.hash IN ({q}) ORDER BY t.name",
+                chunk,
+            ):
+                out[h].append({"id": tid, "name": name})
+    return out
+
+
+def _hashes_arg():
+    """The ``hashes`` query parameter as a de-duplicated list."""
+    raw = request.args.get("hashes", "")
+    seen, out = set(), []
+    for h in raw.split(","):
+        h = h.strip()
+        if h and h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out
 
 
 @bp.get("/tags/for/<h>")
 def tags_for(h):
-    with _db_lock, closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT t.id, t.name FROM track_tags tt JOIN tags t ON t.id=tt.tag_id "
-            "WHERE tt.hash=? ORDER BY t.name",
-            (h,),
-        ).fetchall()
-    return jsonify([{"id": r[0], "name": r[1]} for r in rows])
+    return jsonify(tags_for_many([h])[h])
+
+
+@bp.get("/tags/for")
+def tags_for_batch():
+    """``?hashes=a,b,c`` -> ``{hash: [{id, name}, ...]}``.
+
+    The Analyzer asks for every row that scrolls into view together; one
+    request for the lot instead of one per row.
+    """
+    return jsonify(tags_for_many(_hashes_arg()))

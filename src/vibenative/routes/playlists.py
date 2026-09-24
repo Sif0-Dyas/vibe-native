@@ -96,6 +96,59 @@ def rating_put(h):
     )
 
 
+@bp.get("/ratings")
+def ratings_all():
+    """Every rated track, as {hash: rating} -- see ratings.all_tracks."""
+    from .. import ratings
+
+    return jsonify(ratings.all_tracks())
+
+
+@bp.get("/artist-ratings")
+def artist_ratings_all():
+    """Every rated artist, best first.
+
+    One request, not one per star: the map sizes thousands of points by their
+    artist's rating, and a per-track lookup there would be a request storm.
+    """
+    from .. import ratings
+
+    return jsonify(ratings.artist_all())
+
+
+@bp.get("/artist-ratings/<path:name>")
+def artist_rating_get(name):
+    """One artist's rating (stars / grade / note).
+
+    ``path:`` rather than the default string converter so names containing a
+    slash -- "AC/DC", and every "A / B" collaboration credit -- resolve instead
+    of 404ing.
+    """
+    from .. import ratings
+
+    return jsonify(ratings.artist_get(name))
+
+
+@bp.post("/artist-ratings/<path:name>")
+def artist_rating_put(name):
+    """Set an artist's rating. Only the fields present in the body change, so
+    the map's star widget can't clobber a note written elsewhere."""
+    from .. import ratings
+
+    d = request.get_json(silent=True) or {}
+    try:
+        return jsonify(
+            ratings.artist_put(
+                name,
+                stars=d.get("stars"),
+                grade=d.get("grade"),
+                note=d.get("note"),
+            )
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
 @bp.get("/playlists/<int:pid>/rekordbox")
 def playlist_rekordbox(pid):
     """Export a saved playlist as Rekordbox-importable collection XML.
