@@ -6,7 +6,7 @@ Contract:
     get_engine() -> {"labels": [400 strs], "embedder": fn, "classifier": fn}
         embedder(audio16) -> (n_frames, 1280) float32   [uses frontend_mel]
         classifier(embeddings) -> (n_frames, 400) float32 probabilities
-    Built once and cached; logs which provider engaged.
+    Built once, under a lock, and cached; logs which provider engaged.
 
     resolve_providers() -> the provider list to hand InferenceSession. CPU by
         default; DirectML first only when VIBE_PROVIDER=gpu (see provider_order).
@@ -19,6 +19,7 @@ Models load from models/*.onnx (produced by tools/convert_models.py):
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -78,6 +79,11 @@ def resolve_providers() -> list[str]:
 EMB_BATCH = 64
 
 _engine: dict = {}
+# Guards the one-time build. Without it a cold /batch (three workers) had every
+# worker see an empty _engine and build its own pair of sessions -- triple the
+# load time and memory, and the losers' sessions dropped while possibly in use.
+# Double-checked: the unlocked fast path costs nothing once the engine exists.
+_build_lock = threading.Lock()
 
 
 def _session(path: Path) -> ort.InferenceSession:
@@ -90,7 +96,13 @@ def get_engine() -> dict:
     """Build (once) and return {labels, embedder, classifier}. Cached."""
     if _engine:
         return _engine
+    with _build_lock:
+        if not _engine:  # another thread may have built it while we waited
+            _engine.update(_build())
+    return _engine
 
+
+def _build() -> dict:
     labels = json.loads(LABELS_JSON.read_text(encoding="utf-8"))["classes"]
     if len(labels) != 400:
         raise ValueError(f"expected 400 labels, got {len(labels)} from {LABELS_JSON.name}")
@@ -160,15 +172,12 @@ def get_engine() -> dict:
         ]
         return np.asarray(np.concatenate(outs, axis=0), dtype=np.float32)
 
-    _engine.update(
-        {
-            "labels": labels,
-            "embedder": embedder,
-            "classifier": classifier,
-            # exposed for tests / later phases; not part of the public contract
-            "_provider": engaged,
-            "_classifier_session": clf,
-            "_embedder_session": emb,
-        }
-    )
-    return _engine
+    return {
+        "labels": labels,
+        "embedder": embedder,
+        "classifier": classifier,
+        # exposed for tests / later phases; not part of the public contract
+        "_provider": engaged,
+        "_classifier_session": clf,
+        "_embedder_session": emb,
+    }

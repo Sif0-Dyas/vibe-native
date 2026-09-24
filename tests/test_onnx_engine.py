@@ -7,7 +7,10 @@ was handed; nothing here loads a model.
 """
 
 import importlib
+import json
 import sys
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -25,6 +28,7 @@ def engine(monkeypatch, tmp_path):
     class FakeSession:
         def __init__(self, path, providers=None):
             sessions.append((Path(path).name, list(providers)))
+            time.sleep(0.02)  # a real build takes a while; widen the race window
             self._providers = list(providers)
 
         def get_providers(self):
@@ -52,6 +56,10 @@ def engine(monkeypatch, tmp_path):
         for f in ("effnet.onnx", "genre400.onnx", "tempocnn.onnx"):
             (tmp_path / f).write_bytes(b"")
         onnx_engine.MODELS = tempo.MODELS = tmp_path
+        onnx_engine.LABELS_JSON = tmp_path / "labels.json"
+        onnx_engine.LABELS_JSON.write_text(
+            json.dumps({"classes": [f"A---s{i}" for i in range(400)]})
+        )
         yield onnx_engine, tempo, sessions
     finally:
         for n, (mod, attr) in saved.items():
@@ -82,3 +90,29 @@ def test_tempo_and_genre_engine_share_provider_policy(engine, monkeypatch):
         onnx_engine._session(onnx_engine.MODELS / "genre400.onnx")
         tempo._session()
         assert sessions == [("genre400.onnx", expected), ("tempocnn.onnx", expected)], env
+
+
+def test_get_engine_builds_once_under_concurrency(engine):
+    # A cold /batch starts several workers at once; each used to see an empty
+    # engine and build its own sessions.
+    onnx_engine, _, sessions = engine
+    start = threading.Barrier(4)
+    results, errors = [], []
+
+    def worker():
+        try:
+            start.wait()
+            results.append(onnx_engine.get_engine())
+        except Exception as e:  # surfaced below; a thread's exception is otherwise lost
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    built = [name for name, _ in sessions]
+    assert sorted(built) == ["effnet.onnx", "genre400.onnx"]  # exactly once per model
+    assert all(r is results[0] for r in results) and len(results[0]["labels"]) == 400
