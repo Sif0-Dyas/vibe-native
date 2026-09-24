@@ -32,7 +32,12 @@ PROJECT = os.path.abspath(os.getcwd())  # PyInstaller runs the spec from the rep
 SRC = os.path.join(PROJECT, "src")  # src-layout: the importable `vibenative` package root
 
 # --- vibenative: Flask templates + static assets must ship as bundle data -------
-datas = collect_data_files("vibenative")  # templates/*.html + static/* (non-.py files)
+# enao.json (the Every Noise at Once snapshot) is excluded: no runtime code reads
+# it -- only the build-time tools/crawl_genres.py does -- and it is not ours to
+# redistribute. genres_electronic.json stays; its attribution ships via notices.py.
+# tools/smoke_dist.py checks both.
+# templates/*.html + static/* + data/*.json (non-.py files)
+datas = collect_data_files("vibenative", excludes=["data/enao.json"])
 # the in-app Guide reads docs/USAGE.md -> bundle it (resolved via paths.resource_base())
 datas += [(os.path.join(PROJECT, "docs", "USAGE.md"), "docs")]
 hiddenimports = collect_submodules("vibenative")  # routes.* / db / engine modules (lazy imports)

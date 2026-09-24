@@ -185,6 +185,14 @@ def main() -> int:
         sorted(p.name for p in models.glob("*.onnx")) if models.is_dir() else [],
         lambda got: len(got) >= 3,
     )
+    # enao.json is excluded in the spec (not ours to ship; nothing reads it at
+    # runtime) -- a stray copy anywhere in the bundle is a release blocker.
+    check("enao.json is not in the bundle", [str(p) for p in DIST.rglob("enao.json")], [])
+    check(
+        "genres_electronic.json is in the bundle",
+        any(DIST.rglob("genres_electronic.json")),
+        True,
+    )
 
     port, token = _free_port(), secrets.token_urlsafe(24)
     with tempfile.TemporaryDirectory(prefix="vibe-smoke-") as tmp:
