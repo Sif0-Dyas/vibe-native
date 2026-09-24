@@ -6,7 +6,8 @@ wrapped in a pywebview shell, packaged with PyInstaller + Inno Setup. Windows-on
 ## Commands
 
 - Install: `pip install -e . -r requirements-dev.txt`
-- Tests (fast, no models): `set FAKE_ANALYZER=1 && pytest -q`
+- Tests (fast, no models): PowerShell `$env:FAKE_ANALYZER="1"; pytest -q` · cmd `set "FAKE_ANALYZER=1" && pytest -q`
+  (the unquoted cmd form `set FAKE_ANALYZER=1 && ...` stores `"1 "` with a trailing space, which is not fake mode)
 - Tests (real engine, needs models in MODEL_DIR): `pytest -q`
 - Lint + format: `ruff check . && ruff format --check .`
 - SAST: `bandit -r src/vibenative/ -q`

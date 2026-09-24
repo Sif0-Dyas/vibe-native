@@ -174,7 +174,7 @@ Each line is sized to be one Claude Code task with its own PR; the phases are or
 - [ ] Delete MAEST and the /compare route + Compare panel (`analysis.py`, `routes/analysis.py`, `.env.example`, `models/discogs-maest-*.json`)
 - [ ] Add `tests/test_no_essentia.py` (import scan over `src/ desktop/ tools/ training/`)
 - [ ] Port `training/embed_extract.py` to `decode` + `onnx_engine` — decided: the training feature stays
-- [ ] Fix the NUL byte in `app.js`; add a control-character check to pre-commit
+- [x] Fix the NUL byte in `app.js`; add a control-character check to pre-commit
 - [ ] Add `timeout=120` to both `subprocess.run` calls in `decode.py`
 - [ ] Unify the provider policy: `tempo.py` imports `PROVIDER_ORDER` from `onnx_engine`
 - [ ] Add the double-checked build lock to `onnx_engine.get_engine()`

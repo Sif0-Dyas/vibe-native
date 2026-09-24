@@ -585,7 +585,7 @@ function drawWave(canvas, peaks, fallbackColor, segments, focus, mainSet, overri
     if (overrides && overrides.length){
       for (const o of overrides){ if (f >= o.a && f < o.b){ ov = o; break; } }
     }
-    if (ov){ color = colorFor(ov.genre); label = 'ovr\u0000' + ov.genre; }
+    if (ov){ color = colorFor(ov.genre); label = 'ovr:' + ov.genre; }
     // boundary tick where the displayed genre changes (Other counts as one genre)
     if (label !== lastLabel && lastLabel !== null){
       ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(255,255,255,.20)';

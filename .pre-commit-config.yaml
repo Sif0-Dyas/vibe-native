@@ -9,3 +9,15 @@ repos:
       - id: ruff-check # lint — mirrors CI's `ruff check .`
         args: [--fix]
       - id: ruff-format # format — mirrors CI's `ruff format --check .`
+  - repo: local
+    hooks:
+      # A stray control byte (a literal NUL once sat in app.js) makes git call the
+      # file binary, so diffs and blame stop showing it. Tab, LF and CR are allowed.
+      # `types: [file]` overrides the default text-only filter, which would skip
+      # exactly the files this hook exists to catch.
+      - id: no-control-chars
+        name: no control characters in source
+        language: pygrep
+        entry: '[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]'
+        files: '\.(js|py|pyw|html|css)$'
+        types: [file]
