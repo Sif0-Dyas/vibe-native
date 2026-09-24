@@ -305,7 +305,8 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
     blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute(
-            "INSERT OR REPLACE INTO tracks VALUES(?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, created) "
+            "VALUES(?,?,?,?,?,?,?)",
             (h, filename, filepath or "", title, json.dumps(payload), blob, time.time()),
         )
 
@@ -320,7 +321,7 @@ def key_label_get(h: str):
 def key_label_put(h: str, key: str, scale: str, source: str = "manual"):
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute(
-            "INSERT OR REPLACE INTO key_labels VALUES(?,?,?,?,?)",
+            "INSERT OR REPLACE INTO key_labels(hash, key, scale, source, created) VALUES(?,?,?,?,?)",
             (h, key, scale, source, time.time()),
         )
 

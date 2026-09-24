@@ -45,7 +45,7 @@ def tags_toggle():
         if row:
             c.execute("DELETE FROM track_tags WHERE tag_id=? AND hash=?", (tid, h))
             return jsonify({"tagged": False})
-        c.execute("INSERT OR IGNORE INTO track_tags VALUES(?,?)", (tid, h))
+        c.execute("INSERT OR IGNORE INTO track_tags(tag_id, hash) VALUES(?,?)", (tid, h))
         return jsonify({"tagged": True})
 
 

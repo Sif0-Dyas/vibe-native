@@ -209,3 +209,25 @@ def test_migration_2_translates_mnt_paths(tmp_path, monkeypatch):
         assert _version(dbcopy) == 3
     finally:
         con.close()
+
+
+def test_cache_put_round_trips(tmp_path, monkeypatch):
+    # cache_put names its columns, so every value lands where cache_get /
+    # track_embedding and the listing queries read it back by name.
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "rt.db")
+    db.init_db()
+
+    payload = {"styles": [{"style": "House", "score": 0.5}], "bpm": 124.0}
+    emb = np.arange(1280, dtype=np.float32) / 1280
+    db.cache_put("h" * 40, "song.mp3", None, "Song", payload, emb)
+
+    assert db.cache_get("h" * 40) == payload
+    assert np.array_equal(db.track_embedding("h" * 40), emb)
+    conn = sqlite3.connect(db.DB_PATH)
+    row = conn.execute(
+        "SELECT hash, filename, filepath, title, created FROM tracks WHERE hash=?", ("h" * 40,)
+    ).fetchone()
+    conn.close()
+    assert row[:4] == ("h" * 40, "song.mp3", "", "Song")  # None filepath is stored as ""
+    assert isinstance(row[4], float) and row[4] > 0
