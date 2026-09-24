@@ -141,8 +141,8 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] Fix the NUL byte in `app.js`; control-character pre-commit check — `3fb029b`
 - [x] Formatting-only commit: `ruff format .`, nothing else, so the pre-commit hook stops blocking real commits
 - [x] Delete MAEST and the `/compare` route + Compare panel
-- [ ] `tests/test_no_essentia.py`
-- [ ] Port `training/embed_extract.py` to `decode` + `onnx_engine`
+- [x] `tests/test_no_essentia.py`
+- [x] Port `training/embed_extract.py` to `decode` + `onnx_engine`
 - [ ] `timeout=120` on both `decode.py` calls and `metadata.py:53`
 - [ ] `tempo.py` imports `PROVIDER_ORDER` from `onnx_engine`
 - [ ] Double-checked build lock in `onnx_engine.get_engine()`
