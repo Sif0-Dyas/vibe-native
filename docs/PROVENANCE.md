@@ -23,7 +23,7 @@ Audited 2026-09-22 against commit `54a27f1`. Re-run the checks in
 | 3 | `frontend_mel.py` | textbook DSP; parameters read from Essentia | disputed — see below | yes | probably not |
 | 4 | `decode.py`, `tempo.py` frontends | behaviour matched to Essentia | disputed — see below | yes | probably not |
 | 5 | `data/key_profiles.json` | trained on GiantSteps + Beatport EDM Key | training-data question | yes | unclear |
-| 6 | `data/enao.json` | everynoise.com scrape (6,291 Spotify genres) | **none stated** | **yes, inside the exe** | likely |
+| 6 | `data/enao.json` | everynoise.com scrape (6,291 Spotify genres) | **none stated** | no — excluded from the build; its fields stripped from #7 | no, while it stays out |
 | 7 | `data/genres_electronic.json` | Wikidata/MusicBrainz + DBpedia/Wikipedia | CC0 + **CC BY-SA** | **yes, inside the exe** | attribution + share-alike |
 | 8 | `mutagen` | Python package | **GPL-2.0** | **yes**, inside the exe | **YES** — being removed |
 | 9 | ffmpeg / ffprobe | BtbN LGPL static build | **LGPL** | yes, beside the exe | no, handled |
@@ -130,17 +130,32 @@ exactly the kind of term that invites the argument. The clean answer is to
 retrain on data the product owns — which the app now collects, via the key
 corrections feature (`key_labels` table, `--dataset library`).
 
-## 6. `data/enao.json` — undocumented, and it ships
+## 6. `data/enao.json` — undocumented, and no longer ships
 
 6,291 Spotify genre names with x/y/colour coordinates, scraped from
-everynoise.com (`tools/build_enao.py`) and used for the map's coordinate system.
-**No licence is stated anywhere** — not on the source site, not in the README's
-licensing section, not in the file.
+everynoise.com (`tools/build_enao.py`). **No licence is stated anywhere** — not on
+the source site, not in the README's licensing section, not in the file.
 
-It is `.gitignore`d, which the README treats as the mitigation. It is not one:
-the PyInstaller spec collects the whole package data directory, so the file is
-**inside the shipped exe** (`_internal/vibenative/data/enao.json`, verified in a
-real build). Not being in git is irrelevant to redistribution.
+As audited, it shipped: it is `.gitignore`d, but the PyInstaller spec collected the
+whole package data directory, so the file was **inside the exe**
+(`_internal/vibenative/data/enao.json`, verified in a real build). Not being in git
+is irrelevant to redistribution. Its data also reached the exe a second way: the
+genre crawler copied an `everynoise` block (colour, x/y, size) into 300 of the 610
+records of `genres_electronic.json` (#7).
+
+**Resolved (updated 2026-09-23; the rest of this document is as audited at
+`54a27f1`):**
+
+- The spec excludes it (`collect_data_files(..., excludes=["data/enao.json"])`,
+  commit `87dd357`), and `tools/smoke_dist.py` fails a build that contains any
+  `enao.json`.
+- The crawler no longer copies ENAO data, and `tools/strip_enao_fields.py` removed
+  it from the existing `genres_electronic.json` (commit `960c078`); `smoke_dist.py`
+  fails a build whose copy has any `everynoise` field. The Wikidata P9881 ID
+  (`everynoise_id`, CC0) is kept.
+- Nothing in the running app reads the snapshot — `vibenative.enao` has no callers,
+  and the map is laid out from track-embedding similarity — so excluding it costs
+  no functionality.
 
 ## 7. `data/genres_electronic.json` — attribution obligations, and it ships
 
@@ -215,8 +230,10 @@ In the order that actually removes exposure:
    unblocks a sale, and it collapses #3 and #4 with it.
 2. **Drop mutagen** (#8). Cheap, removes the only copyleft dependency, and fixes
    a real bug in the shipped product.
-3. **Settle `enao.json`** (#6). Either get permission, replace the coordinate
-   system with something owned, or stop shipping it.
+3. **Settle `enao.json`** (#6). **Done: it no longer ships**, and neither does the
+   ENAO data that had been copied into `genres_electronic.json`. Only if a future
+   feature wants ENAO's colours or coordinates does this reopen — then it needs
+   permission or an owned replacement first.
 4. **Surface the CC BY-SA attribution** (#7) somewhere a user of the product can
    read, not only inside a bundled JSON file.
 5. **Retrain the key model on owned data** (#5), which the app now collects.

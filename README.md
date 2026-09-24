@@ -22,8 +22,8 @@ GPU works in the packaged build). Validated against the WSL build as the oracle:
   old Essentia port on 88/121 of the oracle tracks.
 - **App** — same routes, DB schema, and frontend as Vibe_Identify; the whole Flask
   app + the pywebview desktop shell run on one Windows venv in dev, or as a single
-  packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. GPU falls out for free
-  (`DmlExecutionProvider`, loud CPU fallback).
+  packaged `.exe` (PyInstaller onedir), **no WSL anywhere**. Inference runs on CPU
+  by default; DirectML (`DmlExecutionProvider`) is opt-in with `VIBE_PROVIDER=gpu`.
 
 Design + phase-by-phase details (historical, now complete):
 [`docs/history/PROJECT_PLAN.md`](docs/history/PROJECT_PLAN.md) and
@@ -154,8 +154,11 @@ Notes:
   temp dir on every launch (slow) and breaks exe-adjacent resource resolution; onedir
   keeps `models\` and `ffmpeg.exe` in a stable folder next to the exe. See the spec
   header.
-- **GPU** — the DirectML EP (`DirectML.dll`) is bundled; the app uses
-  `DmlExecutionProvider` and falls back to CPU (logged loudly) only if it can't load.
+- **GPU** — the DirectML EP (`DirectML.dll`) is bundled, but the app runs on **CPU by
+  default**: the DML path faults inside the NVIDIA driver part-way through a batch scan,
+  for a ~5% speedup (see `onnx_engine.provider_order`). Set `VIBE_PROVIDER=gpu` to opt
+  in to `DmlExecutionProvider` (or use `Vibe Identify (GPU).bat`); if it then can't
+  load, the fallback to CPU is logged loudly.
 - **models** — must exist in `models\` first (`python tools\convert_models.py`).
 - **ffmpeg licensing** — see the ffmpeg note above; a `ffmpeg-NOTICE.txt` ships in the
   folder.
