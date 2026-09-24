@@ -21,8 +21,12 @@ def _isolated_taxonomy(tmp_path, monkeypatch):
     read whatever the developer has saved in the app -- so a run would pass or
     fail depending on whose machine it was on, and a genuine regression could
     hide behind someone's local edit.
+
+    VIBE_CONFIG_DIR does the same for settings.ini: without it, a test that hit
+    /db-path would rewrite the developer's real repo-root settings.ini.
     """
     monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
+    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "config"))
 
 
 def seed_track(h, payload):

@@ -222,6 +222,8 @@ def main() -> int:
             "GENRE_PORT": str(port),
             "GENRE_TOKEN": token,  # the loopback guard the shell normally sets
             "GENRE_DB": str(Path(tmp) / "smoke.db"),  # never the real library
+            # nor the real %APPDATA%\Vibe Identify settings.ini / taxonomy.json
+            "VIBE_CONFIG_DIR": str(Path(tmp) / "config"),
             # a clean machine's PATH: nothing of this dev box can stand in for the
             # bundle (see the module docstring)
             "PATH": os.pathsep.join(
