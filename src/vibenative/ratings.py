@@ -22,7 +22,7 @@ Rekordbox has nowhere else to put them: grade first, then the note, joined with
 
 import time
 from contextlib import closing
-from xml.sax.saxutils import quoteattr
+from xml.sax.saxutils import quoteattr  # nosec B406  # escapes Rekordbox XML output; no parsing
 
 from .db import _db_lock, db
 
