@@ -13,7 +13,7 @@ Everything runs on your own machine: **your audio never leaves the computer, and
 1. [Getting started](#1-getting-started)
 2. [Adding your music — and which method to use](#2-adding-your-music--and-which-method-to-use)
 3. [Reading a track](#3-reading-a-track)
-4. [Two deeper looks: Refine & Compare](#4-two-deeper-looks-refine--compare)
+4. [A deeper look: Refine](#4-a-deeper-look-refine)
 5. [How the genre is decided — the lens system](#5-how-the-genre-is-decided--the-lens-system)
 6. [Organizing your library: overrides, vibes & playlists](#6-organizing-your-library-overrides-vibes--playlists)
 7. [The Library tab — your collection as a sortable list](#7-the-library-tab--your-collection-as-a-sortable-list)
@@ -89,21 +89,15 @@ detail from then on.
 
 ---
 
-## 4. Two deeper looks: Refine & Compare
+## 4. A deeper look: Refine
 
-These are optional, on-demand tools you run on a single track when the normal read isn't enough. You'll find both on each row.
+Refine is an optional, on-demand tool you run on a single track when the normal read isn't enough. You'll find it on each row.
 
 ### fine (Refine) — for tracks that change mid-song
 
 Click **fine** to re-analyze that one track at much higher time resolution. The normal read looks at the track in coarse chunks; **fine** looks at it in fine slices, so brief genre shifts stop getting smeared together.
 
 > **Use this when** a track clearly moves between styles — a DnB tune with a half-time breakdown, an intro in a totally different vibe — and you want to see exactly where those switches happen. (It costs more compute, which is why it's on demand.)
-
-### ⚖ compare engines — a second opinion
-
-Click **⚖ compare engines** to run a *second*, different AI model alongside the default one and see both reads plus a blend, with a live **slider** between them.
-
-> **Use this when** a genre read looks off and you want a tie-breaker. If both models agree, trust it. If they disagree, the track is genuinely ambiguous — which is useful to know on its own. (The second model is slower, so it only runs when you ask.)
 
 ---
 

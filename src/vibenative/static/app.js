@@ -1401,42 +1401,6 @@ function finishRow(row, data, file){
     }
   });
 
-  /* ---- compare engines: EffNet vs MAEST vs merged (on-demand) ---- */
-  const cmpBtn = document.createElement('button');
-  cmpBtn.className = 'compare-btn';
-  cmpBtn.textContent = '⚖ compare engines';
-  cmpBtn.title = 'run MAEST (transformer) alongside EffNet and merge them — slower (~15s), on demand';
-  const cmpBox = document.createElement('div');
-  cmpBox.className = 'compare-box';
-  cmpBox.style.display = 'none';
-  genreCell.appendChild(cmpBtn);
-  genreCell.appendChild(cmpBox);
-
-  cmpBtn.addEventListener('click', async () => {
-    if (cmpBox.style.display !== 'none' && cmpBox.dataset.done){   // toggle closed
-      cmpBox.style.display = 'none'; cmpBox.dataset.done = ''; return;
-    }
-    cmpBtn.disabled = true; cmpBtn.textContent = 'running MAEST…';
-    cmpBox.style.display = 'block';
-    cmpBox.innerHTML = '<div class="cmp-wait">running MAEST transformer (~15s on CPU)…</div>';
-    try {
-      const fd = new FormData();
-      const res = getResult();
-      if (res && res.filepath) fd.append('filepath', res.filepath);
-      else if (file) fd.append('file', file);
-      else { cmpBox.innerHTML = '<div class="cmp-wait">no file available to compare</div>'; return; }
-      const r = await fetch('/compare', {method:'POST', body:fd});
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || r.statusText);
-      renderCompareInto(cmpBox, j);
-      cmpBox.dataset.done = '1';
-    } catch(err){
-      cmpBox.innerHTML = `<div class="cmp-wait">compare failed: ${escapeHtml(err.message)}</div>`;
-    } finally {
-      cmpBtn.disabled = false; cmpBtn.textContent = '⚖ compare engines';
-    }
-  });
-
   /* details panel + toggle button */
   const t = (data.tags && data.tags.tag) || {};
   const tech = (data.tags && data.tags.tech) || {};
@@ -2197,59 +2161,6 @@ PREF_LISTENERS.push((k, v) => {
   if (k === 'analyzerSeg' && gSeg.value !== v){ gSeg.value = v; gSeg.dispatchEvent(new Event('change')); }
 });
 
-
-/* render one engine's ranked genre list for the compare panel */
-function cmpList(arr){
-  if (!arr || !arr.length) return '<span class="cmp-none">—</span>';
-  return arr.slice(0, 5).map(s => {
-    const col = colorFor(s.style);
-    return `<span class="cmp-item"><span class="sw ${styleInfo(s.style).shape}" style="background:${col}"></span>` +
-      `<b>${escapeHtml(s.style)}</b> ${(s.score*100).toFixed(0)}%</span>`;
-  }).join('');
-}
-/* top-5 [{style,score}] from the pairs list, scored by fn(pair) */
-function topScored(pairs, fn, k){
-  return pairs.map(p => ({style:p.style, score:fn(p)}))
-              .sort((a,b) => b.score - a.score).slice(0, k || 5);
-}
-/* build the compare panel into `box`, with a live EffNet↔MAEST weight slider.
-   Re-mixing the merge is instant client-side math — MAEST does NOT re-run. */
-function renderCompareInto(box, j){
-  if (!j.maest_available){
-    box.innerHTML = `<div class="cmp-note">MAEST model not installed — showing EffNet only.</div>` +
-      `<div class="cmp-col"><div class="cmp-h">EffNet</div>${cmpList(j.effnet)}</div>`;
-    return;
-  }
-  const pairs = j.pairs || [];
-  let w = j.weight ?? 0.5;                                    // EffNet share (0..1)
-  box.innerHTML =
-    `<div class="cmp-grid">` +
-      `<div class="cmp-col"><div class="cmp-h">EffNet <span>CNN</span></div>${cmpList(topScored(pairs, p=>p.eff))}</div>` +
-      `<div class="cmp-col"><div class="cmp-h">MAEST <span>transformer</span></div>${cmpList(topScored(pairs, p=>p.mae))}</div>` +
-      `<div class="cmp-col merged"><div class="cmp-h">Merged <span class="cmp-w"></span></div><div class="cmp-mergedlist"></div></div>` +
-    `</div>` +
-    `<div class="cmp-slider"><span>EffNet</span>` +
-      `<input type="range" class="cmp-range" min="0" max="100" step="5">` +
-      `<span>MAEST</span></div>` +
-    `<div class="cmp-note"></div>`;
-  const range = box.querySelector('.cmp-range');
-  const wLab  = box.querySelector('.cmp-w');
-  const mList = box.querySelector('.cmp-mergedlist');
-  const note  = box.querySelector('.cmp-note');
-  const effTop = topScored(pairs, p=>p.eff, 1)[0];
-  const maeTop = topScored(pairs, p=>p.mae, 1)[0];
-  const agree = effTop && maeTop && effTop.style === maeTop.style;
-  function paint(){
-    mList.innerHTML = cmpList(topScored(pairs, p => w*p.eff + (1-w)*p.mae, 6));
-    wLab.textContent = `${Math.round(w*100)}/${Math.round((1-w)*100)}`;
-    note.textContent = agree
-      ? `✓ both engines agree on the top genre (${effTop.style})`
-      : `⚠ engines disagree — EffNet: ${effTop.style} · MAEST: ${maeTop.style}. The slider blends them.`;
-  }
-  range.value = Math.round(w*100);
-  range.addEventListener('input', () => { w = range.value/100; paint(); });
-  paint();
-}
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c =>

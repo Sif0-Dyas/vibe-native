@@ -1,6 +1,5 @@
-"""Model plumbing (native ONNX EffNet + Discogs-400 head, MAEST placeholder,
-custom head) and the per-track analysis pipeline: genre styles, BPM, key, and
-the waveform envelope.
+"""Model plumbing (native ONNX EffNet + Discogs-400 head, custom head) and the
+per-track analysis pipeline: genre styles, BPM, key, and the waveform envelope.
 
 Phase 4 engine swap: the genre / tempo / key internals now run on the native
 ONNX engine (``onnx_engine`` + ``frontend_mel`` + ``decode`` + ``tempo`` +
@@ -25,8 +24,7 @@ from .config import FAKE, MODEL_DIR, log
 # /batch workers infer concurrently) is a later optimization with its own test.
 _lock = threading.Lock()
 
-_engine = {}  # MAEST / custom-head bookkeeping; the genre engine itself lives in onnx_engine
-_engine_lock = threading.Lock()  # guards the one-time custom-head / MAEST build
+_engine_lock = threading.Lock()  # guards the one-time custom-head load
 
 
 def get_engine():
@@ -43,48 +41,6 @@ def get_engine():
     from . import onnx_engine
 
     return onnx_engine.get_engine()
-
-
-# --- optional MAEST engine (2nd genre model, for ensembling) ----------------
-# A transformer trained on the SAME Discogs-400 task, so its predictions align
-# 1:1 with the EffNet head's label order -> the two can be averaged directly.
-# ~10x slower than EffNet on CPU, so it's used on demand (the /compare route),
-# never in the normal /analyze path.
-MAEST_PB = MODEL_DIR / os.environ.get("MAEST_MODEL", "discogs-maest-30s-pw-1.pb")
-
-
-def get_maest():
-    """Lazily build the MAEST genre model. Returns None if the ~334 MB model
-    file isn't present, so the ensemble feature stays optional."""
-    if "maest" in _engine:
-        return _engine["maest"]
-    with _engine_lock:
-        if "maest" in _engine:  # built while we waited on the lock
-            return _engine["maest"]
-        if not MAEST_PB.exists():
-            _engine["maest"] = None
-            return None
-        from essentia.standard import TensorflowPredictMAEST
-
-        _engine["maest"] = TensorflowPredictMAEST(
-            graphFilename=str(MAEST_PB),
-            input="serving_default_melspectrogram",  # this graph's actual input node
-            output="StatefulPartitionedCall:0",
-        )  # discogs-400 predictions, direct
-        return _engine["maest"]
-
-
-def maest_genre(audio16):
-    """Track-level 400-dim genre probabilities from MAEST (mean over 30s patches),
-    aligned to the same Discogs-400 label order as the EffNet head. None if the
-    MAEST model isn't installed."""
-    import numpy as np
-
-    m = get_maest()
-    if m is None:
-        return None
-    preds = np.asarray(m(audio16))  # shape (patches, 1, 1, 400)
-    return preds.reshape(-1, preds.shape[-1]).mean(axis=0)
 
 
 # --- optional custom head (trained with train_head.py) ----------------------

@@ -177,18 +177,6 @@ def test_batch_missing_dir_400(client):
     assert client.post("/batch", json={"path": "/no/such/dir"}).status_code == 400
 
 
-def test_compare_fake_shape(client):
-    # FAKE mode returns canned EffNet-vs-MAEST pairs without running a model.
-    r = client.post("/compare")
-    assert r.status_code == 200
-    body = r.get_json()
-    assert body["maest_available"] is True
-    assert isinstance(body["pairs"], list) and body["pairs"]
-    for p in body["pairs"]:
-        for key in ("parent", "style", "eff", "mae"):
-            assert key in p
-
-
 def test_map_populated(client):
     # analyze a few tracks, then the map returns them as nodes; every edge only
     # ever references a real node hash.

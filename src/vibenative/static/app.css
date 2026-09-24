@@ -857,65 +857,6 @@ header h1 em{
 .vibe-menu-new:focus{border-color:var(--accent-b)}
 .vibe-menu-new.err{border-color:var(--err)}
 
-/* ---- compare engines (EffNet vs MAEST vs merged) ---- */
-.compare-btn{
-  display:block; margin-top:8px;
-  font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:.1em;
-  text-transform:uppercase; color:var(--accent-b);
-  background:none; border:1px dashed var(--dimmer); border-radius:4px;
-  padding:2px 8px; cursor:pointer;
-}
-.compare-btn:hover:not(:disabled){border-color:var(--accent-b)}
-.compare-btn:disabled{opacity:.6; cursor:default}
-.compare-box{
-  margin-top:8px; padding:8px 9px;
-  background:var(--panel-2); border:1px solid var(--dimmer); border-radius:6px;
-}
-.cmp-wait{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim)}
-.cmp-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px}
-@media (max-width:1100px){ .cmp-grid{grid-template-columns:1fr} }
-.cmp-col{min-width:0}
-.cmp-col.merged{
-  padding:5px 7px; margin:-5px -2px; border-radius:5px;
-  background:rgba(255,198,59,.07); border:1px solid rgba(255,198,59,.25);
-}
-.cmp-h{
-  font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:.08em;
-  text-transform:uppercase; color:var(--text); margin-bottom:4px;
-}
-.cmp-h span{color:var(--dim); font-size:8px; margin-left:4px}
-.cmp-item{
-  display:flex; align-items:baseline; gap:5px;
-  font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim);
-  line-height:1.7;
-}
-.cmp-item b{color:var(--text); font-weight:500}
-.cmp-item .sw{width:8px; height:8px; border-radius:2px; flex:none; align-self:center}
-.cmp-none{color:var(--dim)}
-.cmp-slider{
-  display:flex; align-items:center; gap:8px; margin-top:9px;
-  font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:.08em;
-  text-transform:uppercase; color:var(--dim);
-}
-.cmp-range{
-  flex:1; -webkit-appearance:none; appearance:none; height:4px; border-radius:3px;
-  background:linear-gradient(90deg,var(--accent-a),var(--gold)); cursor:pointer;
-}
-.cmp-range::-webkit-slider-thumb{
-  -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%;
-  background:var(--gold); border:2px solid var(--bev-dk); cursor:pointer;
-  box-shadow:0 0 5px rgba(255,198,59,.6);
-}
-.cmp-range::-moz-range-thumb{
-  width:14px; height:14px; border-radius:50%; background:var(--gold);
-  border:2px solid var(--bev-dk); cursor:pointer;
-}
-.cmp-w{color:var(--gold) !important; font-size:8px}
-.cmp-note{
-  margin-top:7px; font-family:'JetBrains Mono',monospace; font-size:9.5px;
-  color:var(--dim); letter-spacing:.02em;
-}
-
 /* ---- PulseRoots family roll-up tag ---- */
 .famtag{
   display:inline-block; margin-left:7px; vertical-align:2px;
@@ -1661,7 +1602,7 @@ body.view-options .lensbar{ display:none; }
   --glow-sm:0 0 10px rgba(34,211,238,.35);
   --lcd:#5DE9FF;                    /* cyan readout text (BPM/key/time)        */
   --lcd-bg:#03141B;                 /* dark cyan-tinted readout well           */
-  --gold:#FFC46B;                   /* warm amber — kept for "match"/compare   */
+  --gold:#FFC46B;                   /* warm amber — kept for "match"           */
   --bev-lt:#1E2632; --bev-dk:#05070B;
   /* Theme tokens the skins below override (see THEMES at the end of the file):
      the faint overlays every plate and hover is built from, the text that sits

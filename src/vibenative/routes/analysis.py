@@ -1,4 +1,4 @@
-"""Analysis routes: analyze / refine / compare / batch, plus the audio and
+"""Analysis routes: analyze / refine / batch, plus the audio and
 waveform media endpoints and their upload helpers."""
 
 import os
@@ -11,13 +11,9 @@ from flask import Response, jsonify, request, send_file
 from .. import insight
 from ..analysis import (
     FINE_HOP_SECONDS,
-    _lock,
     analyze,
     build_payload,
-    get_engine,
-    get_maest,
     load_samples_for_waveform,
-    maest_genre,
     read_tags,
     read_title,
     refine_segments,
@@ -37,7 +33,7 @@ from ._shared import bp
 
 
 # ----------------------------------------------------------------------------
-# Upload plumbing shared by /analyze, /refine, /compare: validate the audio
+# Upload plumbing shared by /analyze, /refine: validate the audio
 # upload, stage it to a temp file, and always clean up.
 # ----------------------------------------------------------------------------
 class UploadError(Exception):
@@ -181,104 +177,6 @@ def refine_route():
         return jsonify({"error": "internal error"}), 500
 
 
-def _top_styles(vec, labels, k=6, thresh=0.02):
-    """Top-k [{parent,style,score}] from a 400-dim genre vector."""
-    import numpy as np
-
-    order = np.argsort(vec)[::-1][:k]
-    out = []
-    for i in order:
-        if float(vec[int(i)]) < thresh:
-            break
-        parent, child = labels[int(i)].split("---", 1)
-        out.append({"parent": parent, "style": child, "score": round(float(vec[int(i)]), 4)})
-    return out
-
-
-def compare_engines(path: Path, weight=0.5):
-    """Run EffNet and MAEST on one track. Returns, for the union of each engine's
-    top styles, BOTH per-style scores -- so the client can re-mix the merge at any
-    weight live (the models are the slow part; averaging is instant). Both models
-    share the identical 400-label order, so the merge is a plain weighted average."""
-    import numpy as np
-
-    from .. import decode
-
-    eng = get_engine()
-    labels = eng["labels"]
-    # decode + one-time model builds stay OUTSIDE the inference lock (matching
-    # analyze); only the shared inference pass is serialized, so a /compare during a
-    # batch no longer freezes the workers for the whole decode. MAEST is not ported
-    # to the native engine yet -> get_maest() returns None and /compare degrades to
-    # an EffNet-only read (maest_available: false).
-    audio16 = decode.decode_16k_mono(path)
-    get_maest()  # warm MAEST (if installed) before taking the lock
-    with _lock:
-        eff = np.mean(eng["classifier"](eng["embedder"](audio16)), axis=0)
-        mae = maest_genre(audio16)
-    if mae is None:
-        return {"maest_available": False, "effnet": _top_styles(eff, labels)}
-    # union of each engine's top-K, wide enough that the merged top-5 for ANY
-    # weight is contained in it; carry both scores per style
-    K = 15
-    idx = sorted(
-        set(np.argsort(eff)[::-1][:K]) | set(np.argsort(mae)[::-1][:K]),
-        key=lambda i: -max(float(eff[i]), float(mae[i])),
-    )
-    pairs = [
-        {
-            "parent": labels[i].split("---", 1)[0],
-            "style": labels[i].split("---", 1)[1],
-            "eff": round(float(eff[i]), 4),
-            "mae": round(float(mae[i]), 4),
-        }
-        for i in idx
-    ]
-    return {"maest_available": True, "weight": weight, "pairs": pairs}
-
-
-@bp.post("/compare")
-def compare_route():
-    """A/B the EffNet genre read against MAEST + their merge for one track.
-    On demand only (MAEST is ~10x slower); does NOT touch the analysis cache.
-    Accepts a file upload (dropped tracks) or a server-side filepath (batch)."""
-    if FAKE:
-        import random
-
-        rng = random.Random(42)  # nosec B311  # seeds deterministic FAKE-mode data, not security
-        pool = ["Drum n Bass", "Dance-pop", "House", "Deep House", "Techno", "Trance", "Dubstep"]
-        pairs = [
-            {
-                "parent": "Electronic",
-                "style": s,
-                "eff": round(rng.uniform(0.03, 0.45), 3),
-                "mae": round(rng.uniform(0.03, 0.45), 3),
-            }
-            for s in pool
-        ]
-        return jsonify({"maest_available": True, "weight": 0.5, "pairs": pairs})
-
-    filepath = (request.form.get("filepath") or "").strip()
-    try:
-        if filepath:
-            p = Path(filepath)
-            if not p.is_file():
-                return jsonify({"error": f"file not found: {filepath}"}), 404
-            return jsonify(compare_engines(p))  # locks only its own inference pass
-        with saved_upload(request.files.get("file"), "no file or filepath provided") as p:
-            return jsonify(compare_engines(p))  # locks only its own inference pass
-    except UploadError as e:
-        return jsonify({"error": str(e)}), e.status
-    except Exception:
-        log.exception("request failed")
-        return jsonify({"error": "internal error"}), 500
-
-
-# ----------------------------------------------------------------------------
-# Segment-level overrides: label a drag-selected time range of a track a genre.
-# Records the span (repainted on the waveform, persisted across cache hits) and
-# extracts just that range into ~/genre_training/<genre>/ with ffmpeg.
-# ----------------------------------------------------------------------------
 def _backfill_filepath(h, path):
     """Record or repair a cached track's server-side path on a re-scan:
 
