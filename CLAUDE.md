@@ -5,14 +5,15 @@ wrapped in a pywebview shell, packaged with PyInstaller + Inno Setup. Windows-on
 
 ## Commands
 
-- Install: `pip install -e . -r requirements-dev.txt`
-- Tests (fast, no models): PowerShell `$env:FAKE_ANALYZER="1"; pytest -q` · cmd `set "FAKE_ANALYZER=1" && pytest -q`
+- Install: `uv sync --group desktop` (deps in `pyproject.toml`, pinned in `uv.lock`; `uv lock` after editing deps)
+- Tests (fast, no models): PowerShell `$env:FAKE_ANALYZER="1"; uv run pytest -q` · cmd `set "FAKE_ANALYZER=1" && uv run pytest -q`
   (the unquoted cmd form `set FAKE_ANALYZER=1 && ...` stores `"1 "` with a trailing space, which is not fake mode)
-- Tests (real engine, needs models in MODEL_DIR): `pytest -q`
-- Lint + format: `ruff check . && ruff format --check .`
-- SAST: `bandit -r src/vibenative/ -q`
-- Run in browser: `python -m vibenative`
-- Run desktop shell: `python desktop/genre_app.pyw`
+- Tests (real engine, needs the ONNX models in `models/`): `uv run pytest -q`
+- Lint + format: `uv run ruff check . && uv run ruff format --check .`
+- SAST: `uv run bandit -r src/vibenative/ -q`
+- Pre-commit: `uv run pre-commit run --all-files` (ruff hooks run the locked ruff via `uv run`)
+- Run in browser: `uv run python -m vibenative`
+- Run desktop shell: `uv run python desktop/genre_app.pyw`
 
 ## Layout
 

@@ -54,15 +54,17 @@ Vibe Identify.spec     PyInstaller onedir spec (packages src/vibenative + assets
 
 ## Running it
 
-Native Windows, no WSL. One-time setup (the venv runs both the engine and the
-desktop shell):
+Native Windows, no WSL. Dependencies are declared in `pyproject.toml` and pinned in
+`uv.lock`. Install [uv](https://docs.astral.sh/uv/) once (`winget install astral-sh.uv`);
+then one command builds the project `.venv` (it runs both the engine and the desktop
+shell), with the package installed editable so `python -m vibenative` works:
 
 ```
-py -3.12 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m pip install -r desktop\requirements-desktop.txt
-.venv\Scripts\python -m pip install -e .        # makes `python -m vibenative` importable
+uv sync --group desktop
 ```
+
+`uv sync` alone gives the engine + dev tools; `--group desktop` adds pywebview and
+PyInstaller. The Python version comes from `.python-version` (3.12).
 
 Requires **ffmpeg** on PATH (`winget install Gyan.FFmpeg`) for audio decode, and
 the ONNX models in `models/` (`python tools/convert_models.py`). The Edge WebView2
@@ -75,7 +77,7 @@ ready. See `desktop/README.md` for the folder-picker / security details.
 **Browser / headless** — run the backend yourself and open it in a browser:
 
 ```
-.venv\Scripts\python -m vibenative        # serves http://127.0.0.1:5005
+uv run python -m vibenative        # serves http://127.0.0.1:5005
 ```
 
 `FAKE_ANALYZER=1` serves instant fake results (no models). The library database is
@@ -95,16 +97,17 @@ and warns that new analysis needs it.
 Run the same gate CI does before pushing:
 
 ```
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-ruff check . && ruff format --check .    # lint + format (CI fails the build on either)
-pytest -q                                 # tests (FAKE_ANALYZER covers the model-free path)
+uv run ruff check . && uv run ruff format --check .   # lint + format (CI fails on either)
+uv run pytest -q                                       # tests (FAKE_ANALYZER covers the model-free path)
 ```
+
+To change a dependency, edit `pyproject.toml`, run `uv lock`, and commit both files.
 
 **Pre-commit hooks** make the format gate structurally impossible to miss — install
 them once and `git commit` auto-runs `ruff check` + `ruff format` on staged files:
 
 ```
-pip install pre-commit && pre-commit install
+uv run pre-commit install
 ```
 
 The hook config lives in `.pre-commit-config.yaml` (Python/ruff only; the JS eslint
@@ -137,8 +140,8 @@ target machine. The desktop shell runs Flask in-process (a daemon thread), so th
 whole thing is one process behind `Vibe Identify.exe`.
 
 ```
-.venv\Scripts\python -m pip install -r requirements-dev.txt   # brings PyInstaller
-.venv\Scripts\python tools\build_exe.py
+uv sync --group desktop              # brings PyInstaller
+uv run python tools\build_exe.py
 ```
 
 That runs PyInstaller against `Vibe Identify.spec` (one-folder / **onedir**), then
@@ -163,7 +166,7 @@ Notes:
 Wrap the folder in a proper Windows installer (Inno Setup):
 
 ```
-.venv\Scripts\python tools\build_installer.py --build
+uv run python tools\build_installer.py --build
 ```
 
 `--build` runs `tools\build_exe.py` first; then it stamps the version from

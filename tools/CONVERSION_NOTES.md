@@ -13,7 +13,8 @@
   `models/*.onnx` are portable and run under any supported Python.
 - Dependencies are split so the heavy TF wheel never ships:
   - `requirements-convert.txt` — `tensorflow`, `tf2onnx` (conversion only, ~500 MB)
-  - `requirements.txt` — `onnxruntime-directml`, `numpy`, `pytest` (runtime + tests)
+  - `pyproject.toml` + `uv.lock` — `onnxruntime-directml`, `numpy`, `flask` (runtime;
+    tests and tools in dependency groups). The TF stack is deliberately not in the lock.
 
 ## Toolchain versions (this machine)
 

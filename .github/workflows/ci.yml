@@ -7,45 +7,45 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    env:
+      UV_FROZEN: "1" # every `uv run` installs from uv.lock as-is, never re-resolving
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: "3.12"
+          enable-cache: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install dependencies
-        # onnxruntime-directml is intentionally omitted: it is a Windows-only wheel
-        # (no Linux runner install), the ONNX engine modules import it lazily, and
-        # the suite runs in FAKE_ANALYZER mode, so the models are never loaded. The
-        # real-mode engine + integration tests skip when the models/onnxruntime are
-        # absent, exactly as they do here.
-        run: pip install flask mutagen numpy pytest pytest-cov ruff bandit pip-audit
+      - name: Install dependencies (from uv.lock)
+        # --frozen: install exactly what uv.lock says, without re-resolving. Python
+        # comes from .python-version. On Linux the lock's platform marker selects the
+        # plain onnxruntime wheel instead of onnxruntime-directml; the suite still
+        # runs in FAKE_ANALYZER mode and the real-model tests skip (no models here).
+        run: uv sync --frozen --group dev
 
       - name: Lint (ruff)
         run: |
-          ruff check .
-          ruff format --check .
+          uv run ruff check .
+          uv run ruff format --check .
 
       - name: Security scan (bandit)
         # SAST for the Python source. Known false-positives (fake-mode RNG seeds,
         # best-effort try/except around BPM/key, the ffmpeg/ffprobe subprocess
         # calls) carry inline `# nosec <id>` justifications, so a clean run is zero
         # findings and any NEW finding fails the build.
-        run: bandit -r src/vibenative/ -q
+        run: uv run bandit -r src/vibenative/ -q
 
       - name: Dependency audit (pip-audit)
-        # Audit the pinned runtime deps for known CVEs. onnxruntime-directml is
-        # filtered out (its Windows-only wheel can't be resolved by pip-audit's
-        # Linux sandbox); everything else (flask/mutagen/numpy) is audited, so a
-        # future advisory on those fails the build.
+        # Audit the locked RUNTIME set (no dev/desktop groups) for known CVEs: every
+        # exact version the app ships with, transitive deps included. --no-deps +
+        # --disable-pip audits the pinned list as-is instead of re-resolving it.
         run: |
-          grep -viE "onnxruntime" requirements.txt > /tmp/req-audit.txt
-          pip-audit -r /tmp/req-audit.txt --no-deps
+          uv export --frozen --no-dev --no-emit-project --no-hashes --format requirements-txt -o /tmp/req-audit.txt
+          uv run pip-audit -r /tmp/req-audit.txt --no-deps --disable-pip
 
       - name: Lint JS (eslint)
         # Static check for the split frontend (app.js / player.js / map.js share one
@@ -67,11 +67,11 @@ jobs:
         # because a full run has the models and exercises the engine modules too.
         env:
           FAKE_ANALYZER: "1"
-        run: pytest -q --cov=vibenative --cov-config=.coveragerc.ci --cov-fail-under=74
+        run: uv run pytest -q --cov=vibenative --cov-config=.coveragerc.ci --cov-fail-under=74
 
       - name: Desktop shell selftest
         # Exercises the native launch-command + venv-resolution logic in
         # desktop/genre_app.pyw. Its --selftest path is pure stdlib (pywebview is
-        # imported lazily only inside main()), so it needs no extra CI deps; with no
-        # project .venv on the runner it takes the documented sys.executable fallback.
-        run: python desktop/genre_app.pyw --selftest
+        # imported lazily only inside main()), so it needs no desktop group. uv sync
+        # created the project .venv, so it resolves into .venv/bin/python.
+        run: uv run python desktop/genre_app.pyw --selftest
