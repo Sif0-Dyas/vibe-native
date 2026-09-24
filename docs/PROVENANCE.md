@@ -25,7 +25,7 @@ Audited 2026-09-22 against commit `54a27f1`. Re-run the checks in
 | 5 | `data/key_profiles.json` | trained on GiantSteps + Beatport EDM Key | training-data question | yes | unclear |
 | 6 | `data/enao.json` | everynoise.com scrape (6,291 Spotify genres) | **none stated** | no — excluded from the build; its fields stripped from #7 | no, while it stays out |
 | 7 | `data/genres_electronic.json` | Wikidata/MusicBrainz + DBpedia/Wikipedia | CC0 + **CC BY-SA** | **yes, inside the exe** | attribution + share-alike |
-| 8 | `mutagen` | Python package | **GPL-2.0** | **yes**, inside the exe | **YES** — being removed |
+| 8 | `mutagen` | Python package | **GPL-2.0** | no — removed (`8816620`); tags read with ffprobe | no |
 | 9 | ffmpeg / ffprobe | BtbN LGPL static build | **LGPL** | yes, beside the exe | no, handled |
 | 10 | onnxruntime, numpy, flask, pywebview | PyPI | MIT / BSD | yes | no |
 | 11 | `oracle/` + `paths.wsl_to_windows` | the predecessor WSL app | n/a — dev asset | no (tests only) | no |
