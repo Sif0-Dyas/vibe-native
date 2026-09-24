@@ -71,7 +71,7 @@ def _genre_reference() -> dict | None:
     """The crawled genre reference credits its own sources in a `licences` block;
     read them from the shipped file rather than restating them here, so the credit
     can never drift from the data it describes."""
-    path = _DATA / "genres_electronic.json"   # works frozen and in dev alike
+    path = _DATA / "genres_electronic.json"  # works frozen and in dev alike
     if not path.is_file():
         return None
     try:

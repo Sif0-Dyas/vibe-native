@@ -47,7 +47,7 @@ def _standardise(x: np.ndarray) -> np.ndarray:
     ``tonality.match`` computes. Rows may hold several 12-blocks (full + bass)."""
     blocks = []
     for j in range(0, x.shape[1], 12):
-        blk = x[:, j:j + 12]
+        blk = x[:, j : j + 12]
         blk = blk - blk.mean(axis=1, keepdims=True)
         n = np.linalg.norm(blk, axis=1, keepdims=True)
         blocks.append(blk / np.where(n > 0, n, 1.0))
@@ -57,8 +57,12 @@ def _standardise(x: np.ndarray) -> np.ndarray:
 def _all_rotations(x: np.ndarray) -> np.ndarray:
     """(n, 12, D): row i, rotation t = every 12-block of row i rolled so tonic t
     sits at index 0."""
+
     def roll(t):
-        return np.concatenate([np.roll(x[:, j:j + 12], -t, axis=1) for j in range(0, x.shape[1], 12)], axis=1)
+        return np.concatenate(
+            [np.roll(x[:, j : j + 12], -t, axis=1) for j in range(0, x.shape[1], 12)], axis=1
+        )
+
     return np.stack([roll(t) for t in range(12)], axis=1)
 
 
@@ -77,8 +81,15 @@ def _pool(sub: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return (mx + np.log(tot))[..., 0], e / tot
 
 
-def train(pcps: np.ndarray, keys: np.ndarray, l2: float = 1e-2, steps: int = 4000, lr: float = 1.0,
-          subclasses: int = 1, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
+def train(
+    pcps: np.ndarray,
+    keys: np.ndarray,
+    l2: float = 1e-2,
+    steps: int = 4000,
+    lr: float = 1.0,
+    subclasses: int = 1,
+    seed: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
     """Gradient descent on the 24-way softmax. Returns (W (2, K, D), b (2, K)).
     ``keys`` are ints 0..23 = tonic + 12 * mode_index.
 
@@ -121,18 +132,32 @@ def features_for(dataset: str, variants: list[str], min_confidence: int | None =
     pcps = eval_key.load_pcps(index, dataset, verbose=False)
     ids = [h for h in sorted(index) if all((h, v) in pcps for v in variants)]
     if min_confidence is not None:
-        ids = [h for h in ids if (index[h].get("confidence") is None
-                                  or index[h]["confidence"] >= min_confidence)]
-    X = np.concatenate([np.array([eval_key.gated(pcps[(h, v)]) for h in ids]) for v in variants], axis=1)
-    y = np.array([tonality.KEY_NAMES.index(index[h]["key"]) + 12 * MODES.index(index[h]["scale"]) for h in ids])
+        ids = [
+            h
+            for h in ids
+            if (index[h].get("confidence") is None or index[h]["confidence"] >= min_confidence)
+        ]
+    X = np.concatenate(
+        [np.array([eval_key.gated(pcps[(h, v)]) for h in ids]) for v in variants], axis=1
+    )
+    y = np.array(
+        [
+            tonality.KEY_NAMES.index(index[h]["key"]) + 12 * MODES.index(index[h]["scale"])
+            for h in ids
+        ]
+    )
     return ids, index, X, y
 
 
 def score(pred, ids, index) -> Counter:
     cats: Counter = Counter()
     for i, pr in enumerate(pred):
-        cats[eval_key.category((tonality.KEY_NAMES[pr % 12], MODES[pr // 12]),
-                               (index[ids[i]]["key"], index[ids[i]]["scale"]))] += 1
+        cats[
+            eval_key.category(
+                (tonality.KEY_NAMES[pr % 12], MODES[pr // 12]),
+                (index[ids[i]]["key"], index[ids[i]]["scale"]),
+            )
+        ] += 1
     return cats
 
 
@@ -140,18 +165,44 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="giantsteps")
     ap.add_argument("--variant", default="default")
-    ap.add_argument("--extra", action="append", default=[], metavar="VARIANT",
-                    help="further PCP variants (e.g. bands) to concatenate; templates become 12*(1+n) wide")
+    ap.add_argument(
+        "--extra",
+        action="append",
+        default=[],
+        metavar="VARIANT",
+        help="further PCP variants (e.g. bands) to concatenate; templates become 12*(1+n) wide",
+    )
     ap.add_argument("--folds", type=int, default=5)
-    ap.add_argument("--test-on", metavar="DATASET", help="train on --dataset, report on this one instead of k-fold")
-    ap.add_argument("--augment", metavar="DATASET", help="add this dataset to every training fold (never tested on)")
-    ap.add_argument("--min-confidence", type=int, metavar="N",
-                    help="training tracks must carry at least this annotator confidence (Beatport: 0-2)")
+    ap.add_argument(
+        "--test-on",
+        metavar="DATASET",
+        help="train on --dataset, report on this one instead of k-fold",
+    )
+    ap.add_argument(
+        "--augment",
+        metavar="DATASET",
+        help="add this dataset to every training fold (never tested on)",
+    )
+    ap.add_argument(
+        "--min-confidence",
+        type=int,
+        metavar="N",
+        help="training tracks must carry at least this annotator confidence (Beatport: 0-2)",
+    )
     ap.add_argument("--l2", type=float, default=1e-2)
-    ap.add_argument("--subclasses", type=int, default=1, metavar="K",
-                    help="sub-templates per mode (K>1 = mixture; Faraldo's minor2 case)")
+    ap.add_argument(
+        "--subclasses",
+        type=int,
+        default=1,
+        metavar="K",
+        help="sub-templates per mode (K>1 = mixture; Faraldo's minor2 case)",
+    )
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--write", action="store_true", help="store the templates trained on ALL tracks as the edm profiles")
+    ap.add_argument(
+        "--write",
+        action="store_true",
+        help="store the templates trained on ALL tracks as the edm profiles",
+    )
     args = ap.parse_args()
 
     index = eval_key.load_index(args.dataset)
@@ -182,7 +233,9 @@ def main() -> None:
         tr = np.concatenate([f for j, f in enumerate(folds) if j != k])
         W, b = fit(X[tr], y[tr])
         cats += score(predict(W, b, X[test]), [ids[i] for i in test], index)
-        for name in sorted({h.split(":", 1)[0] for h in ids if ":" in h}):  # "both": per-dataset too
+        for name in sorted(
+            {h.split(":", 1)[0] for h in ids if ":" in h}
+        ):  # "both": per-dataset too
             sub = [i for i in test if ids[i].startswith(f"{name}:")]
             per[name] += score(predict(W, b, X[sub]), [ids[i] for i in sub], index)
     eval_key.report(f"{tag} {args.folds}-fold", cats)
@@ -194,17 +247,22 @@ def main() -> None:
         doc = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}
         doc["model"] = {
             "about": "Linear key scorer trained by tools/train_key_templates.py: a transposition-"
-                     "equivariant 24-way softmax over the per-block standardised PCPs of the listed "
-                     "frequency-band blocks. weights[mode] is a list of sub-templates (12 values per "
-                     "block, index 0 = tonic); a mode's score is logsumexp over its sub-templates.",
-            "fitted": date.today().isoformat(), "labels": args.dataset, "l2": args.l2,
+            "equivariant 24-way softmax over the per-block standardised PCPs of the listed "
+            "frequency-band blocks. weights[mode] is a list of sub-templates (12 values per "
+            "block, index 0 = tonic); a mode's score is logsumexp over its sub-templates.",
+            "fitted": date.today().isoformat(),
+            "labels": args.dataset,
+            "l2": args.l2,
             "tracks": len(ids) + (len(aug[1]) if aug else 0),
-            "augmented_with": args.augment, "min_confidence": args.min_confidence,
+            "augmented_with": args.augment,
+            "min_confidence": args.min_confidence,
             "subclasses": args.subclasses,
             "cross_validated": {"folds": args.folds, **cats},
             "blocks": [eval_key.variant_settings(v) for v in variants],
             "block_names": variants,
-            "weights": {m: [[round(float(v), 5) for v in w] for w in W[i]] for i, m in enumerate(MODES)},
+            "weights": {
+                m: [[round(float(v), 5) for v in w] for w in W[i]] for i, m in enumerate(MODES)
+            },
             "bias": {m: [round(float(v), 5) for v in b[i]] for i, m in enumerate(MODES)},
         }
         OUT.write_text(json.dumps(doc, indent=1) + chr(10), encoding="utf-8")

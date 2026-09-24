@@ -287,16 +287,32 @@ def key_override_route(h):
     if raw is None:  # clear -> the detector's own answer stands again
         key_label_delete(h)
         p = json.loads(row[0])
-        return jsonify({"ok": True, "key": p.get("key"), "scale": p.get("scale"),
-                        "camelot": p.get("camelot"), "key_source": "detector"})
+        return jsonify(
+            {
+                "ok": True,
+                "key": p.get("key"),
+                "scale": p.get("scale"),
+                "camelot": p.get("camelot"),
+                "key_source": "detector",
+            }
+        )
 
     key = str(raw).strip()
     scale = str(data.get("scale") or "").strip().lower()
     if key not in KEY_NAMES or scale not in MODES:
-        return jsonify({"error": f"key must be one of {KEY_NAMES} and scale one of {list(MODES)}"}), 400
+        return jsonify(
+            {"error": f"key must be one of {KEY_NAMES} and scale one of {list(MODES)}"}
+        ), 400
     key_label_put(h, key, scale)
-    return jsonify({"ok": True, "key": key, "scale": scale,
-                    "camelot": CAMELOT.get((key, scale)), "key_source": "manual"})
+    return jsonify(
+        {
+            "ok": True,
+            "key": key,
+            "scale": scale,
+            "camelot": CAMELOT.get((key, scale)),
+            "key_source": "manual",
+        }
+    )
 
 
 def _remove_segment_clip(h, genre, start, end):

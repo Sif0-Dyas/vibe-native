@@ -36,8 +36,14 @@ DEFAULT_VARIANT = "default"
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="giantsteps", help="oracle | giantsteps (labels to fit on)")
-    ap.add_argument("--variant", default=DEFAULT_VARIANT, help="front-end variant name (eval_key VARIANTS/SWEEP)")
+    ap.add_argument(
+        "--dataset", default="giantsteps", help="oracle | giantsteps (labels to fit on)"
+    )
+    ap.add_argument(
+        "--variant",
+        default=DEFAULT_VARIANT,
+        help="front-end variant name (eval_key VARIANTS/SWEEP)",
+    )
     args = ap.parse_args()
     eval_key.VARIANTS[args.variant] = eval_key.variant_settings(args.variant)
 
@@ -51,15 +57,22 @@ def main() -> None:
     doc = {k: doc[k] for k in ("about", "model") if k in doc}
     doc["profiles_fit"] = {
         "about": "Corpus-derived key profiles (per-mode median of tonic-rotated global PCPs, "
-                 "after Faraldo et al. 2017). Index 0 = tonic, ascending semitones. "
-                 "Fitted by tools/fit_key_profiles.py from this project's own audio and labels.",
+        "after Faraldo et al. 2017). Index 0 = tonic, ascending semitones. "
+        "Fitted by tools/fit_key_profiles.py from this project's own audio and labels.",
         "fitted": date.today().isoformat(),
         "tracks": len(hashes),
         "labels": args.dataset,
         "front_end": {
-            "frame": tonality.FRAME, "hop": tonality.HOP, "f_lo": tonality.F_LO, "f_hi": tonality.F_HI,
-            "top_peaks": tonality.TOP_PEAKS, "peak_floor": tonality.PEAK_FLOOR, "power": tonality.POWER,
-            "gamma": tonality.GAMMA, "subharmonics": tonality.SUBHARMONICS, "frame_norm": True,
+            "frame": tonality.FRAME,
+            "hop": tonality.HOP,
+            "f_lo": tonality.F_LO,
+            "f_hi": tonality.F_HI,
+            "top_peaks": tonality.TOP_PEAKS,
+            "peak_floor": tonality.PEAK_FLOOR,
+            "power": tonality.POWER,
+            "gamma": tonality.GAMMA,
+            "subharmonics": tonality.SUBHARMONICS,
+            "frame_norm": True,
             "overrides": eval_key.variant_settings(args.variant),
         },
         "leave_one_out": {k: loo[k] for k in ("exact", "fifth", "relative", "parallel", "other")},

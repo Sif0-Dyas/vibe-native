@@ -78,7 +78,9 @@ def test_analyze_route_matches_oracle(tmp_path, monkeypatch):
         )
         # key present and well-formed; agreement with the oracle is measured across
         # the whole set by tests/test_tonality.py + tools/eval_key.py, not per track
-        assert j["scale"] in ("major", "minor") and j["key"], f"{p.name}: key {(j['key'], j['scale'])}"
+        assert j["scale"] in ("major", "minor") and j["key"], (
+            f"{p.name}: key {(j['key'], j['scale'])}"
+        )
         # BPM within 2% OR a half/double multiple (octave-ambiguity tolerant)
         if m["bpm"] and j["bpm"]:
             assert any(

@@ -229,12 +229,18 @@ def summarise(top_n=5, mode="dark"):
             primary = cls["keystones"][0]
             b = buckets.setdefault(
                 primary,
-                {"bpm": [], "subgenres": {}, "tracks": [], "count": 0,
-                 # Per-subgenre tempo and tracks. A standalone archgenre (House,
-                 # Techno, Trance) has exactly one keystone -- itself -- so its
-                 # subgenres are the only genres it has to show, and a bare count is
-                 # not enough to build a card from.
-                 "sub_bpm": {}, "sub_tracks": {}},
+                {
+                    "bpm": [],
+                    "subgenres": {},
+                    "tracks": [],
+                    "count": 0,
+                    # Per-subgenre tempo and tracks. A standalone archgenre (House,
+                    # Techno, Trance) has exactly one keystone -- itself -- so its
+                    # subgenres are the only genres it has to show, and a bare count is
+                    # not enough to build a card from.
+                    "sub_bpm": {},
+                    "sub_tracks": {},
+                },
             )
             b["count"] += 1
             bpm = p.get("bpm")
@@ -353,8 +359,11 @@ def _subgenre_profile(style, count, bucket, keystone, mode, top_n):
         "count": count,
         "keystone": keystone,
         "color": P.keystone_color(keystone, mode),
-        "bpm": {"canonical": None, "observed": _bpm_stats(bucket["sub_bpm"].get(style, [])),
-                "octave_flag": None},
+        "bpm": {
+            "canonical": None,
+            "observed": _bpm_stats(bucket["sub_bpm"].get(style, [])),
+            "octave_flag": None,
+        },
         "top": tracks[:top_n],
     }
 

@@ -65,20 +65,40 @@ SWEEP["base"] = dict(_BASE)
 for _flo in (15, 60, 200):
     for _top in (40, 100, 150, 0):
         for _sub in (0, 4):
-            SWEEP[f"flo={_flo} top={_top} sub={_sub}"] = dict(f_lo=_flo, top_peaks=_top, subharmonics=_sub, tuning=True)
+            SWEEP[f"flo={_flo} top={_top} sub={_sub}"] = dict(
+                f_lo=_flo, top_peaks=_top, subharmonics=_sub, tuning=True
+            )
 for _lo, _hi in ((25, 400), (400, 1500), (1500, 5000), (200, 1000), (1000, 5000)):
     for _tp in (16, 50):
-        SWEEP[f"band {_lo}-{_hi} peaks={_tp}"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=_tp, subharmonics=4, tuning=False)
+        SWEEP[f"band {_lo}-{_hi} peaks={_tp}"] = dict(
+            f_lo=_lo, f_hi=_hi, top_peaks=_tp, subharmonics=4, tuning=False
+        )
 # octave-spaced bands: a chroma per octave, which is what a listener hears
-OCTAVES = [(25, 50), (50, 100), (100, 200), (200, 400), (400, 800), (800, 1600), (1600, 3200), (3200, 5000)]
+OCTAVES = [
+    (25, 50),
+    (50, 100),
+    (100, 200),
+    (200, 400),
+    (400, 800),
+    (800, 1600),
+    (1600, 3200),
+    (3200, 5000),
+]
 for _lo, _hi in OCTAVES:
     SWEEP[f"oct {_lo}"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=16, subharmonics=4, tuning=False)
     SWEEP[f"oct {_lo} p4"] = dict(f_lo=_lo, f_hi=_hi, top_peaks=4, subharmonics=4, tuning=False)
 for _sec in ("loud", "quiet"):
     for _frac in (0.15, 0.3):
         SWEEP[f"{_sec}{_frac:g} whole"] = dict(_BASE, section=_sec, section_frac=_frac)
-        SWEEP[f"{_sec}{_frac:g} bass"] = dict(f_lo=25, f_hi=400, top_peaks=16, subharmonics=4,
-                                              tuning=False, section=_sec, section_frac=_frac)
+        SWEEP[f"{_sec}{_frac:g} bass"] = dict(
+            f_lo=25,
+            f_hi=400,
+            top_peaks=16,
+            subharmonics=4,
+            tuning=False,
+            section=_sec,
+            section_frac=_frac,
+        )
 
 
 def variant_settings(name: str) -> dict:
@@ -103,7 +123,11 @@ def _beatport_confidence(root: Path) -> dict[str, int]:
     rows = list(openpyxl.load_workbook(book, read_only=True).active.values)
     hdr = [str(c or "").lower() for c in rows[0]]
     i_id, i_conf = hdr.index("id"), hdr.index("confidence")
-    return {str(r[i_id]): int(r[i_conf]) for r in rows[1:] if r[i_id] is not None and r[i_conf] is not None}
+    return {
+        str(r[i_id]): int(r[i_conf])
+        for r in rows[1:]
+        if r[i_id] is not None and r[i_conf] is not None
+    }
 
 
 def load_index(dataset: str = "oracle") -> dict:
@@ -120,7 +144,11 @@ def load_index(dataset: str = "oracle") -> dict:
         out = {}
         for f in sorted((root / "annotations" / "key").glob("*.key")):
             key, scale = f.read_text(encoding="utf-8").split()
-            out[f.stem] = {"file": str(root / "audio" / f"{f.stem}.mp3"), "key": SPELLING.get(key, key), "scale": scale}
+            out[f.stem] = {
+                "file": str(root / "audio" / f"{f.stem}.mp3"),
+                "key": SPELLING.get(key, key),
+                "scale": scale,
+            }
         return out
     if dataset == "library":
         sys.path.insert(0, str(ROOT / "src"))
@@ -145,13 +173,19 @@ def load_index(dataset: str = "oracle") -> dict:
             if len(parts) != 2 or parts[1] not in ("major", "minor"):
                 continue  # "X" (no key), "F minor phrygian", "C# minor | E major": not a single key
             audio = root / "audio" / f"{f.stem}.mp3"
-            out[f.stem] = {"file": str(audio), "key": SPELLING.get(parts[0], parts[0]), "scale": parts[1],
-                           "confidence": conf.get(f.stem.split()[0])}
+            out[f.stem] = {
+                "file": str(audio),
+                "key": SPELLING.get(parts[0], parts[0]),
+                "scale": parts[1],
+                "confidence": conf.get(f.stem.split()[0]),
+            }
         return out
     sys.exit(f"unknown dataset {dataset!r}")
 
 
-def load_pcps(index: dict, dataset: str = "oracle", verbose: bool = True) -> dict[tuple[str, str], np.ndarray]:
+def load_pcps(
+    index: dict, dataset: str = "oracle", verbose: bool = True
+) -> dict[tuple[str, str], np.ndarray]:
     """{(id, variant): pcp} for every track with audio on disk, via the cache."""
     if dataset == "both":  # reuse each dataset's own cache, keyed by prefixed id
         out = {}
@@ -175,9 +209,14 @@ def load_pcps(index: dict, dataset: str = "oracle", verbose: bool = True) -> dic
         missing = [n for n in VARIANTS if f"{h}:{n}" not in cache]
         if missing:
             if verbose:
-                print(f"[{i + 1}/{len(index)}] {path.name}".encode("ascii", "replace").decode(), flush=True)
+                print(
+                    f"[{i + 1}/{len(index)}] {path.name}".encode("ascii", "replace").decode(),
+                    flush=True,
+                )
             audio = decode_mono(path, tonality.SR)
-            for frame in sorted({variant_settings(n).get("frame", tonality.FRAME) for n in missing}):
+            for frame in sorted(
+                {variant_settings(n).get("frame", tonality.FRAME) for n in missing}
+            ):
                 mags, freqs = tonality.magnitudes(audio, tonality.SR, frame)
                 for n in missing:
                     settings = {k: v for k, v in variant_settings(n).items() if k != "frame"}
@@ -202,7 +241,9 @@ def category(pred: tuple[str, str], ref: tuple[str, str]) -> str:
         return "fifth"
     if pm != rm and pk == rk:
         return "parallel"
-    if pm != rm and ((rm == "major" and (pk - rk) % 12 == 9) or (rm == "minor" and (pk - rk) % 12 == 3)):
+    if pm != rm and (
+        (rm == "major" and (pk - rk) % 12 == 9) or (rm == "minor" and (pk - rk) % 12 == 3)
+    ):
         return "relative"
     return "other"
 
@@ -221,7 +262,9 @@ def fit_profiles(pcps: dict, index: dict, hashes, variant: str) -> dict[str, np.
     return {mode: np.median(np.array(r), axis=0) for mode, r in rows.items() if r}
 
 
-def evaluate(pcps: dict, index: dict, variant: str, profile: str | None = None, loo: bool = False) -> Counter:
+def evaluate(
+    pcps: dict, index: dict, variant: str, profile: str | None = None, loo: bool = False
+) -> Counter:
     hashes = [h for h in sorted(index) if (h, variant) in pcps]
     cats: Counter = Counter()
     for h in hashes:
@@ -252,17 +295,25 @@ def evaluate_model(pcps: dict, index: dict) -> Counter:
 
 def report(label: str, cats: Counter) -> None:
     n = sum(cats.values())
-    mirex = (cats["exact"] + 0.5 * cats["fifth"] + 0.3 * cats["relative"] + 0.2 * cats["parallel"]) / n
+    mirex = (
+        cats["exact"] + 0.5 * cats["fifth"] + 0.3 * cats["relative"] + 0.2 * cats["parallel"]
+    ) / n
     parts = "  ".join(f"{c}={cats[c]}" for c in ("exact", "fifth", "relative", "parallel", "other"))
-    print(f"{label:<16} exact {cats['exact']:>3}/{n} ({100 * cats['exact'] / n:5.1f}%)  mirex {mirex:.3f}   {parts}")
+    print(
+        f"{label:<16} exact {cats['exact']:>3}/{n} ({100 * cats['exact'] / n:5.1f}%)  mirex {mirex:.3f}   {parts}"
+    )
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="oracle", help="oracle | giantsteps | beatport | both")
     ap.add_argument("--loo", action="store_true", help="also score leave-one-out fitted profiles")
-    ap.add_argument("--fit-on", metavar="DATASET", help="also score profiles fitted on this other dataset")
-    ap.add_argument("--sweep", action="store_true", help="also compute and score the SWEEP front-end variants")
+    ap.add_argument(
+        "--fit-on", metavar="DATASET", help="also score profiles fitted on this other dataset"
+    )
+    ap.add_argument(
+        "--sweep", action="store_true", help="also compute and score the SWEEP front-end variants"
+    )
     args = ap.parse_args()
     if args.sweep:
         VARIANTS.update(SWEEP)

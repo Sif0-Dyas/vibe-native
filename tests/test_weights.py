@@ -294,7 +294,7 @@ def test_dropping_preserves_the_order_of_what_is_left():
 
 
 def test_a_drop_and_a_step_on_the_same_genre_cannot_both_hold():
-    """"More of this" and "none of this" are not both what you meant; the removal
+    """ "More of this" and "none of this" are not both what you meant; the removal
     is the more explicit statement, so it takes the name."""
     out = by_style(W.apply(REAL, {"House": 3}, ["House"]))
     assert "House" not in out

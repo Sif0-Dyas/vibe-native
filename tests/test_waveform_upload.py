@@ -98,7 +98,7 @@ def test_audio_that_is_not_that_track_is_refused(client):
     _forget_waveform(h)
     r = _upload_waveform(client, h, _wav(22), "two.wav")
     assert r.status_code == 400
-    assert client.get(f"/waveform/{h}").status_code == 404   # nothing was stored
+    assert client.get(f"/waveform/{h}").status_code == 404  # nothing was stored
 
 
 def test_an_unknown_track_is_refused(client):
@@ -118,7 +118,7 @@ def test_a_missing_upload_is_a_bad_request_not_a_crash(client):
 def test_uploading_when_it_is_already_cached_just_returns_it(client):
     """Two tabs can race on the same track; the second one has nothing to do."""
     audio = _wav(11)
-    h = _analyze(client, audio)           # analysis already cached a waveform
+    h = _analyze(client, audio)  # analysis already cached a waveform
     r = _upload_waveform(client, h, audio)
     assert r.status_code == 200
     assert r.get_json() == client.get(f"/waveform/{h}").get_json()

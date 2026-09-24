@@ -52,19 +52,26 @@ def _probe_json(path: Path | str) -> dict:
     try:
         out = subprocess.run(  # nosec B603  # ffprobe from find_tool(); arg list, no shell
             [
-                exe, "-v", "error",
-                "-select_streams", "a:0",
+                exe,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
                 "-show_entries",
                 "format=format_name,bit_rate:format_tags:stream=sample_rate,channels,codec_name",
-                "-of", "json",
+                "-of",
+                "json",
                 str(path),
             ],
-            capture_output=True, check=True, creationflags=NO_WINDOW,
+            capture_output=True,
+            check=True,
+            creationflags=NO_WINDOW,
             # ffprobe emits UTF-8 JSON. text=True alone would decode it with the
             # locale encoding (cp1252 on a typical Windows box), turning every
             # accented tag into mojibake -- "Boo" written as UTF-8 and read as
             # cp1252 comes back as "BÃ¶Ã¶".
-            encoding="utf-8", errors="replace",
+            encoding="utf-8",
+            errors="replace",
         ).stdout
         return json.loads(out) or {}
     except (OSError, subprocess.SubprocessError, ValueError):

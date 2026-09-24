@@ -58,7 +58,7 @@ def test_duplicates_are_collapsed_case_insensitively():
 
 
 def test_attested_act_with_a_slash_is_kept_whole():
-    """"AC/DC" keeps turning up whole and "AC" and "DC" never turn up alone."""
+    """ "AC/DC" keeps turning up whole and "AC" and "DC" never turn up alone."""
     i = artists.build_index(["AC/DC"] * 4 + ["Smoakland/Heyz"])
     assert artists.split_credit("AC/DC", i) == ["AC/DC"]
     assert artists.split_credit("AC/DC feat. Axl", i) == ["AC/DC", "Axl"]

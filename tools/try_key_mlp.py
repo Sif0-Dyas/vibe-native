@@ -77,8 +77,13 @@ def main() -> None:
     ap.add_argument("--folds", type=int, default=5)
     args = ap.parse_args()
 
-    variants = ["base", "band 25-400 peaks=16", "band 200-1000 peaks=16",
-                "band 1000-5000 peaks=16", "band 400-1500 peaks=16"]
+    variants = [
+        "base",
+        "band 25-400 peaks=16",
+        "band 200-1000 peaks=16",
+        "band 1000-5000 peaks=16",
+        "band 400-1500 peaks=16",
+    ]
     for v in variants:
         eval_key.VARIANTS[v] = eval_key.variant_settings(v)
     ids, index, X, y = TKT.features_for(args.dataset, variants)

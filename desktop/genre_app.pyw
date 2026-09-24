@@ -598,8 +598,13 @@ def main():
     # File System Access handles for replayable dropped tracks) persists.
     # `icon` is documented as GTK/QT-only, but the WinForms backend honours it
     # too (it sets the Form's Icon), which is what puts it on the taskbar.
-    webview.start(_boot_and_load, window, private_mode=False, storage_path=_webview_storage_path(),
-                  icon=ICON if os.path.isfile(ICON) else None)
+    webview.start(
+        _boot_and_load,
+        window,
+        private_mode=False,
+        storage_path=_webview_storage_path(),
+        icon=ICON if os.path.isfile(ICON) else None,
+    )
     _shutdown_backend()  # window closed -> stop the backend we launched
 
 

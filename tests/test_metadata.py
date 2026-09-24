@@ -21,8 +21,18 @@ needs_ffmpeg = pytest.mark.skipif(not _FFMPEG, reason="ffmpeg not installed")
 
 def _make_track(path, **tags):
     """One second of silence, tagged. Returns the path."""
-    args = [_FFMPEG, "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-            "-t", "1"]
+    args = [
+        _FFMPEG,
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=44100:cl=stereo",
+        "-t",
+        "1",
+    ]
     for k, v in tags.items():
         args += ["-metadata", f"{k}={v}"]
     args += [str(path)]
@@ -32,15 +42,23 @@ def _make_track(path, **tags):
 
 @needs_ffmpeg
 def test_reads_the_fields_the_ui_shows(tmp_path):
-    f = _make_track(tmp_path / "t.mp3", title="At Night", artist="Dave Spoon",
-                    album="Singles", genre="Trance", date="2008", track="3", composer="D. S.")
+    f = _make_track(
+        tmp_path / "t.mp3",
+        title="At Night",
+        artist="Dave Spoon",
+        album="Singles",
+        genre="Trance",
+        date="2008",
+        track="3",
+        composer="D. S.",
+    )
     assert metadata.read_title(f) == "At Night"
 
     tags = metadata.read_tags(f)
     assert tags["tag"]["title"] == "At Night"
     assert tags["tag"]["artist"] == "Dave Spoon"
     assert tags["tag"]["genre"] == "Trance"
-    assert tags["tag"]["tracknumber"] == "3"      # ffprobe calls it "track"
+    assert tags["tag"]["tracknumber"] == "3"  # ffprobe calls it "track"
     assert tags["tech"]["sample rate"] == "44100 Hz"
     assert tags["tech"]["channels"] == "2"
     assert tags["tech"]["format"] == "MP3"
@@ -61,7 +79,7 @@ def test_an_untagged_file_is_not_an_error(tmp_path):
     assert metadata.read_title(f) is None
     tags = metadata.read_tags(f)
     assert tags["tag"] == {}
-    assert tags["tech"]["channels"] == "2"        # technical info still arrives
+    assert tags["tech"]["channels"] == "2"  # technical info still arrives
 
 
 @needs_ffmpeg

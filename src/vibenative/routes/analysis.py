@@ -327,11 +327,11 @@ def _backfill_waveform(h, upload):
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     if row and row[0] and Path(row[0]).is_file():
-        return                                    # GET /waveform can decode that itself
+        return  # GET /waveform can decode that itself
     try:
         waveform_cache_put(h, waveform_minmax(load_samples_for_waveform(upload)))
     except Exception:
-        log.exception("waveform backfill failed for %s", h)   # the envelope stands
+        log.exception("waveform backfill failed for %s", h)  # the envelope stands
 
 
 def _cached_response(cached, h, **extra):
@@ -444,7 +444,7 @@ def waveform_upload_route(h):
     """
     cached = waveform_cache_get(h)
     if cached:
-        return jsonify(cached)                    # raced another tab; nothing to do
+        return jsonify(cached)  # raced another tab; nothing to do
     with _db_lock, closing(db()) as conn, conn as c:
         row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
     # Only for tracks already in the library: this must not become a way to have

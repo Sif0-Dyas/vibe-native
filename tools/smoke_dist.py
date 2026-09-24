@@ -88,10 +88,24 @@ def _make_tagged_track(path: Path, title: str, seconds: int = 12) -> bool:
         return False
     try:
         subprocess.run(  # nosec B603  # the bundled ffmpeg, fixed arg list, no shell
-            [str(exe), "-y", "-v", "error", "-f", "lavfi",
-             "-i", f"anoisesrc=d={seconds}:c=pink:a=0.05:r=44100",
-             "-ac", "2", "-metadata", f"title={title}", str(path)],
-            check=True, capture_output=True, timeout=60,
+            [
+                str(exe),
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"anoisesrc=d={seconds}:c=pink:a=0.05:r=44100",
+                "-ac",
+                "2",
+                "-metadata",
+                f"title={title}",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=60,
         )
         return path.is_file()
     except (OSError, subprocess.SubprocessError):
@@ -101,14 +115,17 @@ def _make_tagged_track(path: Path, title: str, seconds: int = 12) -> bool:
 def _post_file(url: str, path: Path, timeout: float = 120.0):
     """multipart/form-data upload of one file, as the UI does it."""
     boundary = "----vibesmoke" + secrets.token_hex(8)
-    body = b"".join([
-        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
-        f'filename="{path.name}"\r\nContent-Type: audio/mpeg\r\n\r\n'.encode(),
-        path.read_bytes(),
-        f"\r\n--{boundary}--\r\n".encode(),
-    ])
+    body = b"".join(
+        [
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+            f'filename="{path.name}"\r\nContent-Type: audio/mpeg\r\n\r\n'.encode(),
+            path.read_bytes(),
+            f"\r\n--{boundary}--\r\n".encode(),
+        ]
+    )
     req = urllib.request.Request(
-        url, data=body,
+        url,
+        data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
@@ -129,7 +146,8 @@ def _kill_tree(proc: subprocess.Popen) -> None:
     if os.name == "nt":
         subprocess.run(  # nosec B603 B607  # fixed args, no shell
             ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-            capture_output=True, check=False,
+            capture_output=True,
+            check=False,
         )
     else:
         proc.terminate()
@@ -141,10 +159,17 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Smoke-test the built dist/ folder.")
-    ap.add_argument("--timeout", type=float, default=60.0,
-                    help="seconds to wait for the backend to answer (default 60)")
-    ap.add_argument("--keep-open", action="store_true",
-                    help="leave the app running after the checks (for a look at the UI)")
+    ap.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="seconds to wait for the backend to answer (default 60)",
+    )
+    ap.add_argument(
+        "--keep-open",
+        action="store_true",
+        help="leave the app running after the checks (for a look at the UI)",
+    )
     args = ap.parse_args()
 
     if not EXE.is_file():
@@ -155,37 +180,46 @@ def main() -> int:
     for name in ("ffmpeg.exe", "ffprobe.exe"):
         check(f"{name} sits beside the exe", (DIST / name).is_file(), True)
     models = DIST / "models"
-    check("models/ folder was populated",
-          sorted(p.name for p in models.glob("*.onnx")) if models.is_dir() else [],
-          lambda got: len(got) >= 3)
+    check(
+        "models/ folder was populated",
+        sorted(p.name for p in models.glob("*.onnx")) if models.is_dir() else [],
+        lambda got: len(got) >= 3,
+    )
 
     port, token = _free_port(), secrets.token_urlsafe(24)
     with tempfile.TemporaryDirectory(prefix="vibe-smoke-") as tmp:
         env = {
             **os.environ,
             "GENRE_PORT": str(port),
-            "GENRE_TOKEN": token,           # the loopback guard the shell normally sets
+            "GENRE_TOKEN": token,  # the loopback guard the shell normally sets
             "GENRE_DB": str(Path(tmp) / "smoke.db"),  # never the real library
             # a clean machine's PATH: nothing of this dev box can stand in for the
             # bundle (see the module docstring)
-            "PATH": os.pathsep.join([
-                os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "system32"),
-                os.environ.get("SystemRoot", r"C:\Windows"),
-            ]),
+            "PATH": os.pathsep.join(
+                [
+                    os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "system32"),
+                    os.environ.get("SystemRoot", r"C:\Windows"),
+                ]
+            ),
         }
         base = f"http://127.0.0.1:{port}"
         print(f"launching {EXE.name} on port {port} ...")
         proc = subprocess.Popen(  # nosec B603  # the exe we just built, fixed args, no shell
-            [str(EXE)], cwd=str(DIST), env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            [str(EXE)],
+            cwd=str(DIST),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         try:
             deadline = time.time() + args.timeout
             status = body = None
             while time.time() < deadline:
                 if proc.poll() is not None:
-                    print(f"FAIL: the app exited on its own (code {proc.returncode}) "
-                          f"before serving a request.")
+                    print(
+                        f"FAIL: the app exited on its own (code {proc.returncode}) "
+                        f"before serving a request."
+                    )
                     return 1
                 status, body = _get(f"{base}/status?k={token}")
                 if status == 200:
@@ -195,8 +229,10 @@ def main() -> int:
             print("backend:")
             check("answers /status within the timeout", status, 200)
             if status != 200:
-                print(f"\nFAIL: never answered ({body!r}). The app started but its backend "
-                      f"did not come up - check the backend log the shell writes.")
+                print(
+                    f"\nFAIL: never answered ({body!r}). The app started but its backend "
+                    f"did not come up - check the backend log the shell writes."
+                )
                 return 1
 
             s = json.loads(body)
@@ -207,11 +243,15 @@ def main() -> int:
             check("ffprobe resolves with nothing on PATH", s.get("ffprobe"), True)
             # and it is the bundled copy, not something the machine happened to have
             path = s.get("ffmpeg_path") or ""
-            check("the ffmpeg it found is the bundled one",
-                  path and Path(path).resolve().is_relative_to(DIST.resolve()), True)
+            check(
+                "the ffmpeg it found is the bundled one",
+                path and Path(path).resolve().is_relative_to(DIST.resolve()),
+                True,
+            )
             note("ffmpeg_path", path)
-            check("onnxruntime offers at least one provider",
-                  bool(s.get("providers_available")), True)
+            check(
+                "onnxruntime offers at least one provider", bool(s.get("providers_available")), True
+            )
             note("providers", s.get("providers_available"))
             if not s.get("gpu_available"):
                 note("gpu", "no DmlExecutionProvider - CPU only on this machine")
@@ -240,8 +280,9 @@ def main() -> int:
                 check("analyses an uploaded file", st, 200)
                 if st == 200:
                     j = json.loads(resp)
-                    check("reads the title from the file's tags",
-                          j.get("title"), "Smoke Test Title")
+                    check(
+                        "reads the title from the file's tags", j.get("title"), "Smoke Test Title"
+                    )
                     note("bpm / key", (j.get("bpm"), j.get("key"), j.get("scale")))
             else:
                 note("tag round-trip", "skipped - could not generate a test file")
@@ -253,8 +294,14 @@ def main() -> int:
             css_status, _ = _get(f"{base}/static/app.css?k={token}")
             check("serves static assets from the bundle", css_status, 200)
 
-            print("\n" + ("PASS - the built exe runs." if _ok else
-                          "FAIL - the build produced a folder that does not work."))
+            print(
+                "\n"
+                + (
+                    "PASS - the built exe runs."
+                    if _ok
+                    else "FAIL - the build produced a folder that does not work."
+                )
+            )
             if args.keep_open:
                 input("\nleft running; press Enter to close it ...")
             return 0 if _ok else 1

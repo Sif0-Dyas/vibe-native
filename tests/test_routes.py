@@ -332,7 +332,12 @@ def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
 
     payload = {
         "salience": [{"style": "Techno", "score": 0.6}, {"style": "House", "score": 0.4}],
-        "relabel": {"styles": [{"style": "Trance", "score": 0.7}, {"style": "Progressive House", "score": 0.3}]},
+        "relabel": {
+            "styles": [
+                {"style": "Trance", "score": 0.7},
+                {"style": "Progressive House", "score": 0.3},
+            ]
+        },
     }
     style, score = _dominant_style(payload)
     assert style == "Trance"
@@ -953,12 +958,21 @@ def test_key_correction_overrides_the_detector(client):
 
     r = client.post(f"/key/{h}", json={"key": "Eb", "scale": "minor"})
     assert r.status_code == 200, r.data
-    assert r.get_json() == {"ok": True, "key": "Eb", "scale": "minor",
-                            "camelot": "2A", "key_source": "manual"}
+    assert r.get_json() == {
+        "ok": True,
+        "key": "Eb",
+        "scale": "minor",
+        "camelot": "2A",
+        "key_source": "manual",
+    }
 
     row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
-    assert (row["key"], row["scale"], row["camelot"], row["key_source"]) == \
-        ("Eb", "minor", "2A", "manual")
+    assert (row["key"], row["scale"], row["camelot"], row["key_source"]) == (
+        "Eb",
+        "minor",
+        "2A",
+        "manual",
+    )
 
     # clearing restores the detector's own answer from the payload
     assert client.post(f"/key/{h}", json={"key": None}).get_json()["key"] == "C"
@@ -985,6 +999,6 @@ def test_notices_lists_what_the_build_ships(client):
     assert items and all({"name", "what", "licence", "url"} <= set(i) for i in items)
 
     names = " ".join(i["name"] for i in items)
-    assert "FFmpeg" in names          # LGPL: the one with a hard obligation
+    assert "FFmpeg" in names  # LGPL: the one with a hard obligation
     licences = " ".join(i["licence"] for i in items)
     assert "LGPL" in licences

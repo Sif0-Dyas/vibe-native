@@ -271,7 +271,9 @@ def _vibe_centroids():
 
 
 def _matches(emb, centroids):
-    out = [{"id": vid, "name": name, "sim": round(cosine(emb, cen), 4)} for vid, name, cen in centroids]
+    out = [
+        {"id": vid, "name": name, "sim": round(cosine(emb, cen), 4)} for vid, name, cen in centroids
+    ]
     out.sort(key=lambda x: -x["sim"])
     return out
 

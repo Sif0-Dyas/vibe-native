@@ -37,8 +37,11 @@ def _dir_size(p: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build the standalone Windows exe (onedir).")
     ap.add_argument("--no-clean", action="store_true", help="keep the prior build/ + dist/")
-    ap.add_argument("--no-smoke", action="store_true",
-                    help="skip step 3 (launching the built exe to check it serves)")
+    ap.add_argument(
+        "--no-smoke",
+        action="store_true",
+        help="skip step 3 (launching the built exe to check it serves)",
+    )
     args = ap.parse_args()
 
     if not SPEC.is_file():

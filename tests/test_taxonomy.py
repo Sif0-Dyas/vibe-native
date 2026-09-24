@@ -85,8 +85,8 @@ def test_a_pinned_block_holds_one_overlay_for_its_whole_length():
     with taxonomy.pinned():
         assert taxonomy.family_override("Industrial") == "Bass"
         f.write_text(json.dumps({"family": {"Industrial": "Chill"}}), encoding="utf-8")
-        assert taxonomy.family_override("Industrial") == "Bass"     # held
-    assert taxonomy.family_override("Industrial") == "Chill"        # released
+        assert taxonomy.family_override("Industrial") == "Bass"  # held
+    assert taxonomy.family_override("Industrial") == "Chill"  # released
 
 
 # --- surviving a hand-edited file ---------------------------------------------

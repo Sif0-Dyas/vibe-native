@@ -252,7 +252,7 @@ def _map_cache_read(fp):
             body = f.read_bytes()
             if len(body) == expected:
                 return body
-            f.unlink(missing_ok=True)      # truncated: not a map, and never will be
+            f.unlink(missing_ok=True)  # truncated: not a map, and never will be
     except OSError:
         return None
     return None
@@ -307,9 +307,7 @@ def _build_map(rows, tags_by_hash, mode, fp):
     audit_rows = []
     for h, title, filename, filepath, payload, blob in rows:
         parsed = payload if isinstance(payload, dict) else json.loads(payload)
-        nodes.append(
-            _map_node(h, title, filename, parsed, filepath, tags_by_hash.get(h, ()), mode)
-        )
+        nodes.append(_map_node(h, title, filename, parsed, filepath, tags_by_hash.get(h, ()), mode))
         if blob is not None:
             emb = np.frombuffer(blob, dtype=np.float32)
             embs.append(emb)

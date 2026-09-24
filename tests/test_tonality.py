@@ -115,7 +115,8 @@ def test_oracle_agreement():
     keys = sorted(idx)
     keys = keys if os.environ.get("VIBE_FULL_ORACLE") else keys[::3]
     hits = sum(
-        tonality.estimate_file(wsl_to_windows(idx[h]["file"]))[:2] == (idx[h]["key"], idx[h]["scale"])
+        tonality.estimate_file(wsl_to_windows(idx[h]["file"]))[:2]
+        == (idx[h]["key"], idx[h]["scale"])
         for h in keys
     )
     assert hits / len(keys) >= 0.60, f"{hits}/{len(keys)} exact"
@@ -130,12 +131,19 @@ def test_a_malformed_model_file_falls_back_instead_of_loading(tmp_path, monkeypa
     for the rest of the suite even though _load_fitted() writes to them directly.
     """
     bad = tmp_path / "key_profiles.json"
-    bad.write_text(json.dumps({
-        "model": {"blocks": [{}, {}],                  # 2 blocks -> 24 weights expected
-                  "weights": {"major": [[1.0] * 12], "minor": [[1.0] * 12]},  # only 12
-                  "bias": {"major": [0.0], "minor": [0.0]}},
-        "profiles": {"edm": {"major": [1.0] * 12, "minor": [1.0] * 12}},
-    }), encoding="utf-8")
+    bad.write_text(
+        json.dumps(
+            {
+                "model": {
+                    "blocks": [{}, {}],  # 2 blocks -> 24 weights expected
+                    "weights": {"major": [[1.0] * 12], "minor": [[1.0] * 12]},  # only 12
+                    "bias": {"major": [0.0], "minor": [0.0]},
+                },
+                "profiles": {"edm": {"major": [1.0] * 12, "minor": [1.0] * 12}},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(tonality, "_DATA", bad)
     monkeypatch.setattr(tonality, "MODEL", None)

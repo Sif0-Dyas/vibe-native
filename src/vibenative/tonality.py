@@ -88,8 +88,13 @@ def _load_fitted() -> None:
             MODEL = {
                 "blocks": [dict(b) for b in model["blocks"]],
                 # weights[mode]: (K, 12 * n_blocks), bias[mode]: (K,)
-                "weights": {m: np.atleast_2d(np.asarray(model["weights"][m], dtype=np.float64)) for m in MODES},
-                "bias": {m: np.atleast_1d(np.asarray(model["bias"][m], dtype=np.float64)) for m in MODES},
+                "weights": {
+                    m: np.atleast_2d(np.asarray(model["weights"][m], dtype=np.float64))
+                    for m in MODES
+                },
+                "bias": {
+                    m: np.atleast_1d(np.asarray(model["bias"][m], dtype=np.float64)) for m in MODES
+                },
             }
             # Shape the scorer relies on: one weight per pitch class per block, and
             # one bias per sub-template. A file that disagrees is not a model we can
@@ -99,8 +104,10 @@ def _load_fitted() -> None:
             for m in MODES:
                 w, b = MODEL["weights"][m], MODEL["bias"][m]
                 if w.shape[1] != 12 * len(MODEL["blocks"]) or w.shape[0] != b.size:
-                    raise ValueError(f"{m}: weights {w.shape} do not match "
-                                     f"{len(MODEL['blocks'])} blocks / {b.size} biases")
+                    raise ValueError(
+                        f"{m}: weights {w.shape} do not match "
+                        f"{len(MODEL['blocks'])} blocks / {b.size} biases"
+                    )
         except (KeyError, TypeError, ValueError):
             MODEL = None
 
@@ -124,7 +131,9 @@ def _frames(audio: np.ndarray, frame: int = FRAME, hop: int = HOP) -> np.ndarray
     return x[idx]
 
 
-def magnitudes(audio: np.ndarray, sr: int = SR, frame: int = FRAME, hop: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+def magnitudes(
+    audio: np.ndarray, sr: int = SR, frame: int = FRAME, hop: int | None = None
+) -> tuple[np.ndarray, np.ndarray]:
     """Per-frame max-normalised magnitude spectra of the non-silent frames,
     restricted to [F_LO, F_HI]. Returns (mags (n, bins), bin_freqs (bins,)).
     Separate from ``emphasise`` so tools can sweep settings on one FFT pass."""
@@ -143,9 +152,17 @@ def magnitudes(audio: np.ndarray, sr: int = SR, frame: int = FRAME, hop: int | N
     return (mag / top).astype(np.float32), freqs[keep]
 
 
-def emphasise(mag: np.ndarray, freqs: np.ndarray, f_lo: float = F_LO, gamma: float = GAMMA,
-              peaks: bool = True, peak_floor: float = PEAK_FLOOR, top_peaks: int = TOP_PEAKS,
-              power: float = POWER, f_hi: float = F_HI) -> np.ndarray:
+def emphasise(
+    mag: np.ndarray,
+    freqs: np.ndarray,
+    f_lo: float = F_LO,
+    gamma: float = GAMMA,
+    peaks: bool = True,
+    peak_floor: float = PEAK_FLOOR,
+    top_peaks: int = TOP_PEAKS,
+    power: float = POWER,
+    f_hi: float = F_HI,
+) -> np.ndarray:
     """What of the spectrum counts as pitch evidence. Bins below ``f_lo`` are
     dropped. With ``peaks`` only local maxima survive, and of those only the
     ``top_peaks`` strongest per frame above ``peak_floor`` x the frame max
@@ -160,10 +177,12 @@ def emphasise(mag: np.ndarray, freqs: np.ndarray, f_lo: float = F_LO, gamma: flo
         is_peak = (inner > mag[:, :-2]) & (inner >= mag[:, 2:]) & (inner >= peak_floor)
         mag = np.pad(np.where(is_peak, inner, 0.0), ((0, 0), (1, 1)))
         if top_peaks and top_peaks < mag.shape[1]:
-            cut = -np.partition(-mag, top_peaks, axis=1)[:, top_peaks - 1: top_peaks]  # N-th largest
+            cut = -np.partition(-mag, top_peaks, axis=1)[
+                :, top_peaks - 1 : top_peaks
+            ]  # N-th largest
             mag = np.where(mag >= cut, mag, 0.0)
     if power != 1.0:
-        mag = mag ** power
+        mag = mag**power
     return np.log1p(gamma * mag) if gamma > 0 else mag
 
 
@@ -195,7 +214,9 @@ def _tuning_offset(mags: np.ndarray, freqs: np.ndarray, enabled: bool = True) ->
     return float(centre[int(np.argmax(hist))])
 
 
-def _chroma_matrix(freqs: np.ndarray, offset: float, subharmonics: int, decay: float = DECAY) -> np.ndarray:
+def _chroma_matrix(
+    freqs: np.ndarray, offset: float, subharmonics: int, decay: float = DECAY
+) -> np.ndarray:
     """(bins, 12) weights mapping spectral bins to pitch classes. Each bin lands on
     the semitone nearest its (tuning-corrected) pitch, with a cos² taper on the
     distance to the semitone centre. With subharmonics > 0 the bin also credits
@@ -206,7 +227,7 @@ def _chroma_matrix(freqs: np.ndarray, offset: float, subharmonics: int, decay: f
         pitch = 69.0 + 12.0 * np.log2(freqs / (440.0 * h)) - offset
         nearest = np.round(pitch)
         w = np.cos(np.pi * (pitch - nearest)) ** 2 * decay ** (h - 1) / h
-        pc = (nearest.astype(int) % 12)
+        pc = nearest.astype(int) % 12
         np.add.at(m, (np.arange(freqs.size), pc), w)
     return m
 
@@ -223,7 +244,7 @@ def _section(mags: np.ndarray, which: str, frac: float) -> np.ndarray:
     csum = np.concatenate([[0.0], np.cumsum(energy)])
     window = csum[w:] - csum[:-w]  # energy of each contiguous w-frame window
     start = int(np.argmax(window) if which == "loud" else np.argmin(window))
-    return mags[start:start + w]
+    return mags[start : start + w]
 
 
 def _global_pcp(mags: np.ndarray, chroma_matrix: np.ndarray, frame_norm: bool) -> np.ndarray:
@@ -236,13 +257,27 @@ def _global_pcp(mags: np.ndarray, chroma_matrix: np.ndarray, frame_norm: bool) -
     return g / top if top > 0 else g
 
 
-def pcp_from_magnitudes(mags: np.ndarray, freqs: np.ndarray, subharmonics: int = SUBHARMONICS,
-                        decay: float = DECAY, f_lo: float = F_LO, gamma: float = GAMMA, peaks: bool = True,
-                        peak_floor: float = PEAK_FLOOR, top_peaks: int = TOP_PEAKS, power: float = POWER,
-                        frame_norm: bool = True, tuning: bool = True, bass_weight: float = BASS_WEIGHT,
-                        bass_hi: float = BASS_HI, bass_peaks: int = BASS_PEAKS, f_hi: float = F_HI,
-                        offset: float | None = None, section: str | None = None,
-                        section_frac: float = 0.25) -> np.ndarray:
+def pcp_from_magnitudes(
+    mags: np.ndarray,
+    freqs: np.ndarray,
+    subharmonics: int = SUBHARMONICS,
+    decay: float = DECAY,
+    f_lo: float = F_LO,
+    gamma: float = GAMMA,
+    peaks: bool = True,
+    peak_floor: float = PEAK_FLOOR,
+    top_peaks: int = TOP_PEAKS,
+    power: float = POWER,
+    frame_norm: bool = True,
+    tuning: bool = True,
+    bass_weight: float = BASS_WEIGHT,
+    bass_hi: float = BASS_HI,
+    bass_peaks: int = BASS_PEAKS,
+    f_hi: float = F_HI,
+    offset: float | None = None,
+    section: str | None = None,
+    section_frac: float = 0.25,
+) -> np.ndarray:
     """Global PCP. With ``bass_weight`` > 0 the profile is a blend of the
     full-band PCP and a PCP of the bass band alone (few peaks per frame, so it
     tracks the bassline's root notes): bass chroma is the strongest tonic cue in
@@ -258,7 +293,9 @@ def pcp_from_magnitudes(mags: np.ndarray, freqs: np.ndarray, subharmonics: int =
     cm = _chroma_matrix(freqs, offset, subharmonics, decay)
     g = _global_pcp(full, cm, frame_norm)
     if bass_weight > 0:
-        bass = emphasise(mags, freqs, BASS_LO, gamma, peaks, peak_floor, bass_peaks, power, f_hi=bass_hi)
+        bass = emphasise(
+            mags, freqs, BASS_LO, gamma, peaks, peak_floor, bass_peaks, power, f_hi=bass_hi
+        )
         gb = _global_pcp(bass, _chroma_matrix(freqs, offset, 0), frame_norm)
         g = (1.0 - bass_weight) * g + bass_weight * gb
         g = g / g.max() if g.max() > 0 else g
@@ -286,9 +323,9 @@ def _standardise(v: np.ndarray) -> np.ndarray:
     """Zero-mean, unit-norm per 12-bin block (so a dot product is a correlation)."""
     out = np.array(v, dtype=np.float64)
     for j in range(0, out.size, 12):
-        blk = out[j:j + 12] - out[j:j + 12].mean()
+        blk = out[j : j + 12] - out[j : j + 12].mean()
         n = np.linalg.norm(blk)
-        out[j:j + 12] = blk / n if n > 0 else blk
+        out[j : j + 12] = blk / n if n > 0 else blk
     return out
 
 
@@ -312,7 +349,7 @@ def match_model(feature: np.ndarray, model: dict | None = None) -> tuple[str, st
     nblk = x.size // 12
     scores = np.empty((12, 2))
     for t in range(12):
-        rolled = np.concatenate([np.roll(x[j * 12:(j + 1) * 12], -t) for j in range(nblk)])
+        rolled = np.concatenate([np.roll(x[j * 12 : (j + 1) * 12], -t) for j in range(nblk)])
         for mi, m in enumerate(MODES):
             sub = model["weights"][m] @ rolled + model["bias"][m]  # one score per sub-template
             top = sub.max()
@@ -340,7 +377,9 @@ def match(profile_vec: np.ndarray, profile: str = DEFAULT_PROFILE) -> tuple[str,
     return best
 
 
-def estimate(audio: np.ndarray, sr: int = SR, profile: str = DEFAULT_PROFILE, **front_end) -> tuple[str, str, float]:
+def estimate(
+    audio: np.ndarray, sr: int = SR, profile: str = DEFAULT_PROFILE, **front_end
+) -> tuple[str, str, float]:
     """(key, "major"|"minor", strength) for a mono signal. With the trained model
     (the default when data/key_profiles.json carries one) strength is a
     probability; with a named profile set it is a Pearson correlation and

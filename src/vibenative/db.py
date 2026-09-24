@@ -319,8 +319,10 @@ def key_label_get(h: str):
 
 def key_label_put(h: str, key: str, scale: str, source: str = "manual"):
     with _db_lock, closing(db()) as conn, conn as c:
-        c.execute("INSERT OR REPLACE INTO key_labels VALUES(?,?,?,?,?)",
-                  (h, key, scale, source, time.time()))
+        c.execute(
+            "INSERT OR REPLACE INTO key_labels VALUES(?,?,?,?,?)",
+            (h, key, scale, source, time.time()),
+        )
 
 
 def key_label_delete(h: str):

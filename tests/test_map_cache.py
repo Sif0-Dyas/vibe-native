@@ -44,9 +44,9 @@ def test_the_second_request_is_served_from_the_store(client):
     seed(client)
     hit1, first = build(client)
     hit2, second = build(client)
-    assert hit1 is False        # nothing stored yet: this one built it
+    assert hit1 is False  # nothing stored yet: this one built it
     assert hit2 is True
-    assert first == second      # and a hit is the same map, not a similar one
+    assert first == second  # and a hit is the same map, not a similar one
 
 
 def test_an_empty_library_still_answers(client):
@@ -59,7 +59,7 @@ def test_an_empty_library_still_answers(client):
 def test_a_new_track_rebuilds_the_map(client):
     seed(client, "mc1")
     build(client)
-    assert build(client)[0] is True          # cached
+    assert build(client)[0] is True  # cached
     seed(client, "mc2")
     hit, body = build(client)
     assert hit is False
@@ -136,7 +136,7 @@ def test_the_taxonomy_overlay_is_part_of_the_key(client):
     build(client)
     assert build(client)[0] is True
 
-    overlay = taxonomy_path()          # the scratch path conftest points us at
+    overlay = taxonomy_path()  # the scratch path conftest points us at
     overlay.parent.mkdir(parents=True, exist_ok=True)
     overlay.write_text(json.dumps({"palette": "ember"}), encoding="utf-8")
     assert build(client)[0] is False
@@ -189,12 +189,12 @@ def test_a_truncated_entry_is_rebuilt_rather_than_served(client):
     # gets its own temp database in the same temp folder -- so pick out the entry
     # this test just wrote rather than assuming it is the only one there.
     stored = max(map_routes._map_cache_dir().glob("*.json"), key=lambda f: f.stat().st_mtime)
-    stored.write_bytes(b'{"nodes": [')               # truncate it
+    stored.write_bytes(b'{"nodes": [')  # truncate it
 
     hit, body = build(client)
-    assert hit is False                              # rejected, not served
-    assert style_of(body, h) == "Techno"             # and rebuilt correctly
-    assert build(client)[0] is True                  # the good entry replaced it
+    assert hit is False  # rejected, not served
+    assert style_of(body, h) == "Techno"  # and rebuilt correctly
+    assert build(client)[0] is True  # the good entry replaced it
 
 
 # --- the stamp: "is the map I am holding still the current one?" --------------
@@ -242,7 +242,9 @@ def test_the_stamp_never_reads_a_track(client, monkeypatch):
     seed(client)
     calls = []
     real = M._map_fingerprint
-    monkeypatch.setattr(M, "_map_fingerprint", lambda rev, mode: calls.append(rev) or real(rev, mode))
+    monkeypatch.setattr(
+        M, "_map_fingerprint", lambda rev, mode: calls.append(rev) or real(rev, mode)
+    )
     assert client.get("/map/stamp").status_code == 200
     assert calls and isinstance(calls[0], int)
 
