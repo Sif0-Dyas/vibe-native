@@ -177,6 +177,48 @@ def test_batch_missing_dir_400(client):
     assert client.post("/batch", json={"path": "/no/such/dir"}).status_code == 400
 
 
+def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
+    # A file that stalls ffmpeg/ffprobe must fail on its own, not pin a batch worker.
+    # Runs the REAL analyze() path (FAKE off for the analysis module) with every
+    # child process timing out.
+    import subprocess
+
+    from conftest import seed_track
+    from vibenative import analysis, decode, metadata
+    from vibenative.db import file_hash
+
+    def hang(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+    monkeypatch.setattr(subprocess, "run", hang)
+    monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
+    monkeypatch.setattr(metadata, "find_tool", lambda name: name)
+    monkeypatch.setattr(analysis, "FAKE", False)
+    monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
+
+    hung = tmp_path / "a_hung.wav"
+    hung.write_bytes(_tiny_wav_bytes(sample=1))
+    ok = tmp_path / "b_ok.wav"
+    ok.write_bytes(_tiny_wav_bytes(sample=2))
+    seed_track(file_hash(ok), {"key": "C", "scale": "major", "styles": []})
+
+    # (a) decode turns the timeout into a RuntimeError that names the file;
+    # a probe timeout in metadata is just empty tags.
+    with pytest.raises(RuntimeError, match="a_hung.wav") as exc:
+        decode.decode_16k_mono(hung)
+    assert isinstance(exc.value.__cause__, subprocess.TimeoutExpired)
+    assert metadata.read_tags(hung)["tag"] == {}
+
+    # (b) /batch reports the hung file as a failure line and keeps going.
+    r = client.post("/batch", json={"path": str(tmp_path), "workers": 1})
+    assert r.status_code == 200
+    lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
+    assert lines[0] == {"total": 2}
+    first, second = lines[1:]
+    assert first["ok"] is False and first["filename"] == "a_hung.wav"
+    assert second["ok"] is True and second["cached"] is True
+
+
 def test_map_populated(client):
     # analyze a few tracks, then the map returns them as nodes; every edge only
     # ever references a real node hash.

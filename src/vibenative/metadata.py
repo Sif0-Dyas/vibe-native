@@ -37,6 +37,11 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "bpm": ("bpm", "tbpm"),
 }
 
+# A probe is near-instant; a file that stalls ffprobe past this is treated as
+# unreadable. TimeoutExpired is a SubprocessError, so _probe_json's handler turns
+# it into empty tags like any other probe failure.
+PROBE_TIMEOUT_S = 30
+
 # Some writers embed kilobytes of their own state in a tag (Traktor's beatgrid,
 # cover art as text). Nothing that long is a title; cap what we keep.
 _MAX_VALUE = 300
@@ -66,6 +71,7 @@ def _probe_json(path: Path | str) -> dict:
             capture_output=True,
             check=True,
             creationflags=NO_WINDOW,
+            timeout=PROBE_TIMEOUT_S,
             # ffprobe emits UTF-8 JSON. text=True alone would decode it with the
             # locale encoding (cp1252 on a typical Windows box), turning every
             # accented tag into mojibake -- "Boo" written as UTF-8 and read as
