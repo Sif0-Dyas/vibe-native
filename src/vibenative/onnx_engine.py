@@ -1,22 +1,19 @@
-"""ONNX Runtime engine: EffNet embedder + Discogs-400 head (+ TempoCNN).
+"""ONNX Runtime engine: EffNet embedder + Discogs-400 head, and the one
+execution-provider policy every ONNX session in the app uses (TempoCNN included).
 
-Contract (Phase 1):
+Contract:
 
     get_engine() -> {"labels": [400 strs], "embedder": fn, "classifier": fn}
         embedder(audio16) -> (n_frames, 1280) float32   [uses frontend_mel]
         classifier(embeddings) -> (n_frames, 400) float32 probabilities
-    Provider order: ["DmlExecutionProvider", "CPUExecutionProvider"];
-    log which engaged. Mirror Vibe_Identify's analysis.get_engine() shape so
-    Phase 4's port is a drop-in.
+    Built once and cached; logs which provider engaged.
+
+    resolve_providers() -> the provider list to hand InferenceSession. CPU by
+        default; DirectML first only when VIBE_PROVIDER=gpu (see provider_order).
 
 Models load from models/*.onnx (produced by tools/convert_models.py):
     effnet.onnx     melspectrogram[B,128,96] -> embeddings[B,1280]  (embedder)
     genre400.onnx   embeddings[B,1280]       -> [B,400] sigmoid      (classifier)
-
-Phase-1 scope: sessions, provider logging, labels, and classifier() are live.
-embedder() raises NotImplementedError — the audio->mel-patch step is the Phase-2
-mel frontend (frontend_mel.py); the effnet.onnx session itself is loaded here so
-the embedder path is one function body away once the frontend lands.
 """
 
 import json
@@ -35,8 +32,8 @@ log = logging.getLogger(__name__)
 MODELS = models_dir()  # exe-adjacent models/ in a packaged build, else <repo>/models
 LABELS_JSON = MODELS / "genre_discogs400-discogs-effnet-1.json"
 
-# Preferred execution providers, highest priority first. DirectML (the RTX 5070)
-# when present; CPU otherwise. Installing onnxruntime-directml makes the DML EP
+# Execution-provider policy -- the only one in the app; tempo.py uses it too.
+# Installing onnxruntime-directml makes the DML EP
 # available; a plain onnxruntime install would only offer CPU (both must not be
 # installed at once — they conflict).
 # CPU is the default, deliberately -- DirectML is opt-in via VIBE_PROVIDER=gpu.
@@ -56,11 +53,21 @@ LABELS_JSON = MODELS / "genre_discogs400-discogs-effnet-1.json"
 # Trading a ~5% speedup for a scan that survives is not a close call. Set
 # VIBE_PROVIDER=gpu to opt back in -- worth retrying after an NVIDIA driver
 # update, since the fault is theirs, not ours.
-PROVIDER_ORDER = ["CPUExecutionProvider"]
+_GPU_VALUES = ("gpu", "dml", "directml", "dmlexecutionprovider")
 
-_PROVIDER_ENV = os.environ.get("VIBE_PROVIDER", "").strip().lower()
-if _PROVIDER_ENV in ("gpu", "dml", "directml", "dmlexecutionprovider"):
-    PROVIDER_ORDER = ["DmlExecutionProvider", "CPUExecutionProvider"]
+
+def provider_order() -> list[str]:
+    """Preferred execution providers, highest priority first, per VIBE_PROVIDER."""
+    if os.environ.get("VIBE_PROVIDER", "").strip().lower() in _GPU_VALUES:
+        return ["DmlExecutionProvider", "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
+
+
+def resolve_providers() -> list[str]:
+    """provider_order() narrowed to what this onnxruntime build offers; CPU if none."""
+    available = set(ort.get_available_providers())
+    return [p for p in provider_order() if p in available] or ["CPUExecutionProvider"]
+
 
 # Cap how many mel patches are fed to effnet.onnx in a single Session.run. A long
 # track yields hundreds of patches; running them all at once makes the DirectML EP
@@ -76,9 +83,7 @@ _engine: dict = {}
 def _session(path: Path) -> ort.InferenceSession:
     if not path.exists():
         raise FileNotFoundError(f"{path.name} missing — run tools/convert_models.py")
-    available = set(ort.get_available_providers())
-    providers = [p for p in PROVIDER_ORDER if p in available] or ["CPUExecutionProvider"]
-    return ort.InferenceSession(str(path), providers=providers)
+    return ort.InferenceSession(str(path), providers=resolve_providers())
 
 
 def get_engine() -> dict:
@@ -100,8 +105,8 @@ def get_engine() -> dict:
     # isn't available at all in a build that should have it, say so plainly rather than
     # silently running ~10x slower on CPU (esp. a packaged build with a missing DLL).
     if "DmlExecutionProvider" not in engaged:
-        if PROVIDER_ORDER == ["CPUExecutionProvider"]:
-            # CPU is the configured default, not a failure -- see PROVIDER_ORDER.
+        if provider_order() == ["CPUExecutionProvider"]:
+            # CPU is the configured default, not a failure -- see provider_order.
             # Warning here every launch would train you to ignore the warnings
             # that do matter, like a packaged build with missing DLLs below.
             log.info(
