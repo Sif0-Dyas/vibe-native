@@ -54,12 +54,6 @@ def test_norm_bridges_the_forms_the_vocabularies_disagree_on():
     assert cg.norm("2-step") == cg.norm("2 step") == cg.norm("2 Step")
 
 
-def test_id_key_ignores_separators():
-    # Every Noise spells it "acidhouse"; the snapshot spells it "acid house"
-    assert cg.id_key("acidhouse") == cg.id_key("acid house") == "acidhouse"
-    assert cg.id_key(None) == ""
-
-
 def test_qid_extracts_only_wikidata_entities():
     assert cg.qid("http://www.wikidata.org/entity/Q341364") == "Q341364"
     assert cg.qid("http://dbpedia.org/resource/Acid_house") == ""
@@ -247,9 +241,8 @@ def _canned():
             "excerpt": "2-step is a genre of UK garage.",
         }
     }
-    enao = {"2 step": {"x": 700, "y": 2100, "color": "#abcdef", "size": 120}}
     labels = {"Q9778": "electronic music", "Q145": "United Kingdom", "Q188451": "music genre"}
-    return items, edges, ids, dbp, wiki, enao, labels
+    return items, edges, ids, dbp, wiki, labels
 
 
 def test_build_records_merges_every_source():
@@ -265,7 +258,7 @@ def test_build_records_merges_every_source():
     assert rec["instruments"] == ["Synthesizer"]
     # Wikipedia prose
     assert rec["excerpt"] == "2-step is a genre of UK garage."
-    assert sorted(rec["sources"]) == ["dbpedia", "everynoise", "wikidata", "wikipedia"]
+    assert sorted(rec["sources"]) == ["dbpedia", "wikidata", "wikipedia"]
 
 
 def test_build_records_orders_records_by_name():
@@ -282,9 +275,9 @@ def test_build_records_prefers_wikidata_inception_over_dbpedia():
 
 
 def test_build_records_falls_back_to_dbpedia_year():
-    items, edges, ids, dbp, wiki, enao, labels = _canned()
+    items, edges, ids, dbp, wiki, labels = _canned()
     del items["Q1751409"]["inception"]
-    rec = cg.build_records(items, edges, ids, dbp, wiki, enao, labels)[0]
+    rec = cg.build_records(items, edges, ids, dbp, wiki, labels)[0]
     assert rec["origin_year"] == 2001
 
 
@@ -295,26 +288,12 @@ def test_build_records_folds_other_names_into_aliases():
     assert rec["aliases"] == ["2 step", "two-step garage"]
 
 
-def test_build_records_joins_everynoise_by_property_id():
+def test_build_records_carries_no_everynoise_data():
+    # ENAO data has no licence and this file ships in the app: only the Wikidata
+    # P9881 ID (CC0) is recorded, never the snapshot's colour/coordinates.
     rec = cg.build_records(*_canned())[0]
-    # P9881 said "2step"; the snapshot key is "2 step" -- id_key bridges them
-    assert rec["everynoise"]["color"] == "#abcdef"
-
-
-def test_build_records_joins_everynoise_by_name_when_id_absent():
-    items, edges, ids, dbp, wiki, enao, labels = _canned()
-    del ids["Q1751409"]["everynoise_id"]
-    enao = {"2-step garage": {"x": 1, "y": 2, "color": "#000000", "size": 100}}
-    rec = cg.build_records(items, edges, ids, dbp, wiki, enao, labels)[0]
-    assert rec["everynoise"]["color"] == "#000000"
-
-
-def test_build_records_omits_everynoise_without_a_snapshot():
-    items, edges, ids, dbp, wiki, labels = (*_canned()[:5], _canned()[6])
-    rec = cg.build_records(items, edges, ids, dbp, wiki, {}, labels)[0]
     assert "everynoise" not in rec
     assert "everynoise" not in rec["sources"]
-    # the ID is still recorded, so a later snapshot can be joined without re-crawling
     assert rec["everynoise_id"] == "2step"
 
 
@@ -324,15 +303,15 @@ def test_build_records_keeps_wikidata_description_over_wikipedia():
 
 
 def test_build_records_fills_missing_description_from_wikipedia():
-    items, edges, ids, dbp, wiki, enao, labels = _canned()
+    items, edges, ids, dbp, wiki, labels = _canned()
     items["Q1751409"]["description"] = ""
-    rec = cg.build_records(items, edges, ids, dbp, wiki, enao, labels)[0]
+    rec = cg.build_records(items, edges, ids, dbp, wiki, labels)[0]
     assert rec["description"] == "genre of UK garage"
 
 
 def test_build_records_tolerates_a_genre_with_nothing_but_a_label():
     items = {"Q1": {"name": "bleep", "description": "", "aliases": []}}
-    rec = cg.build_records(items, {}, {}, {}, {}, {}, {"Q1": "bleep"})[0]
+    rec = cg.build_records(items, {}, {}, {}, {}, {"Q1": "bleep"})[0]
     assert rec["name"] == "bleep" and rec["sources"] == ["wikidata"]
     # not reachable from the root, so depth is unknown rather than 0
     assert rec["electronic_depth"] is None
@@ -365,40 +344,6 @@ def test_cross_reference_with_no_names_is_a_no_op():
     records = [{"key": "techno", "aliases": [], "sources": []}]
     assert cg.cross_reference(records, []) == (0, [])
     assert records[0]["sources"] == []
-
-
-# --------------------------------------------------------------------------- #
-# the local Every Noise snapshot
-# --------------------------------------------------------------------------- #
-
-
-def test_load_enao_reads_the_snapshot(tmp_path):
-    path = tmp_path / "enao.json"
-    path.write_text(
-        json.dumps(
-            {
-                "genres": [
-                    {"name": "techno", "x": 1, "y": 2, "color": "#111111", "size": 130},
-                    {"name": "", "x": 9, "y": 9},
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    loaded = cg.load_enao(path)
-    assert loaded == {"techno": {"x": 1, "y": 2, "color": "#111111", "size": 130}}
-
-
-def test_load_enao_missing_file_is_a_silent_skip(tmp_path):
-    # the snapshot is git-ignored, so its absence is the normal case on a fresh
-    # clone -- it must degrade, not raise
-    assert cg.load_enao(tmp_path / "nope.json") == {}
-
-
-def test_load_enao_tolerates_corrupt_json(tmp_path):
-    path = tmp_path / "enao.json"
-    path.write_text("{not json", encoding="utf-8")
-    assert cg.load_enao(path) == {}
 
 
 # --------------------------------------------------------------------------- #
@@ -712,9 +657,9 @@ def test_fetch_wikipedia_records_a_redirect_instead_of_taking_its_prose():
 
 
 def test_build_records_surfaces_the_redirect_pointer():
-    items, edges, ids, dbp, _, enao, labels = _canned()
+    items, edges, ids, dbp, _, labels = _canned()
     wiki = {"2-step_garage": {"covered_by": "UK garage"}}
-    rec = cg.build_records(items, edges, ids, dbp, wiki, enao, labels)[0]
+    rec = cg.build_records(items, edges, ids, dbp, wiki, labels)[0]
     assert rec["wikipedia_covered_by"] == "UK garage"
     # no borrowed prose, and the Wikidata description is untouched
     assert "excerpt" not in rec

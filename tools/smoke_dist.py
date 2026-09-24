@@ -57,6 +57,26 @@ def check(label: str, got, want=True) -> None:
     print(f"  [{'ok' if good else 'FAIL'}] {label}: {got!r}")
 
 
+def _everynoise_paths(path: Path) -> list[str]:
+    """Where an ``everynoise`` key, or an ``"everynoise"`` source tag, appears."""
+    found = []
+
+    def walk(node, where):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "everynoise":
+                    found.append(f"{where}/{k}")
+                walk(v, f"{where}/{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                if v == "everynoise":
+                    found.append(f"{where}[{i}]")
+                walk(v, f"{where}[{i}]")
+
+    walk(json.loads(path.read_text(encoding="utf-8")), "")
+    return found[:5]  # enough to see the problem
+
+
 def note(label: str, got) -> None:
     """Report something worth seeing that is not a pass/fail condition."""
     print(f"  [--] {label}: {got!r}")
@@ -188,11 +208,12 @@ def main() -> int:
     # enao.json is excluded in the spec (not ours to ship; nothing reads it at
     # runtime) -- a stray copy anywhere in the bundle is a release blocker.
     check("enao.json is not in the bundle", [str(p) for p in DIST.rglob("enao.json")], [])
-    check(
-        "genres_electronic.json is in the bundle",
-        any(DIST.rglob("genres_electronic.json")),
-        True,
-    )
+    genres = next(DIST.rglob("genres_electronic.json"), None)
+    check("genres_electronic.json is in the bundle", genres is not None, True)
+    if genres is not None:
+        # ENAO data inside it is as much a problem as the snapshot itself; see
+        # tools/strip_enao_fields.py. (everynoise_id is Wikidata P9881, CC0 -- fine.)
+        check("genres_electronic.json has no everynoise data", _everynoise_paths(genres), [])
 
     port, token = _free_port(), secrets.token_urlsafe(24)
     with tempfile.TemporaryDirectory(prefix="vibe-smoke-") as tmp:
