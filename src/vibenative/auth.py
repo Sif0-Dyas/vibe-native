@@ -13,7 +13,9 @@ So every request must
     come from this origin -- defence in depth on top of the SameSite=Strict cookie.
 
 There is no unauthenticated mode. ``create_app`` takes ``GENRE_TOKEN`` if it is
-set (the desktop shell sets a fresh one per launch) and otherwise generates one;
+set (the desktop shell sets a fresh one per launch); otherwise a dev checkout
+reuses ``<config_dir>/dev_token`` (created on first start) and a packaged build
+generates a fresh one;
 ``python -m vibenative`` and ``wsgi.py`` print the URL carrying it.
 
 The hooks are app-level, not blueprint-level, so they also cover ``/static/*``
@@ -23,7 +25,9 @@ the cookie before the page asks for any static file, so load order is unaffected
 
 import hmac
 import os
+import re
 import secrets
+import sys
 
 from flask import abort, current_app, request
 
@@ -38,11 +42,50 @@ _OWN_FETCH_SITES = {"same-origin", "none"}
 
 def install(app) -> None:
     """Give ``app`` its token and put every request behind the guard."""
-    app.config["AUTH_TOKEN"] = os.environ.get("GENRE_TOKEN", "").strip() or secrets.token_urlsafe(
-        32
-    )
+    app.config["AUTH_TOKEN"] = _resolve_token()
     app.before_request(_loopback_guard)
     app.after_request(_promote_token_cookie)
+
+
+def _resolve_token() -> str:
+    """GENRE_TOKEN if set (the desktop shell sets a fresh one per launch). Otherwise:
+    a packaged build makes a new one each start; a dev checkout reuses the one in
+    ``<config_dir>/dev_token``, so restarting the dev server keeps an open tab
+    signed in (its cookie still matches)."""
+    env = os.environ.get("GENRE_TOKEN", "").strip()
+    if env:
+        return env
+    if getattr(sys, "frozen", False):
+        return secrets.token_urlsafe(32)
+    return _dev_token()
+
+
+_TOKEN_SHAPE = re.compile(r"[A-Za-z0-9_-]{32,}")  # what token_urlsafe(32) produces
+
+
+def _dev_token() -> str:
+    from .paths import config_dir
+
+    path = config_dir() / "dev_token"
+    try:
+        saved = path.read_text(encoding="ascii").strip()
+        if _TOKEN_SHAPE.fullmatch(saved):
+            return saved
+    except (OSError, ValueError):
+        pass  # missing or unreadable: make a new one
+    token = secrets.token_urlsafe(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="ascii") as fh:
+            fh.write(token + "\n")
+        # 0600 again for a file that already existed (os.open's mode applies only
+        # on creation). Windows honours just the read-only bit, so this is a no-op
+        # there; the file sits in the user's own profile or checkout anyway.
+        os.chmod(path, 0o600)
+    except OSError:
+        pass  # unwritable config dir: this run's token just won't survive a restart
+    return token
 
 
 def launch_url(app, host: str, port: int) -> str:

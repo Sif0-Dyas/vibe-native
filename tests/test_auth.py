@@ -60,15 +60,50 @@ def test_non_loopback_host_is_403_even_with_the_token(anon, url):
     assert bad.status_code == 403
 
 
-def test_create_app_generates_a_token_when_none_is_set(client, monkeypatch):
+def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
+    # Restarting the dev server keeps an open tab signed in: with GENRE_TOKEN unset,
+    # the first start writes <config_dir>/dev_token and later starts reuse it.
+    import os
+    import stat
+    import sys
+
     import vibenative
 
+    cfg = tmp_path / "fresh-config"
+    monkeypatch.setenv("VIBE_CONFIG_DIR", str(cfg))
     monkeypatch.delenv("GENRE_TOKEN", raising=False)
     a, b = vibenative.create_app(), vibenative.create_app()
-    assert len(a.config["AUTH_TOKEN"]) >= 32
-    assert a.config["AUTH_TOKEN"] != b.config["AUTH_TOKEN"]
+    token = a.config["AUTH_TOKEN"]
+    assert len(token) >= 32 and b.config["AUTH_TOKEN"] == token
+    saved = cfg / "dev_token"
+    assert saved.read_text(encoding="ascii").strip() == token
+    if sys.platform != "win32":  # Windows has no owner-only mode bits to check
+        assert stat.S_IMODE(os.stat(saved).st_mode) == 0o600
+
+
+def test_genre_token_overrides_the_saved_dev_token(client, monkeypatch, tmp_path):
+    import vibenative
+
+    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.delenv("GENRE_TOKEN", raising=False)
+    saved = vibenative.create_app().config["AUTH_TOKEN"]
     monkeypatch.setenv("GENRE_TOKEN", "pinned")
     assert vibenative.create_app().config["AUTH_TOKEN"] == "pinned"
+    assert (tmp_path / "cfg" / "dev_token").read_text(encoding="ascii").strip() == saved
+
+
+def test_a_packaged_build_never_writes_a_dev_token(client, monkeypatch, tmp_path):
+    import sys
+
+    import vibenative
+
+    cfg = tmp_path / "frozen-config"
+    monkeypatch.setenv("VIBE_CONFIG_DIR", str(cfg))
+    monkeypatch.delenv("GENRE_TOKEN", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    a, b = vibenative.create_app(), vibenative.create_app()
+    assert a.config["AUTH_TOKEN"] != b.config["AUTH_TOKEN"]  # fresh each start
+    assert not (cfg / "dev_token").exists()
 
 
 def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
