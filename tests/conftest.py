@@ -6,11 +6,26 @@ user's ~/genre_v2.db. Config is read at import time, so we set the env vars
 first and reload the package per test for full isolation.
 """
 
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 
 import pytest
+
+# Isolation that does not depend on any fixture, set before anything imports
+# vibenative. db.py resolves DB_PATH at first import, and that import can happen
+# during collection (a test module's top-level `from vibenative import db`) --
+# before any fixture runs. Without this, such a module, or a test that uses `db`
+# outside the client fixture, would resolve the developer's real ~/genre_v2.db.
+# Assigned outright, not setdefault: a GENRE_DB exported in the developer's shell
+# must not leak in either. The per-test fixtures below still narrow these further.
+SESSION_DIR = tempfile.mkdtemp(prefix="vibe-tests-")
+atexit.register(shutil.rmtree, SESSION_DIR, ignore_errors=True)
+os.environ["GENRE_DB"] = os.path.join(SESSION_DIR, "genre_v2.db")
+os.environ["VIBE_CONFIG_DIR"] = os.path.join(SESSION_DIR, "config")
+os.environ["VIBE_TAXONOMY"] = os.path.join(SESSION_DIR, "taxonomy.json")
 
 
 @pytest.fixture(autouse=True)

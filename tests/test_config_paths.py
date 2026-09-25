@@ -184,3 +184,33 @@ def test_userprofile_db_path_resolves_to_the_file_the_app_opens(tmp_path, monkey
             pkg.__dict__.pop("db", None)
         else:
             pkg.db = attr
+
+
+def test_first_import_of_db_without_any_fixture_lands_in_the_session_dir(tmp_path):
+    # The collection-time case: a fresh interpreter imports conftest (as pytest
+    # does, before any test module) and then vibenative.db, with no fixture in
+    # play -- and with GENRE_DB in the parent environment pointing at the real
+    # library, as a developer's shell might. DB_PATH must still be the throwaway one.
+    import subprocess  # nosec B404  # runs this interpreter on a fixed snippet
+    from pathlib import Path
+
+    tests_dir = Path(__file__).resolve().parent
+    env = {**os.environ, "GENRE_DB": str(Path.home() / "genre_v2.db")}
+    env.pop("VIBE_CONFIG_DIR", None)
+    env.pop("VIBE_TAXONOMY", None)
+    snippet = (
+        "import conftest, vibenative.db as d; "
+        "print(conftest.SESSION_DIR); print(d.DB_PATH); print(d.DB_PATH.exists())"
+    )
+    out = subprocess.run(  # nosec B603  # fixed argv, no shell
+        [sys.executable, "-c", snippet],
+        cwd=tests_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    ).stdout.split("\n")
+    session_dir, db_path = Path(out[0]), Path(out[1])
+    assert db_path.is_relative_to(session_dir), (db_path, session_dir)
+    assert db_path != Path.home() / "genre_v2.db"

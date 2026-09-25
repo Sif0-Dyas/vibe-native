@@ -291,8 +291,10 @@ def _start_inprocess() -> threading.Thread:
     """Create the Flask app and serve it on this launch's port in a daemon thread.
 
     The pinned port/token/FAKE flag are pushed into the environment BEFORE importing
-    vibenative, because config.py / db.py / the loopback auth guard read them at
-    import time. The daemon thread dies automatically when the window closes."""
+    vibenative: config.py and db.py read theirs at import time, and create_app()
+    reads GENRE_TOKEN when it builds the app (vibenative/auth.py) -- so this
+    launch's token is the one every request must carry. The daemon thread dies
+    automatically when the window closes."""
     os.environ["GENRE_PORT"] = str(PORT)
     os.environ["GENRE_TOKEN"] = TOKEN
     os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG  # so /status can point users to the log
