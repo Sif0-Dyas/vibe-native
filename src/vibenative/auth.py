@@ -8,7 +8,9 @@ So every request must
     site resolving its own domain to 127.0.0.1 to reach this server from the
     browser), and
 (b) carry the secret: ``?k=<token>`` on the first navigation, thereafter an
-    httponly cookie the first response sets.
+    httponly cookie the first response sets, and
+(c) if it writes (POST/PUT/PATCH/DELETE) and the browser sent ``Sec-Fetch-Site``,
+    come from this origin -- defence in depth on top of the SameSite=Strict cookie.
 
 There is no unauthenticated mode. ``create_app`` takes ``GENRE_TOKEN`` if it is
 set (the desktop shell sets a fresh one per launch) and otherwise generates one;
@@ -27,6 +29,11 @@ from flask import abort, current_app, request
 
 TOKEN_COOKIE = "vibe_token"  # nosec B105  # cookie NAME (not a secret); the value is the token
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+_MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
+# Sec-Fetch-Site values a legitimate write can carry: the app's own pages
+# (same-origin) and a user-initiated navigation (none). "same-site" is refused too:
+# another port on localhost is a different origin, not part of this app.
+_OWN_FETCH_SITES = {"same-origin", "none"}
 
 
 def install(app) -> None:
@@ -56,6 +63,13 @@ def _loopback_guard():
         abort(403)  # not addressed to loopback -> likely DNS rebinding
     supplied = request.cookies.get(TOKEN_COOKIE) or request.args.get("k", "")
     if not hmac.compare_digest(supplied, token):
+        abort(403)
+    # Defence in depth for writes. The SameSite=Strict cookie already keeps a
+    # cross-site page from authenticating, but a browser that labels a write as
+    # coming from another site is refused outright. Absent header = not a browser
+    # fetch (curl, the test client, an old browser): left to the token alone.
+    site = request.headers.get("Sec-Fetch-Site")
+    if request.method in _MUTATING and site is not None and site not in _OWN_FETCH_SITES:
         abort(403)
 
 

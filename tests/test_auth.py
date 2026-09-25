@@ -82,3 +82,24 @@ def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert out.count("?k=") == 1
     assert f"http://127.0.0.1:5123/?k={TEST_TOKEN}" in out
+
+
+@pytest.mark.parametrize(
+    "site, status",
+    [
+        ("cross-site", 403),
+        ("same-site", 403),  # another localhost port is another origin
+        ("same-origin", 200),
+        ("none", 200),
+        (None, 200),  # no header: not a browser fetch; the token alone decides
+    ],
+)
+def test_writes_from_another_site_are_refused(client, site, status):
+    headers = {"Sec-Fetch-Site": site} if site else {}
+    r = client.post("/vibes", json={"name": f"v-{site}"}, headers=headers)
+    assert r.status_code == status
+
+
+def test_reads_are_not_subject_to_the_fetch_site_check(client):
+    # Only writes are refused; a cross-site GET still needs the token like any other.
+    assert client.get("/library", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200

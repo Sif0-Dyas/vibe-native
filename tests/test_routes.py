@@ -55,6 +55,80 @@ def test_save_training_requires_genre(client):
     assert r.status_code == 400
 
 
+def test_save_training_refuses_a_path_that_is_not_in_the_library(client, tmp_path, monkeypatch):
+    # The server-side branch copies a file the request names. It used to copy ANY
+    # existing file; now only a track the library already knows.
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))  # genre_training lands here
+    stray = tmp_path / "not-a-track.mp3"
+    stray.write_bytes(b"x")
+    r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
+    assert r.status_code == 400
+    assert not (tmp_path / "genre_training" / "House" / "not-a-track.mp3").exists()
+    # a path that doesn't exist at all gets the same 400 -- no existence oracle
+    r = client.post("/save_training", data={"genre": "House", "filepath": str(tmp_path / "nope")})
+    assert r.status_code == 400
+
+    # the same file, once it is a library track, is copied
+    from vibenative.db import cache_put
+
+    cache_put("f" * 40, stray.name, str(stray), "t", {}, None)
+    r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
+    assert r.status_code == 200, r.get_json()
+    assert (tmp_path / "genre_training" / "House" / "not-a-track.mp3").is_file()
+
+
+@pytest.mark.parametrize(
+    "sent, saved",
+    [
+        ("../../evil.mp3", "evil.mp3"),
+        ("..\\..\\evil.mp3", "evil.mp3"),
+        ("日本.mp3", None),  # all non-ASCII: secure_filename leaves nothing -> hashed name
+    ],
+)
+def test_save_training_upload_name_is_made_safe(client, tmp_path, monkeypatch, sent, saved):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    r = client.post(
+        "/save_training",
+        data={"genre": "House", "file": (io.BytesIO(_tiny_wav_bytes()), sent)},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200, r.get_json()
+    dest = Path(r.get_json()["saved"])
+    assert dest.parent == tmp_path / "genre_training" / "House"  # never outside the genre folder
+    assert dest.is_file() and dest.suffix == ".mp3"
+    if saved:
+        assert dest.name == saved
+    else:
+        assert dest.name.startswith("upload-")
+
+
+def test_save_training_upload_must_be_audio(client, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    r = client.post(
+        "/save_training",
+        data={"genre": "House", "file": (io.BytesIO(b"MZ"), "tool.exe")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 415
+
+
+def test_analyze_keeps_the_name_but_drops_any_directory(client):
+    # The uploaded name is only a label: path parts go, the rest stays readable.
+    r = client.post(
+        "/analyze",
+        data={"file": (io.BytesIO(_tiny_wav_bytes(sample=7)), "..\\dir/Artist - Song.wav")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["filename"] == "Artist - Song.wav"
+
+
 def test_audio_unknown_hash_404(client):
     r = client.get("/audio/deadbeef")
     assert r.status_code == 404

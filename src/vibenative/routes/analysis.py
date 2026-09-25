@@ -2,6 +2,7 @@
 waveform media endpoints and their upload helpers."""
 
 import os
+import re
 import tempfile
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -42,6 +43,16 @@ class UploadError(Exception):
     def __init__(self, message, status):
         super().__init__(message)
         self.status = status
+
+
+def upload_label(filename):
+    """The browser-supplied filename as a display label: the last path component
+    only, whichever separator the client used. It is only ever a label (the upload
+    itself goes to a temp file), so it keeps its spaces and non-ASCII characters --
+    secure_filename would turn "Artist - Title.mp3" into "Artist_-_Title.mp3" and
+    break the artist fallback. Anything that uses a name as a PATH must still pass
+    it through secure_filename (see routes/training.py)."""
+    return re.split(r"[\\/]", filename or "")[-1]
 
 
 def _check_upload(f, missing_msg="no file received"):
@@ -102,16 +113,17 @@ def analyze_route():
                 _backfill_waveform(h, p)
                 return jsonify(_cached_response(cached, h))
 
-            title = read_title(p) or Path(f.filename).stem
+            name = upload_label(f.filename)
+            title = read_title(p) or Path(name).stem
             tags = read_tags(p)
             result = analyze(p)  # analyze() locks its own model inference
             emb = result.pop("emb_mean", None)
             wave = result.pop("wave", None)  # DAW-style min/max/rms -> its own cache
-            payload = build_payload(f.filename, None, title, tags, result)
+            payload = build_payload(name, None, title, tags, result)
             nc = insight.check(emb, *insight.dominant(payload)) if emb is not None else None
             if nc:
                 payload["neighbor_check"] = nc  # flag likely misreads
-            cache_put(h, f.filename, None, title, payload, emb)
+            cache_put(h, name, None, title, payload, emb)
             if wave is not None:
                 waveform_cache_put(h, wave)
             payload["hash"] = h

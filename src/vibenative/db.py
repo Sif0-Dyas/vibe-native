@@ -392,6 +392,16 @@ def waveform_cache_put(h: str, data: dict):
         )
 
 
+def is_library_filepath(path: str) -> bool:
+    """True if ``path`` is exactly the server-side path of a track in the library.
+
+    Routes that act on a caller-named server file (/save_training's copy) accept
+    only these, so the request can't name an arbitrary file on disk."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT 1 FROM tracks WHERE filepath=? LIMIT 1", (path,)).fetchone()
+    return row is not None
+
+
 def track_embedding(h: str):
     import numpy as np
 
