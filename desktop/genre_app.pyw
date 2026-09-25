@@ -295,8 +295,8 @@ def use_single_process() -> bool:
 
 
 def _ensure_std_streams():
-    """A --windowed PyInstaller build gives sys.stdout/stderr == None; werkzeug's
-    dev-server banner (and any stray print) writes to them and would crash with
+    """A --windowed PyInstaller build gives sys.stdout/stderr == None; any stray
+    print (a library's banner, say) writes to them and would crash with
     'NoneType has no write'. Point them at a sink so those writes are harmless."""
     for name in ("stdout", "stderr"):
         if getattr(sys, name, None) is None:
@@ -361,13 +361,21 @@ def _start_inprocess() -> threading.Thread:
                 "New analysis needs ffmpeg; cached tracks still load.",
                 " + ".join(missing),
             )
+    # Port pre-flight HERE, synchronously: a refusal inside the server thread would
+    # vanish with it. SystemExit becomes an ordinary error, so _ensure_backend_started
+    # shows it on the error page instead of letting it escape.
+    from vibenative import preflight, serve
+
+    try:
+        preflight.ensure_port_free("127.0.0.1", PORT)
+    except SystemExit as e:
+        raise RuntimeError(str(e)) from None
     log.info("Vibenative running in-process -> %s", BASE_URL)
 
     def _run():
-        # use_reloader=False: never fork a reloader from a daemon thread.
-        app.run(host="127.0.0.1", port=PORT, debug=False, threaded=True, use_reloader=False)
+        serve.serve(app, "127.0.0.1", PORT)  # waitress (vibenative/serve.py)
 
-    t = threading.Thread(target=_run, name="vibenative-flask", daemon=True)
+    t = threading.Thread(target=_run, name="vibenative-server", daemon=True)
     t.start()
     return t
 

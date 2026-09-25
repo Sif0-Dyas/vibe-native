@@ -107,16 +107,16 @@ def test_a_packaged_build_never_writes_a_dev_token(client, monkeypatch, tmp_path
 
 
 def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
-    import flask
-
     import vibenative.__main__ as entry
 
+    served = []
     monkeypatch.setenv("GENRE_PORT", "5123")
-    monkeypatch.setattr(flask.Flask, "run", lambda self, **kw: None)
+    monkeypatch.setattr(entry.serve, "serve", lambda app, host, port: served.append((host, port)))
     entry.main()
     out = capsys.readouterr().out
     assert out.count("?k=") == 1
     assert f"http://127.0.0.1:5123/?k={TEST_TOKEN}" in out
+    assert served == [("127.0.0.1", 5123)]  # handed to waitress, not the dev server
 
 
 @pytest.mark.parametrize(

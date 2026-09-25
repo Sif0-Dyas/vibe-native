@@ -8,7 +8,7 @@ server against ``wsgi:app`` instead of this dev server.
 import logging
 import os
 
-from . import auth, create_app, preflight
+from . import auth, create_app, preflight, serve
 
 log = logging.getLogger("vibenative")
 
@@ -48,7 +48,7 @@ def main():
     # stdout, on its own line, so it can be copied straight into a browser; the
     # first page load turns it into a cookie. Set GENRE_TOKEN to pin it.
     print(f"\nOpen Vibenative at:\n\n    {auth.launch_url(app, host, port)}\n", flush=True)
-    app.run(host=host, port=port, debug=False, threaded=True)
+    serve.serve(app, host, port)  # waitress; the pre-flight ran at the top
 
 
 if __name__ == "__main__":

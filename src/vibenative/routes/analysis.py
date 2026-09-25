@@ -33,6 +33,7 @@ from ..db import (
     waveform_cache_get,
     waveform_cache_put,
 )
+from ..serve import MAX_BATCH_WORKERS
 from ._shared import bp
 
 
@@ -466,7 +467,7 @@ def batch_route():
     # Bounded parallelism throttles CPU/GPU/RAM so a huge folder can't swamp the
     # machine; clamp whatever the client asks for to a safe range.
     cpu = os.cpu_count() or 4
-    workers = max(1, min(int(data.get("workers", 3) or 3), cpu, 6))
+    workers = max(1, min(int(data.get("workers", 3) or 3), cpu, MAX_BATCH_WORKERS))
 
     if not folder.is_dir():
         return jsonify({"error": f"not a directory: {folder}"}), 400

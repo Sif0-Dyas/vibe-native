@@ -16,6 +16,7 @@ __version__ = "2.1.0"
 from . import (  # noqa: E402
     auth,
     config,  # noqa: F401 -- imported after __version__ so routes can read it; loads .env early
+    serve,
 )
 from .db import init_db  # noqa: E402
 from .routes import bp  # noqa: E402
@@ -32,5 +33,6 @@ def create_app():
     # and a loopback Host. GENRE_TOKEN if set (the desktop shell sets one per
     # launch), else a fresh one; see auth.py.
     auth.install(app)
+    serve.log_requests(app)
     app.register_blueprint(bp)
     return app
