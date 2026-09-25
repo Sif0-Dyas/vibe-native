@@ -1996,8 +1996,24 @@ applyEqStyle();
 /* ---- Batch folder analysis ---- */
 const batchBtn = document.getElementById('batch-btn');
 const batchStatus = document.getElementById('batch-status');
+const batchCancelBtn = document.getElementById('batch-cancel');
 let batchRunning = false;
+let batchJob = null;         // the running batch's id, from the stream's first line
 const BATCH_ROW_CAP = 250;   // most recent rows to keep on screen during a batch
+
+// Cancel stops new files from starting; the few already being analysed finish
+// (and are cached), then the stream ends with a {done, cancelled} line that
+// runBatch reports. The button only asks -- runBatch decides what the status says.
+batchCancelBtn.addEventListener('click', async () => {
+  if (!batchJob) return;
+  batchCancelBtn.disabled = true;
+  batchCancelBtn.textContent = 'cancelling…';
+  try {
+    await fetch(`/batch/${encodeURIComponent(batchJob)}/cancel`, {method:'POST'});
+  } catch(e){
+    clientLog('batch cancel failed: ' + (e && e.message), 'error');
+  }
+});
 
 batchBtn.addEventListener('click', () => {
   if (batchRunning){ return; }
@@ -2029,7 +2045,7 @@ async function runBatch(folderPath){
     }
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
-    let buf = '', total = 0, done = 0;
+    let buf = '', total = 0, done = 0, final = null;
     // Keep the List light so a huge folder can't blow up the WebView: only newly
     // analyzed tracks get a (heavy, waveform-bearing) row, capped to the most
     // recent BATCH_ROW_CAP; already-in-library and failed tracks are just counted.
@@ -2050,7 +2066,20 @@ async function runBatch(folderPath){
       for (const line of lines){
         if (!line.trim()) continue;
         let d; try { d = JSON.parse(line); } catch(e){ continue; }
-        if (d.total){ total = d.total; updateStatus(); continue; }
+        // the last line: {done, cancelled, processed, total}. Checked before the
+        // first-line test below, since it carries `total` too.
+        if (d.done === true && 'processed' in d){ final = d; continue; }
+        if (d.total){
+          total = d.total;
+          batchJob = d.job || null;
+          if (batchJob){
+            batchCancelBtn.hidden = false;
+            batchCancelBtn.disabled = false;
+            batchCancelBtn.textContent = '✕ cancel';
+          }
+          updateStatus();
+          continue;
+        }
         done = d.progress || done + 1;
         if (d.ok && d.cached){
           skipped++;                              // already analyzed -> don't render
@@ -2070,7 +2099,17 @@ async function runBatch(folderPath){
         }
       }
     }
-    clientLog(`batch done: added=${added} skipped=${skipped} failed=${failed} · jsHeap=${jsHeapMB()}MB`);
+    clientLog(`batch done: added=${added} skipped=${skipped} failed=${failed} · cancelled=${!!(final && final.cancelled)} · jsHeap=${jsHeapMB()}MB`);
+    if (!final || final.cancelled){
+      // Cancelled on request, or the stream stopped without its closing line
+      // (server error, dropped connection) -- either way this is NOT a complete
+      // run, and must not read like one.
+      const n = final ? final.processed : done, m = final ? final.total : total;
+      batchStatus.textContent = (final ? `cancelled after ${n} of ${m}` : `interrupted after ${n} of ${m}`)
+        + (added ? ` · ${added} added` : '');
+      refreshFooter();
+      return;
+    }
     const bits = [`✓ ${added} added`];
     if (skipped) bits.push(`${skipped} already in library`);
     if (failed) bits.push(`${failed} failed`);
@@ -2083,6 +2122,8 @@ async function runBatch(folderPath){
     alert('Batch failed: ' + err.message);
   } finally {
     batchRunning = false;
+    batchJob = null;
+    batchCancelBtn.hidden = true;
     batchBtn.classList.remove('active');
     batchBtn.textContent = '⊕ batch folder';
   }

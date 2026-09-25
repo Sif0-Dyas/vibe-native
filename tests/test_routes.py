@@ -277,16 +277,17 @@ def test_batch_analyzes_folder_and_caches(client, tmp_path):
         return [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
 
     lines = run()
-    assert lines[0] == {"total": 3}
-    results = lines[1:]
+    assert lines[0]["total"] == 3 and lines[0]["job"]
+    assert lines[-1] == {"done": True, "cancelled": False, "processed": 3, "total": 3}
+    results = lines[1:-1]
     assert len(results) == 3
     assert all(r["ok"] for r in results)
     assert all(r["cached"] is False for r in results)  # first pass: freshly analyzed
     assert all(r.get("hash") for r in results)
 
     again = run()  # same content hashes -> all cache hits
-    assert again[0] == {"total": 3}
-    assert all(r["cached"] is True for r in again[1:])
+    assert again[0]["total"] == 3 and again[0]["job"] != lines[0]["job"]
+    assert all(r["cached"] is True for r in again[1:-1])
 
 
 def test_batch_missing_dir_400(client):
@@ -329,8 +330,9 @@ def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
     r = client.post("/batch", json={"path": str(tmp_path), "workers": 1})
     assert r.status_code == 200
     lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
-    assert lines[0] == {"total": 2}
-    first, second = lines[1:]
+    assert lines[0]["total"] == 2
+    assert lines[-1] == {"done": True, "cancelled": False, "processed": 2, "total": 2}
+    first, second = lines[1:-1]
     assert first["ok"] is False and first["filename"] == "a_hung.wav"
     assert second["ok"] is True and second["cached"] is True
 

@@ -157,7 +157,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
 - [x] `secure_filename` wherever an uploaded name becomes a path; `/save_training` accepts only known `tracks.filepath`; app-level `Sec-Fetch-Site` check refusing cross-origin writes. (Form bodies stay: with the token mandatory and its cookie `SameSite=Strict`, a cross-site POST already fails auth, so JSON-only bodies and an `Origin` check were dropped.)
 - [x] Discogs credentials to the `Authorization` header
-- [ ] Cancellable `/batch` + Cancel button
+- [x] Cancellable `/batch` + Cancel button
 - [ ] waitress in `genre_app.pyw` and `__main__.py`
 
 **Phase 2 — engine and data paths (re-run the oracle gate after)**

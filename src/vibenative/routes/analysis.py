@@ -4,6 +4,9 @@ waveform media endpoints and their upload helpers."""
 import os
 import re
 import tempfile
+import threading
+import uuid
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import closing, contextmanager
 from pathlib import Path
 
@@ -453,7 +456,6 @@ def batch_route():
     Accepts a native Windows path (C:\\Users\\you\\Music) directly; a legacy WSL
     mount path (/mnt/c/Users/you/Music) is translated to its drive-letter form for
     muscle-memory compatibility. Returns newline-delimited JSON results (NDJSON)."""
-    import concurrent.futures
     import json as _json
     import time as _time
 
@@ -524,16 +526,72 @@ def batch_route():
                 "error": "analysis failed",
             }
 
+    job = uuid.uuid4().hex
+
     def generate():
-        yield _json.dumps({"total": len(files)}) + "\n"
+        # Registered here, not in the route: if the response is never iterated,
+        # nothing is left behind. The client learns the id from the first line,
+        # which is yielded only after this.
+        cancel = threading.Event()
+        with _BATCH_JOBS_LOCK:
+            _BATCH_JOBS[job] = cancel
+        ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch-{job}")
         done = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(analyze_one, f): f for f in files}
-            for fut in concurrent.futures.as_completed(futs):
-                done += 1
-                result = fut.result()
-                result["progress"] = done
-                yield _json.dumps(result) + "\n"
-        log.info("batch DONE: %d/%d processed, rss=%sMB", done, len(files), _rss_mb())
+        try:
+            yield _json.dumps({"total": len(files), "job": job}) + "\n"
+            # Lazy submission: at most `workers` files in flight, the next one
+            # submitted only as one finishes -- nothing queued behind them, so a
+            # cancel (or a disconnect) has only those few left to wait for.
+            todo, pending = iter(files), set()
+
+            def refill():
+                while len(pending) < workers and not cancel.is_set():
+                    nxt = next(todo, None)
+                    if nxt is None:
+                        return
+                    pending.add(ex.submit(analyze_one, nxt))
+
+            refill()
+            while pending:
+                finished, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for fut in finished:
+                    pending.discard(fut)
+                    done += 1
+                    result = fut.result()  # analyze_one never raises; failures are dicts
+                    result["progress"] = done
+                    yield _json.dumps(result) + "\n"
+                refill()  # after a cancel this adds nothing; running files finish, cached
+            final = {"done": True, "cancelled": done < len(files), "processed": done}
+            final["total"] = len(files)
+            yield _json.dumps(final) + "\n"
+        finally:
+            # The one place a batch ends, whichever way: finished; cancelled via
+            # /batch/<job>/cancel (no refills, the loop drained and fell through);
+            # or the client went away (GeneratorExit raised at a yield when the
+            # server closes the response). Stop new work, wait only for what is
+            # already running, forget the job.
+            cancel.set()
+            ex.shutdown(wait=True, cancel_futures=True)
+            with _BATCH_JOBS_LOCK:
+                _BATCH_JOBS.pop(job, None)
+            log.info("batch END: %d/%d processed, rss=%sMB", done, len(files), _rss_mb())
 
     return Response(generate(), mimetype="application/x-ndjson")
+
+
+# Running /batch jobs: job id -> its cancel flag. An entry lives exactly as long
+# as that job's generator (added at its start, removed in its finally).
+_BATCH_JOBS: dict[str, threading.Event] = {}
+_BATCH_JOBS_LOCK = threading.Lock()
+
+
+@bp.post("/batch/<job>/cancel")
+def batch_cancel_route(job):
+    """Ask a running batch to stop: no new files start; the ones already being
+    analysed finish (and are cached), then the stream ends with a cancelled line."""
+    with _BATCH_JOBS_LOCK:
+        cancel = _BATCH_JOBS.get(job)
+    if cancel is None:
+        return jsonify({"error": "no such batch"}), 404
+    cancel.set()
+    return jsonify({"ok": True, "job": job})
