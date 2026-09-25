@@ -8,7 +8,7 @@ server against ``wsgi:app`` instead of this dev server.
 import logging
 import os
 
-from . import auth, create_app
+from . import auth, create_app, preflight
 
 log = logging.getLogger("vibenative")
 
@@ -30,6 +30,11 @@ def _check_ffmpeg():
 
 
 def main():
+    host = os.environ.get("GENRE_HOST", "127.0.0.1")
+    port = int(os.environ.get("GENRE_PORT", "5005"))
+    # First, before the app (and its database) is touched: refuse a port another
+    # server already holds, instead of silently sharing it (see preflight.py).
+    preflight.ensure_port_free(host, port)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -39,8 +44,6 @@ def main():
         log.info("FAKE_ANALYZER=1 -- serving fake results (GUI test mode, no models).")
     else:
         _check_ffmpeg()
-    host = os.environ.get("GENRE_HOST", "127.0.0.1")
-    port = int(os.environ.get("GENRE_PORT", "5005"))
     # Every request needs the token (auth.py). Print the URL that carries it on
     # stdout, on its own line, so it can be copied straight into a browser; the
     # first page load turns it into a cookie. Set GENRE_TOKEN to pin it.

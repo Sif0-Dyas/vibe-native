@@ -164,16 +164,58 @@ def configure():
         TOKEN = secrets.token_urlsafe(24)
 
 
-def backend_up() -> bool:
-    """True if something is answering on the app's port. A 4xx (e.g. the 403 from
-    the auth guard when we probe without the token) still means the server is up."""
+def _probe() -> str:
+    """Who is on the app's port: "ours" (answers /status with THIS launch's token),
+    "foreign" (answers, but not to our token -- someone else's server, e.g. a stale
+    dev server left running), or "down" (nothing answers)."""
     try:
-        with urllib.request.urlopen(BASE_URL + "/", timeout=2) as r:  # nosec B310  # fixed 127.0.0.1 loopback probe
-            return r.status < 500
-    except urllib.error.HTTPError as e:
-        return e.code < 500
+        with urllib.request.urlopen(f"{BASE_URL}/status?k={TOKEN}", timeout=2) as r:  # nosec B310  # fixed 127.0.0.1 loopback probe
+            return "ours" if r.status == 200 else "foreign"
+    except urllib.error.HTTPError:
+        return "foreign"  # 403 = not our token; anything else = not our app either
     except Exception:
-        return False
+        return "down"
+
+
+def backend_up() -> bool:
+    """True only if OUR backend is answering. A server that 403s our token is
+    someone else's; adopting it is how a stale server got served instead."""
+    return _probe() == "ours"
+
+
+def _port_owner_pid(port: int) -> str | None:
+    """PID listening on 127.0.0.1:<port>, via `netstat -ano` (Windows); None if that
+    can't be had cheaply. Only for the log line -- nothing depends on it."""
+    try:
+        out = subprocess.run(  # nosec B603 B607  # fixed argv, no shell
+            ["netstat", "-ano", "-p", "TCP"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        cols = line.split()
+        if len(cols) >= 5 and cols[1].endswith(f":{port}") and cols[3] == "LISTENING":
+            return cols[4]
+    return None
+
+
+_PORT_NOTE: str | None = None  # a port collision to report once the backend log is open
+
+
+def _move_off_foreign_port():
+    """Our port answers, but not to us: note who holds it and move to a free port."""
+    global PORT, BASE_URL, _PORT_NOTE
+    pid = _port_owner_pid(PORT)
+    new = _free_loopback_port()
+    _PORT_NOTE = (
+        f"port {PORT} is held by another server (PID {pid or 'unknown'}) that does not "
+        f"know this launch's token -- not adopting it; using port {new} instead."
+    )
+    PORT, BASE_URL = new, f"http://127.0.0.1:{new}"
 
 
 def backend_cmd() -> list[str]:
@@ -303,6 +345,8 @@ def _start_inprocess() -> threading.Thread:
     _ensure_std_streams()
     _setup_inprocess_logging()
     log = logging.getLogger("vibenative")
+    if _PORT_NOTE:
+        log.warning(_PORT_NOTE)  # decided before this log existed; see _move_off_foreign_port
 
     import vibenative  # bundled in the exe; editable-installed in the dev venv
 
@@ -332,8 +376,11 @@ def _ensure_backend_started() -> tuple[bool, str | None]:
     """Bring a backend up (or reuse one already answering). Returns (ok, error_html
     detail). Single-process by default; two-process fallback when requested."""
     global _STARTED_BY_US
-    if backend_up():
-        return True, None  # something's already serving our port -> reuse it
+    who = _probe()
+    if who == "ours":
+        return True, None  # our own backend already serving (e.g. a relaunch) -> reuse it
+    if who == "foreign":
+        _move_off_foreign_port()
     if use_single_process():
         try:
             _start_inprocess()

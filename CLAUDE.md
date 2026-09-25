@@ -36,6 +36,9 @@ wrapped in a pywebview shell, packaged with PyInstaller + Inno Setup. Windows-on
   VIBE_CONFIG_DIR, GENRE_DB and VIBE_TAXONOMY. Never run new tests against stashed or checked-out old
   code that predates a test's isolation — assert on the diff instead, or run the old code under the
   same env vars.
+- After any change under static/ or templates/, start the dev server against a test DB, load the page,
+  and confirm the browser console is clean — eslint does not catch runtime errors. Before starting a
+  dev server, check nothing else is on the port (the pre-flight does this — heed it).
 
 ## The remediation plan
 
