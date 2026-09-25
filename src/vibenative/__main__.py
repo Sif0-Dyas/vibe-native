@@ -8,7 +8,7 @@ server against ``wsgi:app`` instead of this dev server.
 import logging
 import os
 
-from . import create_app
+from . import auth, create_app
 
 log = logging.getLogger("vibenative")
 
@@ -41,9 +41,10 @@ def main():
         _check_ffmpeg()
     host = os.environ.get("GENRE_HOST", "127.0.0.1")
     port = int(os.environ.get("GENRE_PORT", "5005"))
-    if os.environ.get("GENRE_TOKEN"):
-        log.info("GENRE_TOKEN set -- requiring the per-session token on every request.")
-    log.info("Vibenative running -> http://%s:%d", host, port)
+    # Every request needs the token (auth.py). Print the URL that carries it on
+    # stdout, on its own line, so it can be copied straight into a browser; the
+    # first page load turns it into a cookie. Set GENRE_TOKEN to pin it.
+    print(f"\nOpen Vibenative at:\n\n    {auth.launch_url(app, host, port)}\n", flush=True)
     app.run(host=host, port=port, debug=False, threaded=True)
 
 

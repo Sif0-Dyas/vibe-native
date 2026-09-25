@@ -154,7 +154,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 **Phase 1 — user-visible failures**
 
 - [x] `settings.ini` and `taxonomy.json` to `%APPDATA%\Vibe Identify\`; seed once from the installer-written file
-- [ ] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
+- [x] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
 - [ ] JSON-only bodies + `Origin` check on mutating routes; `secure_filename`; `/save_training` accepts only known `tracks.filepath`
 - [ ] Discogs credentials to the `Authorization` header
 - [ ] Cancellable `/batch` + Cancel button

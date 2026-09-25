@@ -77,8 +77,23 @@ ready. See `desktop/README.md` for the folder-picker / security details.
 **Browser / headless** — run the backend yourself and open it in a browser:
 
 ```
-uv run python -m vibenative        # serves http://127.0.0.1:5005
+uv run python -m vibenative        # serves on 127.0.0.1:5005
 ```
+
+It prints the URL to open, token included:
+
+```
+Open Vibenative at:
+
+    http://127.0.0.1:5005/?k=<token>
+```
+
+Every request needs that token, pages and static files alike — a bare
+`http://127.0.0.1:5005/` answers 403. Open the printed URL once; the first page
+load swaps the `?k=` for a cookie, so later requests (and reloads) need nothing
+more. The token is new on every start unless you pin it with `GENRE_TOKEN`; the
+address must be loopback (`127.0.0.1` / `localhost`). `wsgi.py` prints the same
+line for a WSGI server.
 
 `FAKE_ANALYZER=1` serves instant fake results (no models). The library database is
 read from `GENRE_DB` (default `%USERPROFILE%\genre_v2.db`).

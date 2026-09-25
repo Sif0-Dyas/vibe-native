@@ -1,0 +1,84 @@
+"""The app never serves anything without its token and a loopback Host.
+
+Covers the whole surface: a page (/), an API route, a static file and an
+unmatched URL -- the guard is app-level, so /static and 404s are behind it too.
+"""
+
+import pytest
+
+from conftest import TEST_TOKEN
+
+URLS = ["/", "/library", "/static/app.js", "/no-such-page"]
+
+
+@pytest.fixture()
+def anon(client):
+    """A second client on the same app, with no cookie."""
+    return client.application.test_client()
+
+
+@pytest.mark.parametrize("url", URLS)
+def test_no_token_is_403(anon, url):
+    assert anon.get(url).status_code == 403
+
+
+@pytest.mark.parametrize("url", URLS)
+def test_wrong_token_is_403(anon, url):
+    assert anon.get(url, query_string={"k": "not-the-token"}).status_code == 403
+    anon.set_cookie("vibe_token", "not-the-token")
+    assert anon.get(url).status_code == 403
+
+
+def test_the_right_token_opens_everything(client):
+    assert client.get("/").status_code == 200
+    assert client.get("/library").status_code == 200
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/no-such-page").status_code == 404  # past the guard, then not found
+
+
+def test_k_on_the_first_load_sets_the_cookie_static_files_need(anon):
+    # The real load order: /?k=<token> first, then the page's static assets with
+    # nothing but the cookie that first response set.
+    first = anon.get("/", query_string={"k": TEST_TOKEN})
+    assert first.status_code == 200
+    cookie = first.headers.get("Set-Cookie", "")
+    assert "vibe_token=" + TEST_TOKEN in cookie and "HttpOnly" in cookie
+    assert "SameSite=Strict" in cookie
+    assert anon.get("/static/app.js").status_code == 200
+    assert anon.get("/library").status_code == 200
+
+
+@pytest.mark.parametrize("url", ["/", "/library", "/static/app.js"])
+def test_non_loopback_host_is_403_even_with_the_token(anon, url):
+    # DNS rebinding: a page on evil.example resolves to 127.0.0.1 and the browser
+    # sends Host: evil.example. The Host check runs unconditionally now.
+    ok = anon.get(url, query_string={"k": TEST_TOKEN}, headers={"Host": "localhost"})
+    assert ok.status_code == 200
+    bad = anon.get(url, query_string={"k": TEST_TOKEN}, headers={"Host": "evil.example"})
+    assert bad.status_code == 403
+    bad = anon.get(url, query_string={"k": TEST_TOKEN}, headers={"Host": "evil.example:5005"})
+    assert bad.status_code == 403
+
+
+def test_create_app_generates_a_token_when_none_is_set(client, monkeypatch):
+    import vibenative
+
+    monkeypatch.delenv("GENRE_TOKEN", raising=False)
+    a, b = vibenative.create_app(), vibenative.create_app()
+    assert len(a.config["AUTH_TOKEN"]) >= 32
+    assert a.config["AUTH_TOKEN"] != b.config["AUTH_TOKEN"]
+    monkeypatch.setenv("GENRE_TOKEN", "pinned")
+    assert vibenative.create_app().config["AUTH_TOKEN"] == "pinned"
+
+
+def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
+    import flask
+
+    import vibenative.__main__ as entry
+
+    monkeypatch.setenv("GENRE_PORT", "5123")
+    monkeypatch.setattr(flask.Flask, "run", lambda self, **kw: None)
+    entry.main()
+    out = capsys.readouterr().out
+    assert out.count("?k=") == 1
+    assert f"http://127.0.0.1:5123/?k={TEST_TOKEN}" in out

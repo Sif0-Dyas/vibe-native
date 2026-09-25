@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import TEST_TOKEN, authed
+
 ROOT = Path(__file__).resolve().parent.parent
 ORACLE = ROOT / "oracle"
 MODELS = ROOT / "models"
@@ -45,6 +47,7 @@ def test_analyze_route_matches_oracle(tmp_path, monkeypatch):
     style, key/scale, and BPM must match oracle/index.json."""
     monkeypatch.delenv("FAKE_ANALYZER", raising=False)  # real engine, not the fake path
     monkeypatch.setenv("GENRE_DB", str(tmp_path / "integ.db"))
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
 
     # Re-import the package in REAL mode (config.FAKE is read at import time).
     for name in list(sys.modules):
@@ -55,7 +58,7 @@ def test_analyze_route_matches_oracle(tmp_path, monkeypatch):
 
     app = vibenative.create_app()
     app.config.update(TESTING=True)
-    client = app.test_client()
+    client = authed(app)
 
     idx = json.loads((ORACLE / "index.json").read_text())
     picked = [m for m in idx.values() if Path(wsl_to_windows(m["file"])).is_file()][:3]

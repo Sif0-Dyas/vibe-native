@@ -13,6 +13,8 @@ import wave
 
 import pytest
 
+from conftest import TEST_TOKEN, authed
+
 
 def test_index_serves_page(client):
     r = client.get("/")
@@ -957,11 +959,12 @@ def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
             (d / f"{i}.mp3").write_bytes(b"x")
     (root / "Sparse" / "._junk.mp3").write_bytes(b"x")  # AppleDouble must not count
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
 
     from vibenative import create_app
 
     app = create_app()
-    with app.test_client() as c:
+    with authed(app) as c:
         d = c.get("/training/status").get_json()
     by = {g["genre"]: g for g in d["genres"]}
     assert by["Ready"]["state"] == "ready" and by["Ready"]["needs"] == 0
@@ -984,10 +987,11 @@ def test_vibe_description_round_trips_unbounded_text(tmp_path, monkeypatch):
 
     importlib.reload(dbmod)
     dbmod.init_db()
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
     from vibenative import create_app
 
     app = create_app()
-    with app.test_client() as c:
+    with authed(app) as c:
         vid = c.post("/vibes", json={"name": "Notes Test"}).get_json()["id"]
         text = "First para.\n\nSecond para.\n\n" + ("word " * 2000)
         out = c.post(f"/vibes/{vid}/description", json={"description": text}).get_json()

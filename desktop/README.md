@@ -78,13 +78,13 @@ localhost anyone on your PC can poke":
 - **Host-header check.** Requests not addressed to a loopback host are rejected
   (403), defeating DNS-rebinding.
 
-All of this is **env-gated in the backend**: with no `GENRE_TOKEN` set (the plain
-browser workflow, the test suite) the guard is a no-op and behavior is identical.
-Only the desktop shell turns it on.
+The token and Host checks are **always on in the backend**, for every request
+including `/static/*` (`vibenative/auth.py`). The shell's only part is choosing the
+token and passing it in; a backend started any other way generates its own.
 
-> Trade-off: because the shell's server requires the token, you can't open its
-> random port in a normal browser tab. Run `.venv\Scripts\python -m vibenative`
-> yourself (no token) for a browsable instance on `:5005`.
+> Trade-off: because the shell's token is private to it, you can't open its random
+> port in a normal browser tab. Run `uv run python -m vibenative` yourself for a
+> browsable instance on `:5005` -- it prints the `?k=<token>` URL to open.
 
 ## Notes / behavior
 
