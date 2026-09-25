@@ -145,3 +145,42 @@ def test_read_only_installer_ini_no_longer_breaks_db_path(client, packaged, tmp_
         assert _db_path_in(seed) == r"%USERPROFILE%\genre_v2.db"  # untouched
     finally:
         os.chmod(seed, stat.S_IREAD | stat.S_IWRITE)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="%VAR% expansion is Windows-only (ntpath)")
+def test_userprofile_db_path_resolves_to_the_file_the_app_opens(tmp_path, monkeypatch):
+    # The installer writes db_path=%USERPROFILE%\genre_v2.db unexpanded; the app
+    # expands it on read. Resolve it the way startup does (a fresh import of db),
+    # open a connection through db.db(), and check where the file actually landed.
+    from contextlib import closing
+
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    monkeypatch.setenv("USERPROFILE", str(profile))
+    monkeypatch.delenv("GENRE_DB", raising=False)
+    _ini(
+        tmp_path / "config" / "settings.ini", r"%USERPROFILE%\genre_v2.db"
+    )  # conftest's VIBE_CONFIG_DIR
+
+    # Put back BOTH the sys.modules entry and the package attribute afterwards:
+    # import_module rebinds vibenative.db, and a module left bound there but missing
+    # from sys.modules breaks any later importlib.reload(vibenative.db).
+    pkg = importlib.import_module("vibenative")
+    saved = (sys.modules.pop("vibenative.db", None), pkg.__dict__.get("db"))
+    try:
+        db = importlib.import_module("vibenative.db")
+        assert "%" not in str(db.DB_PATH)
+        with closing(db.db()) as conn:
+            conn.execute("CREATE TABLE t(x)")
+        assert (profile / "genre_v2.db").is_file()
+        assert db.DB_PATH.samefile(profile / "genre_v2.db")
+    finally:
+        mod, attr = saved
+        if mod is None:
+            sys.modules.pop("vibenative.db", None)
+        else:
+            sys.modules["vibenative.db"] = mod
+        if attr is None:
+            pkg.__dict__.pop("db", None)
+        else:
+            pkg.db = attr

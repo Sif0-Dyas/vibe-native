@@ -32,6 +32,10 @@ wrapped in a pywebview shell, packaged with PyInstaller + Inno Setup. Windows-on
 - Do not write user state next to the exe. Settings, taxonomy and snapshots belong under `%APPDATA%`.
 - No new SQL in `routes/` — use the repository layer once it exists (Phase 3 of the plan).
 - Never commit `models/*.onnx`, `data/enao.json`, `data/genres_electronic.json`, or `*.npz`.
+- Tests must never touch real user files. Before running any test that writes, confirm conftest sets
+  VIBE_CONFIG_DIR, GENRE_DB and VIBE_TAXONOMY. Never run new tests against stashed or checked-out old
+  code that predates a test's isolation — assert on the diff instead, or run the old code under the
+  same env vars.
 
 ## The remediation plan
 
