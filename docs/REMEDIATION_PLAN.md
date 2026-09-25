@@ -71,7 +71,7 @@ Also: code signing; `oracle/index.json` publishes your Windows username and 121 
 | Finding | Where | Fix |
 | --- | --- | --- |
 | Auth is opt-in: `_loopback_guard` only runs when `GENRE_TOKEN` is set; `python -m vibenative` has no token and no DNS-rebinding defence | `routes/_shared.py:21` | Make the token mandatory; print the `?k=` URL at startup |
-| Copy-any-file: `/save_training` copies any server path the form names into `~/genre_training/` | `routes/training.py:39` | JSON bodies only (a form POST needs no CORS preflight), check `Origin`, accept only paths already in `tracks.filepath` |
+| Copy-any-file: `/save_training` copies any server path the form names into `~/genre_training/` | `routes/training.py:39` | Accept only paths already in `tracks.filepath` (else 400, checked before the filesystem). Form bodies stay: the mandatory token's `SameSite=Strict` cookie already fails a cross-site POST, and an app-level `Sec-Fetch-Site` check refuses cross-origin writes — shipped in `e7660b5` |
 | Read-any-file: `/compare` decodes any `filepath`; `/batch` walks any directory | `routes/analysis.py:240`, `:553` | `/compare` goes away; `/batch` keeps an allow-list of roots picked through the native dialog |
 | Browser filename used as a path: `Path(f.filename).name` | `routes/training.py` upload branch | `werkzeug.utils.secure_filename` (0 uses today) |
 | Discogs token/key/secret sent as query params | `lookup.py:55-60, 93-96` | `Authorization: Discogs token=…` header; never log the URL |
@@ -156,7 +156,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] `settings.ini` and `taxonomy.json` to `%APPDATA%\Vibe Identify\`; seed once from the installer-written file
 - [x] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
 - [x] `secure_filename` wherever an uploaded name becomes a path; `/save_training` accepts only known `tracks.filepath`; app-level `Sec-Fetch-Site` check refusing cross-origin writes. (Form bodies stay: with the token mandatory and its cookie `SameSite=Strict`, a cross-site POST already fails auth, so JSON-only bodies and an `Origin` check were dropped.)
-- [ ] Discogs credentials to the `Authorization` header
+- [x] Discogs credentials to the `Authorization` header
 - [ ] Cancellable `/batch` + Cancel button
 - [ ] waitress in `genre_app.pyw` and `__main__.py`
 
