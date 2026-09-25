@@ -2015,8 +2015,17 @@ batchCancelBtn.addEventListener('click', async () => {
   }
 });
 
+// One batch per page: the UI tracks a single job (its progress, its Cancel), so a
+// second one would run untracked. True -- and says so in the status -- if one is
+// already running. Per page only: another tab has its own batchRunning.
+function batchBusy(){
+  if (!batchRunning) return false;
+  batchStatus.textContent = 'a batch is already running';
+  return true;
+}
+
 batchBtn.addEventListener('click', () => {
-  if (batchRunning){ return; }
+  if (batchBusy()) return;   // runBatch refuses too; this just skips a pointless prompt
   const path = prompt(
     'Enter the path to your music folder:\n(e.g. C:\\Users\\you\\Music)',
     'C:\\Users\\'
@@ -2025,7 +2034,10 @@ batchBtn.addEventListener('click', () => {
   runBatch(path.trim());
 });
 
+// The guard lives HERE, not only on the button: the desktop shell's native folder
+// picker calls window.runBatch() directly, and so could anything else.
 async function runBatch(folderPath){
+  if (batchBusy()) return;
   batchRunning = true;
   batchBtn.classList.add('active');
   batchBtn.textContent = '⏸ running…';
