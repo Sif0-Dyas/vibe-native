@@ -87,8 +87,8 @@ def test_batch_ndjson_streams_through_waitress(client, monkeypatch, tmp_path):
         srv.close()
         t.join(timeout=5)
 
-    first, *results, final = arrivals
-    assert first[1]["total"] == 10
+    job, first, *results, final = arrivals
+    assert set(job[1]) == {"job"} and first[1] == {"total": 10}
     assert len(results) == 10 and all(r["ok"] for _, r in results)
     assert final[1] == {"done": True, "cancelled": False, "processed": 10, "total": 10}
     # Streamed, not buffered: the first result is in hand well before the batch

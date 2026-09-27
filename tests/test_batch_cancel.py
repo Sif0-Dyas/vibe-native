@@ -63,8 +63,10 @@ def _start(client, folder):
     r = client.post("/batch", json={"path": str(folder), "workers": 3}, buffered=False)
     assert r.status_code == 200
     lines = iter(r.response)
-    first = json.loads(next(lines))
-    return r, lines, first
+    job_line = json.loads(next(lines))  # {"job": id}, sent before the folder walk
+    total_line = json.loads(next(lines))  # {"total": N}, once the walk is done
+    assert set(job_line) == {"job"} and set(total_line) == {"total"}
+    return r, lines, {**job_line, **total_line}
 
 
 def _job_threads(job):
@@ -141,3 +143,37 @@ def test_cancelling_one_job_leaves_a_concurrent_one_alone(client, batch, tmp_pat
 
 def test_cancel_of_an_unknown_job_is_404(client):
     assert client.post("/batch/not-a-job/cancel").status_code == 404
+
+
+def test_cancel_during_the_folder_walk(client, batch, tmp_path, monkeypatch):
+    # The job id arrives before the walk; a cancel while walking ends the stream
+    # with the cancelled line, processed 0, and no total ever sent.
+    from conftest import authed
+
+    mod, calls, executors = batch
+    real = _folder(tmp_path / "lib", 1) / "00.wav"
+    yielded = []
+
+    def slow_walk(folder):
+        for _ in range(5000):
+            yielded.append(1)
+            time.sleep(0.002)  # a big, slow tree: ~10 s if walked to the end
+            yield real
+
+    monkeypatch.setattr(mod, "_iter_folder", slow_walk)
+    r = client.post("/batch", json={"path": str(tmp_path / "lib")}, buffered=False)
+    lines = iter(r.response)
+    job = json.loads(next(lines))["job"]  # before the walk has started
+
+    got = []
+    reader = threading.Thread(target=lambda: got.extend(json.loads(x) for x in lines))
+    reader.start()  # drives the walk
+    time.sleep(0.3)  # well into the walk
+    assert authed(client.application).post(f"/batch/{job}/cancel").status_code == 200
+    reader.join(timeout=10)
+    assert not reader.is_alive()
+
+    assert got == [{"done": True, "cancelled": True, "processed": 0, "total": None}]
+    assert 0 < len(yielded) < 5000  # the walk stopped early
+    assert calls == []  # nothing was analysed
+    _assert_fully_stopped(mod, executors, job)

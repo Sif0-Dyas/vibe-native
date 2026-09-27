@@ -2041,7 +2041,7 @@ async function runBatch(folderPath){
   batchRunning = true;
   batchBtn.classList.add('active');
   batchBtn.textContent = '⏸ running…';
-  batchStatus.textContent = 'scanning…';
+  batchStatus.textContent = 'scanning folder…';
   clientLog(`batch start: ${folderPath}  (jsHeap=${jsHeapMB()}MB)`);
 
   try {
@@ -2081,14 +2081,19 @@ async function runBatch(folderPath){
         // the last line: {done, cancelled, processed, total}. Checked before the
         // first-line test below, since it carries `total` too.
         if (d.done === true && 'processed' in d){ final = d; continue; }
-        if (d.total){
+        // First line: the job id, sent before the server walks the folder -- so
+        // Cancel works from here on, walk included.
+        if ('job' in d && !('ok' in d)){
+          batchJob = d.job;
+          batchCancelBtn.hidden = false;
+          batchCancelBtn.disabled = false;
+          batchCancelBtn.textContent = '✕ cancel';
+          batchStatus.textContent = 'scanning folder…';
+          continue;
+        }
+        // Second line: how many audio files the walk found.
+        if ('total' in d && !('ok' in d)){
           total = d.total;
-          batchJob = d.job || null;
-          if (batchJob){
-            batchCancelBtn.hidden = false;
-            batchCancelBtn.disabled = false;
-            batchCancelBtn.textContent = '✕ cancel';
-          }
           updateStatus();
           continue;
         }
@@ -2112,6 +2117,14 @@ async function runBatch(folderPath){
       }
     }
     clientLog(`batch done: added=${added} skipped=${skipped} failed=${failed} · cancelled=${!!(final && final.cancelled)} · jsHeap=${jsHeapMB()}MB`);
+    if (final && final.error){
+      batchStatus.textContent = final.error;       // e.g. "no audio files found"
+      return;
+    }
+    if (final && final.cancelled && final.total == null){
+      batchStatus.textContent = 'cancelled while scanning the folder';
+      return;
+    }
     if (!final || final.cancelled){
       // Cancelled on request, or the stream stopped without its closing line
       // (server error, dropped connection) -- either way this is NOT a complete

@@ -472,18 +472,6 @@ def batch_route():
     if not folder.is_dir():
         return jsonify({"error": f"not a directory: {folder}"}), 400
 
-    files = sorted(
-        p
-        for p in folder.rglob("*")
-        if p.is_file() and p.suffix.lower() in AUDIO_EXTS and not _is_sidecar(p)
-    )
-    if not files:
-        return jsonify({"error": "no audio files found"}), 404
-
-    log.info(
-        "batch START: %s  (%d files, %d workers, rss=%sMB)", folder, len(files), workers, _rss_mb()
-    )
-
     def analyze_one(path: Path):
         # Log BEFORE the heavy work (with the file size + current RSS) and FLUSH via
         # the logging handler, so if this file OOM-kills the process the last START
@@ -529,6 +517,10 @@ def batch_route():
 
     job = uuid.uuid4().hex
 
+    def final(done, total, cancelled, **extra):
+        body = {"done": True, "cancelled": cancelled, "processed": done, "total": total}
+        return _json.dumps({**body, **extra}) + "\n"
+
     def generate():
         # Registered here, not in the route: if the response is never iterated,
         # nothing is left behind. The client learns the id from the first line,
@@ -537,9 +529,33 @@ def batch_route():
         with _BATCH_JOBS_LOCK:
             _BATCH_JOBS[job] = cancel
         ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch-{job}")
-        done = 0
+        done, total = 0, None
         try:
-            yield _json.dumps({"total": len(files), "job": job}) + "\n"
+            # The id goes out FIRST, before the folder walk: a big tree takes a while
+            # to walk, and the job must be cancellable for all of it.
+            yield _json.dumps({"job": job}) + "\n"
+            files = []
+            for seen, p in enumerate(_iter_folder(folder), 1):
+                if seen % WALK_CANCEL_EVERY == 0 and cancel.is_set():
+                    break
+                if p.is_file() and p.suffix.lower() in AUDIO_EXTS and not _is_sidecar(p):
+                    files.append(p)
+            if cancel.is_set():
+                yield final(0, None, True)  # cancelled while walking: nothing analysed
+                return
+            files.sort()
+            total = len(files)
+            yield _json.dumps({"total": total}) + "\n"
+            if not files:
+                yield final(0, 0, False, error="no audio files found")
+                return
+            log.info(
+                "batch START: %s  (%d files, %d workers, rss=%sMB)",
+                folder,
+                total,
+                workers,
+                _rss_mb(),
+            )
             # Lazy submission: at most `workers` files in flight, the next one
             # submitted only as one finishes -- nothing queued behind them, so a
             # cancel (or a disconnect) has only those few left to wait for.
@@ -562,9 +578,7 @@ def batch_route():
                     result["progress"] = done
                     yield _json.dumps(result) + "\n"
                 refill()  # after a cancel this adds nothing; running files finish, cached
-            final = {"done": True, "cancelled": done < len(files), "processed": done}
-            final["total"] = len(files)
-            yield _json.dumps(final) + "\n"
+            yield final(done, total, done < total)
         finally:
             # The one place a batch ends, whichever way: finished; cancelled via
             # /batch/<job>/cancel (no refills, the loop drained and fell through);
@@ -575,9 +589,18 @@ def batch_route():
             ex.shutdown(wait=True, cancel_futures=True)
             with _BATCH_JOBS_LOCK:
                 _BATCH_JOBS.pop(job, None)
-            log.info("batch END: %d/%d processed, rss=%sMB", done, len(files), _rss_mb())
+            log.info("batch END: %d/%s processed, rss=%sMB", done, total, _rss_mb())
 
     return Response(generate(), mimetype="application/x-ndjson")
+
+
+# How often the folder walk looks at the cancel flag (in directory entries).
+WALK_CANCEL_EVERY = 200
+
+
+def _iter_folder(folder: Path):
+    """Every entry under ``folder``, lazily. Separate so a test can make it slow."""
+    return folder.rglob("*")
 
 
 # Running /batch jobs: job id -> its cancel flag. An entry lives exactly as long
