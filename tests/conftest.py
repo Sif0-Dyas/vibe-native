@@ -6,11 +6,26 @@ user's ~/genre_v2.db. Config is read at import time, so we set the env vars
 first and reload the package per test for full isolation.
 """
 
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 
 import pytest
+
+# Isolation that does not depend on any fixture, set before anything imports
+# vibenative. db.py resolves DB_PATH at first import, and that import can happen
+# during collection (a test module's top-level `from vibenative import db`) --
+# before any fixture runs. Without this, such a module, or a test that uses `db`
+# outside the client fixture, would resolve the developer's real ~/genre_v2.db.
+# Assigned outright, not setdefault: a GENRE_DB exported in the developer's shell
+# must not leak in either. The per-test fixtures below still narrow these further.
+SESSION_DIR = tempfile.mkdtemp(prefix="vibe-tests-")
+atexit.register(shutil.rmtree, SESSION_DIR, ignore_errors=True)
+os.environ["GENRE_DB"] = os.path.join(SESSION_DIR, "genre_v2.db")
+os.environ["VIBE_CONFIG_DIR"] = os.path.join(SESSION_DIR, "config")
+os.environ["VIBE_TAXONOMY"] = os.path.join(SESSION_DIR, "taxonomy.json")
 
 
 @pytest.fixture(autouse=True)
@@ -21,8 +36,12 @@ def _isolated_taxonomy(tmp_path, monkeypatch):
     read whatever the developer has saved in the app -- so a run would pass or
     fail depending on whose machine it was on, and a genuine regression could
     hide behind someone's local edit.
+
+    VIBE_CONFIG_DIR does the same for settings.ini: without it, a test that hit
+    /db-path would rewrite the developer's real repo-root settings.ini.
     """
     monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
+    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "config"))
 
 
 def seed_track(h, payload):
@@ -39,12 +58,29 @@ def seed_track(h, payload):
     return h
 
 
+# Every request needs the app's token (vibenative/auth.py) -- there is no
+# unauthenticated mode, tests included. Anything that builds its own app sets
+# GENRE_TOKEN to this before create_app() and talks to it through authed().
+TEST_TOKEN = "test-token"  # nosec B105  # a fixed token for the test apps, not a secret
+
+
+def authed(app):
+    """A test client for ``app`` that carries the auth cookie, as a browser does
+    after its first ``/?k=<token>`` navigation."""
+    from vibenative.auth import TOKEN_COOKIE
+
+    c = app.test_client()
+    c.set_cookie(TOKEN_COOKIE, app.config["AUTH_TOKEN"])
+    return c
+
+
 @pytest.fixture()
-def client():
+def client(monkeypatch):
     os.environ["FAKE_ANALYZER"] = "1"
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
     os.environ["GENRE_DB"] = tmp.name
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
 
     for name in list(sys.modules):  # force a clean import per test
         if name == "vibenative" or name.startswith("vibenative."):
@@ -53,7 +89,7 @@ def client():
 
     app = vibenative.create_app()
     app.config.update(TESTING=True)
-    with app.test_client() as c:
+    with authed(app) as c:
         yield c
 
     os.unlink(tmp.name)

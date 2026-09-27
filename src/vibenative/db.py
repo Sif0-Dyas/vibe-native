@@ -15,19 +15,21 @@ def _resolve_db_path() -> Path:
     """Where the library database lives, in priority order:
 
     1. ``GENRE_DB`` env var — always wins (power users, dev, the test suite).
-    2. The installer-recorded choice in an exe-adjacent ``settings.ini``
-       (``[vibenative] db_path``). The installer's DB-location wizard page writes it;
-       env vars in the value (e.g. ``%USERPROFILE%``) are expanded at runtime so a
-       machine-wide setting still resolves per-user.
+    2. ``[vibenative] db_path`` in ``settings.ini`` (``paths.settings_ini_for_read``):
+       the per-user copy in ``%APPDATA%\\Vibe Identify``, which a packaged build seeds
+       once from the installer's DB-location page (written beside the exe) and the
+       Options tab updates; the exe-adjacent file is read only if that copy is
+       missing. Env vars in the value (e.g. ``%USERPROFILE%``) are expanded at
+       runtime so a machine-wide setting still resolves per-user.
     3. Default: ``%USERPROFILE%\\genre_v2.db``.
     """
     env = os.environ.get("GENRE_DB")
     if env:
         return Path(os.path.expandvars(env))
     try:
-        from .paths import settings_ini
+        from .paths import settings_ini_for_read
 
-        ini = settings_ini()
+        ini = settings_ini_for_read()
         if ini.is_file():
             # interpolation=None so a literal "%USERPROFILE%" in the value isn't parsed
             # as configparser interpolation; os.path.expandvars expands it below.
@@ -388,6 +390,16 @@ def waveform_cache_put(h: str, data: dict):
             "INSERT OR REPLACE INTO waveform_cache(hash, data_json, created) VALUES(?,?,?)",
             (h, json.dumps(data), time.time()),
         )
+
+
+def is_library_filepath(path: str) -> bool:
+    """True if ``path`` is exactly the server-side path of a track in the library.
+
+    Routes that act on a caller-named server file (/save_training's copy) accept
+    only these, so the request can't name an arbitrary file on disk."""
+    with _db_lock, closing(db()) as conn, conn as c:
+        row = c.execute("SELECT 1 FROM tracks WHERE filepath=? LIMIT 1", (path,)).fetchone()
+    return row is not None
 
 
 def track_embedding(h: str):

@@ -32,7 +32,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .config import log
-from .paths import settings_ini
+from .paths import config_dir
 
 VERSION = 1
 
@@ -53,7 +53,7 @@ _stamp = None  # (mtime, size) of the file it came from
 # write invisible for up to that long, which is a real semantic change (a write
 # followed immediately by a read could return the old overlay), and it bought
 # only ~0.47s of a ~6s request. The large win was caching path resolution in
-# paths.settings_ini(), which removed ~3.1s and changes no semantics at all.
+# paths (now paths._config_dir), which removed ~3.1s and changes no semantics at all.
 # Those syscalls are now avoided a different way -- see pinned() -- by holding
 # ONE overlay for the length of a whole-library build, which is not a change
 # in semantics but an improvement: every track in one map is classified
@@ -72,7 +72,7 @@ def path():
     env = os.environ.get("VIBE_TAXONOMY")
     if env:
         return Path(env)
-    return settings_ini().with_name("taxonomy.json")
+    return config_dir() / "taxonomy.json"
 
 
 def _blank():

@@ -2,7 +2,11 @@
 waveform media endpoints and their upload helpers."""
 
 import os
+import re
 import tempfile
+import threading
+import uuid
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import closing, contextmanager
 from pathlib import Path
 
@@ -29,6 +33,8 @@ from ..db import (
     waveform_cache_get,
     waveform_cache_put,
 )
+from ..decode import UnreadableAudio
+from ..serve import MAX_BATCH_WORKERS
 from ._shared import bp
 
 
@@ -42,6 +48,16 @@ class UploadError(Exception):
     def __init__(self, message, status):
         super().__init__(message)
         self.status = status
+
+
+def upload_label(filename):
+    """The browser-supplied filename as a display label: the last path component
+    only, whichever separator the client used. It is only ever a label (the upload
+    itself goes to a temp file), so it keeps its spaces and non-ASCII characters --
+    secure_filename would turn "Artist - Title.mp3" into "Artist_-_Title.mp3" and
+    break the artist fallback. Anything that uses a name as a PATH must still pass
+    it through secure_filename (see routes/training.py)."""
+    return re.split(r"[\\/]", filename or "")[-1]
 
 
 def _check_upload(f, missing_msg="no file received"):
@@ -102,16 +118,17 @@ def analyze_route():
                 _backfill_waveform(h, p)
                 return jsonify(_cached_response(cached, h))
 
-            title = read_title(p) or Path(f.filename).stem
+            name = upload_label(f.filename)
+            title = read_title(p) or Path(name).stem
             tags = read_tags(p)
             result = analyze(p)  # analyze() locks its own model inference
             emb = result.pop("emb_mean", None)
             wave = result.pop("wave", None)  # DAW-style min/max/rms -> its own cache
-            payload = build_payload(f.filename, None, title, tags, result)
+            payload = build_payload(name, None, title, tags, result)
             nc = insight.check(emb, *insight.dominant(payload)) if emb is not None else None
             if nc:
                 payload["neighbor_check"] = nc  # flag likely misreads
-            cache_put(h, f.filename, None, title, payload, emb)
+            cache_put(h, name, None, title, payload, emb)
             if wave is not None:
                 waveform_cache_put(h, wave)
             payload["hash"] = h
@@ -119,6 +136,11 @@ def analyze_route():
             return jsonify(payload)
     except UploadError as e:
         return jsonify({"error": str(e)}), e.status
+    except UnreadableAudio as e:
+        log.warning(
+            "analyze: %s is not a readable audio file (%s)", upload_label(f.filename), e.reason
+        )
+        return jsonify({"error": "not a readable audio file"}), 422
     except Exception:
         log.exception("request failed")
         return jsonify({"error": "internal error"}), 500
@@ -441,7 +463,6 @@ def batch_route():
     Accepts a native Windows path (C:\\Users\\you\\Music) directly; a legacy WSL
     mount path (/mnt/c/Users/you/Music) is translated to its drive-letter form for
     muscle-memory compatibility. Returns newline-delimited JSON results (NDJSON)."""
-    import concurrent.futures
     import json as _json
     import time as _time
 
@@ -452,22 +473,13 @@ def batch_route():
     # Bounded parallelism throttles CPU/GPU/RAM so a huge folder can't swamp the
     # machine; clamp whatever the client asks for to a safe range.
     cpu = os.cpu_count() or 4
-    workers = max(1, min(int(data.get("workers", 3) or 3), cpu, 6))
+    workers = max(1, min(int(data.get("workers", 3) or 3), cpu, MAX_BATCH_WORKERS))
 
     if not folder.is_dir():
         return jsonify({"error": f"not a directory: {folder}"}), 400
-
-    files = sorted(
-        p
-        for p in folder.rglob("*")
-        if p.is_file() and p.suffix.lower() in AUDIO_EXTS and not _is_sidecar(p)
-    )
-    if not files:
-        return jsonify({"error": "no audio files found"}), 404
-
-    log.info(
-        "batch START: %s  (%d files, %d workers, rss=%sMB)", folder, len(files), workers, _rss_mb()
-    )
+    refusal = _refuse_folder(folder)
+    if refusal:
+        return jsonify({"error": refusal}), 400
 
     def analyze_one(path: Path):
         # Log BEFORE the heavy work (with the file size + current RSS) and FLUSH via
@@ -503,6 +515,15 @@ def batch_route():
             payload.update({"ok": True, "hash": h, "cached": False})
             log.info("  · OK %s (%.1fs, rss=%sMB)", path.name, _time.time() - t0, _rss_mb())
             return payload
+        except UnreadableAudio as e:
+            # A stray non-audio file: one line, no traceback -- the trace says nothing.
+            log.warning("  · SKIP %s: not a readable audio file (%s)", path, e.reason)
+            return {
+                "ok": False,
+                "filename": path.name,
+                "filepath": str(path),
+                "error": "not a readable audio file",
+            }
         except Exception:
             log.exception("  · FAIL %s (%.1fs)", path.name, _time.time() - t0)
             return {
@@ -512,16 +533,180 @@ def batch_route():
                 "error": "analysis failed",
             }
 
+    job = uuid.uuid4().hex
+
+    def final(done, total, cancelled, **extra):
+        body = {"done": True, "cancelled": cancelled, "processed": done, "total": total}
+        return _json.dumps({**body, **extra}) + "\n"
+
     def generate():
-        yield _json.dumps({"total": len(files)}) + "\n"
-        done = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(analyze_one, f): f for f in files}
-            for fut in concurrent.futures.as_completed(futs):
-                done += 1
-                result = fut.result()
-                result["progress"] = done
-                yield _json.dumps(result) + "\n"
-        log.info("batch DONE: %d/%d processed, rss=%sMB", done, len(files), _rss_mb())
+        # Registered here, not in the route: if the response is never iterated,
+        # nothing is left behind. The client learns the id from the first line,
+        # which is yielded only after this.
+        state = _Job()
+        cancel = state.cancel
+        with _BATCH_JOBS_LOCK:
+            _BATCH_JOBS[job] = state
+        ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch-{job}")
+        done, total = 0, None
+        try:
+            # The id goes out FIRST, before the folder walk: a big tree takes a while
+            # to walk, and the job must be cancellable for all of it.
+            yield _json.dumps({"job": job}) + "\n"
+            files = []
+            for seen, p in enumerate(_iter_folder(folder), 1):
+                if seen % WALK_CANCEL_EVERY == 0 and cancel.is_set():
+                    break
+                if p.is_file() and p.suffix.lower() in AUDIO_EXTS and not _is_sidecar(p):
+                    files.append(p)
+            if cancel.is_set():
+                yield final(0, None, True)  # cancelled while walking: nothing analysed
+                return
+            files.sort()
+            total = len(files)
+            needs_confirm = total > BATCH_CONFIRM_OVER
+            head = {"total": total, "needs_confirm": True} if needs_confirm else {"total": total}
+            yield _json.dumps(head) + "\n"
+            if not files:
+                yield final(0, 0, False, error="no audio files found")
+                return
+            if needs_confirm:
+                # A big folder waits for POST /batch/<job>/confirm {"confirm": true}.
+                # The blank keepalive line (NDJSON readers skip it) is what lets a
+                # closed tab be noticed -- a disconnect only shows up on a write.
+                quiet = 0.0
+                while not state.confirm.wait(0.25):
+                    if cancel.is_set():
+                        break
+                    quiet += 0.25
+                    if quiet >= CONFIRM_KEEPALIVE_S:
+                        quiet = 0.0
+                        yield "\n"
+                if cancel.is_set():
+                    yield final(0, total, True)  # cancelled at the prompt
+                    return
+            log.info(
+                "batch START: %s  (%d files, %d workers, rss=%sMB)",
+                folder,
+                total,
+                workers,
+                _rss_mb(),
+            )
+            # Lazy submission: at most `workers` files in flight, the next one
+            # submitted only as one finishes -- nothing queued behind them, so a
+            # cancel (or a disconnect) has only those few left to wait for.
+            todo, pending = iter(files), set()
+
+            def refill():
+                while len(pending) < workers and not cancel.is_set():
+                    nxt = next(todo, None)
+                    if nxt is None:
+                        return
+                    pending.add(ex.submit(analyze_one, nxt))
+
+            refill()
+            while pending:
+                finished, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for fut in finished:
+                    pending.discard(fut)
+                    done += 1
+                    result = fut.result()  # analyze_one never raises; failures are dicts
+                    result["progress"] = done
+                    yield _json.dumps(result) + "\n"
+                refill()  # after a cancel this adds nothing; running files finish, cached
+            yield final(done, total, done < total)
+        finally:
+            # The one place a batch ends, whichever way: finished; cancelled via
+            # /batch/<job>/cancel (no refills, the loop drained and fell through);
+            # or the client went away (GeneratorExit raised at a yield when the
+            # server closes the response). Stop new work, wait only for what is
+            # already running, forget the job.
+            cancel.set()
+            ex.shutdown(wait=True, cancel_futures=True)
+            with _BATCH_JOBS_LOCK:
+                _BATCH_JOBS.pop(job, None)
+            log.info("batch END: %d/%s processed, rss=%sMB", done, total, _rss_mb())
 
     return Response(generate(), mimetype="application/x-ndjson")
+
+
+# How often the folder walk looks at the cancel flag (in directory entries).
+WALK_CANCEL_EVERY = 200
+
+
+def _iter_folder(folder: Path):
+    """Every entry under ``folder``, lazily. Separate so a test can make it slow."""
+    return folder.rglob("*")
+
+
+# More audio files than this and a batch waits for an explicit go-ahead.
+BATCH_CONFIRM_OVER = 2000
+# While it waits: seconds between keepalive lines.
+CONFIRM_KEEPALIVE_S = 5.0
+
+
+class _Job:
+    """A running batch's two flags: cancel it, or confirm a big one may start."""
+
+    def __init__(self):
+        self.cancel = threading.Event()
+        self.confirm = threading.Event()
+
+
+# Running /batch jobs: job id -> its _Job. An entry lives exactly as long as that
+# job's generator (added at its start, removed in its finally).
+_BATCH_JOBS: dict[str, _Job] = {}
+_BATCH_JOBS_LOCK = threading.Lock()
+
+
+def _job(job):
+    with _BATCH_JOBS_LOCK:
+        return _BATCH_JOBS.get(job)
+
+
+@bp.post("/batch/<job>/cancel")
+def batch_cancel_route(job):
+    """Ask a running batch to stop: no new files start; the ones already being
+    analysed finish (and are cached), then the stream ends with a cancelled line."""
+    state = _job(job)
+    if state is None:
+        return jsonify({"error": "no such batch"}), 404
+    state.cancel.set()
+    return jsonify({"ok": True, "job": job})
+
+
+@bp.post("/batch/<job>/confirm")
+def batch_confirm_route(job):
+    """Let a batch that stopped at "N files -- start?" go ahead."""
+    if (request.get_json(silent=True) or {}).get("confirm") is not True:
+        return jsonify({"error": 'send {"confirm": true} to start the batch'}), 400
+    state = _job(job)
+    if state is None:
+        return jsonify({"error": "no such batch"}), 404
+    state.confirm.set()
+    return jsonify({"ok": True, "job": job})
+
+
+def _refuse_folder(folder: Path):
+    """Why ``folder`` must not be batch-scanned, or None if it's fine.
+
+    Walking a whole drive, a whole user profile or an app-data root finds thousands
+    of sound files that aren't music (app sounds, caches, other programs' samples)
+    -- how 435 of them once landed in the library. Compared case-insensitively on
+    Windows."""
+
+    def norm(p):
+        return os.path.normcase(os.path.abspath(str(p)))
+
+    here = norm(folder.resolve())
+    if Path(here).parent == Path(here):
+        return f"{folder} is a whole drive -- choose your music folder instead"
+    home = Path(os.environ.get("USERPROFILE") or Path.home())
+    if here in (norm(home), norm(Path.home())):
+        return f"{folder} is your whole user folder -- choose the music folder inside it"
+    # The app-data ROOTS only (and the AppData folder holding both): a folder
+    # somewhere inside, like a zip extracted under Temp, is a deliberate choice.
+    for app in (os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA"), home / "AppData"):
+        if app and here == norm(app):
+            return f"{folder} is application data, not music -- choose your music folder"
+    return None

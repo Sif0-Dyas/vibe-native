@@ -71,7 +71,7 @@ Also: code signing; `oracle/index.json` publishes your Windows username and 121 
 | Finding | Where | Fix |
 | --- | --- | --- |
 | Auth is opt-in: `_loopback_guard` only runs when `GENRE_TOKEN` is set; `python -m vibenative` has no token and no DNS-rebinding defence | `routes/_shared.py:21` | Make the token mandatory; print the `?k=` URL at startup |
-| Copy-any-file: `/save_training` copies any server path the form names into `~/genre_training/` | `routes/training.py:39` | JSON bodies only (a form POST needs no CORS preflight), check `Origin`, accept only paths already in `tracks.filepath` |
+| Copy-any-file: `/save_training` copies any server path the form names into `~/genre_training/` | `routes/training.py:39` | Accept only paths already in `tracks.filepath` (else 400, checked before the filesystem). Form bodies stay: the mandatory token's `SameSite=Strict` cookie already fails a cross-site POST, and an app-level `Sec-Fetch-Site` check refuses cross-origin writes — shipped in `e7660b5` |
 | Read-any-file: `/compare` decodes any `filepath`; `/batch` walks any directory | `routes/analysis.py:240`, `:553` | `/compare` goes away; `/batch` keeps an allow-list of roots picked through the native dialog |
 | Browser filename used as a path: `Path(f.filename).name` | `routes/training.py` upload branch | `werkzeug.utils.secure_filename` (0 uses today) |
 | Discogs token/key/secret sent as query params | `lookup.py:55-60, 93-96` | `Authorization: Discogs token=…` header; never log the URL |
@@ -153,12 +153,12 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 **Phase 1 — user-visible failures**
 
-- [ ] `settings.ini` and `taxonomy.json` to `%APPDATA%\Vibe Identify\`; seed once from the installer-written file
-- [ ] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
-- [ ] JSON-only bodies + `Origin` check on mutating routes; `secure_filename`; `/save_training` accepts only known `tracks.filepath`
-- [ ] Discogs credentials to the `Authorization` header
-- [ ] Cancellable `/batch` + Cancel button
-- [ ] waitress in `genre_app.pyw` and `__main__.py`
+- [x] `settings.ini` and `taxonomy.json` to `%APPDATA%\Vibe Identify\`; seed once from the installer-written file
+- [x] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
+- [x] `secure_filename` wherever an uploaded name becomes a path; `/save_training` accepts only known `tracks.filepath`; app-level `Sec-Fetch-Site` check refusing cross-origin writes. (Form bodies stay: with the token mandatory and its cookie `SameSite=Strict`, a cross-site POST already fails auth, so JSON-only bodies and an `Origin` check were dropped.)
+- [x] Discogs credentials to the `Authorization` header
+- [x] Cancellable `/batch` + Cancel button
+- [x] waitress in `genre_app.pyw` and `__main__.py`
 
 **Phase 2 — engine and data paths (re-run the oracle gate after)**
 
@@ -196,6 +196,10 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] `windows-latest` CI job running `tools/smoke_dist.py`
 - [ ] Code signing
 - [ ] Remaining Legacy table rows; `docs/history/`
+- [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
+  - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.
+  - Uninstall's data removal finds the DB through `{app}\settings.ini`, so it misses a database moved in Options.
+  - `db_path=%USERPROFILE%\genre_v2.db` is stored unexpanded. The app expands it on read with `os.path.expandvars` (`db._resolve_db_path`: any `%VAR%`, from the logged-in user's environment). The uninstaller's `ExistingDbPath()` only replaces the literal `%USERPROFILE%`, with `{%USERPROFILE}` from the *elevated* uninstaller process; likewise its fallback `{%USERPROFILE}\genre_v2.db` and the `genre_training` DelTree. Same answer when the user approves their own UAC prompt; the admin's profile, not the user's, when elevated as a different account. (By reasoning, not tested with a second account. `test_userprofile_db_path_resolves_to_the_file_the_app_opens` pins the app side.)
 
 **Post-release**
 

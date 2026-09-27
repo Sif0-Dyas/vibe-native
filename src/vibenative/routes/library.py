@@ -177,7 +177,9 @@ def reveal_route():
 
 @bp.post("/db-path")
 def db_path_route():
-    """Record a new library-database location in settings.ini.
+    """Record a new library-database location in the per-user settings.ini
+    (``paths.settings_ini``: ``%APPDATA%\\Vibe Identify`` in a packaged build --
+    never the installer's copy beside the exe, which Program Files makes read-only).
 
     Only writes the setting -- it does not move the database or re-point the
     running process. ``DB_PATH`` is resolved once at import and threaded through
@@ -188,7 +190,7 @@ def db_path_route():
     import configparser
     import os
 
-    from ..paths import settings_ini
+    from ..paths import settings_ini, settings_ini_for_read
 
     raw = ((request.get_json(silent=True) or {}).get("path") or "").strip()
     if not raw:
@@ -204,12 +206,14 @@ def db_path_route():
 
     ini = settings_ini()
     cp = configparser.ConfigParser(interpolation=None)
-    if ini.is_file():
-        cp.read(ini, encoding="utf-8")
+    current = settings_ini_for_read()  # keep any other keys, wherever they live today
+    if current.is_file():
+        cp.read(current, encoding="utf-8")
     if not cp.has_section("vibenative"):
         cp.add_section("vibenative")
     cp.set("vibenative", "db_path", str(target))
     try:
+        ini.parent.mkdir(parents=True, exist_ok=True)
         with open(ini, "w", encoding="utf-8") as fh:
             cp.write(fh)
     except OSError as e:

@@ -13,6 +13,8 @@ import wave
 
 import pytest
 
+from conftest import TEST_TOKEN, authed
+
 
 def test_index_serves_page(client):
     r = client.get("/")
@@ -51,6 +53,80 @@ def test_similar_unknown_hash_404(client):
 def test_save_training_requires_genre(client):
     r = client.post("/save_training", data={})
     assert r.status_code == 400
+
+
+def test_save_training_refuses_a_path_that_is_not_in_the_library(client, tmp_path, monkeypatch):
+    # The server-side branch copies a file the request names. It used to copy ANY
+    # existing file; now only a track the library already knows.
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))  # genre_training lands here
+    stray = tmp_path / "not-a-track.mp3"
+    stray.write_bytes(b"x")
+    r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
+    assert r.status_code == 400
+    assert not (tmp_path / "genre_training" / "House" / "not-a-track.mp3").exists()
+    # a path that doesn't exist at all gets the same 400 -- no existence oracle
+    r = client.post("/save_training", data={"genre": "House", "filepath": str(tmp_path / "nope")})
+    assert r.status_code == 400
+
+    # the same file, once it is a library track, is copied
+    from vibenative.db import cache_put
+
+    cache_put("f" * 40, stray.name, str(stray), "t", {}, None)
+    r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
+    assert r.status_code == 200, r.get_json()
+    assert (tmp_path / "genre_training" / "House" / "not-a-track.mp3").is_file()
+
+
+@pytest.mark.parametrize(
+    "sent, saved",
+    [
+        ("../../evil.mp3", "evil.mp3"),
+        ("..\\..\\evil.mp3", "evil.mp3"),
+        ("日本.mp3", None),  # all non-ASCII: secure_filename leaves nothing -> hashed name
+    ],
+)
+def test_save_training_upload_name_is_made_safe(client, tmp_path, monkeypatch, sent, saved):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    r = client.post(
+        "/save_training",
+        data={"genre": "House", "file": (io.BytesIO(_tiny_wav_bytes()), sent)},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200, r.get_json()
+    dest = Path(r.get_json()["saved"])
+    assert dest.parent == tmp_path / "genre_training" / "House"  # never outside the genre folder
+    assert dest.is_file() and dest.suffix == ".mp3"
+    if saved:
+        assert dest.name == saved
+    else:
+        assert dest.name.startswith("upload-")
+
+
+def test_save_training_upload_must_be_audio(client, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    r = client.post(
+        "/save_training",
+        data={"genre": "House", "file": (io.BytesIO(b"MZ"), "tool.exe")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 415
+
+
+def test_analyze_keeps_the_name_but_drops_any_directory(client):
+    # The uploaded name is only a label: path parts go, the rest stays readable.
+    r = client.post(
+        "/analyze",
+        data={"file": (io.BytesIO(_tiny_wav_bytes(sample=7)), "..\\dir/Artist - Song.wav")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["filename"] == "Artist - Song.wav"
 
 
 def test_audio_unknown_hash_404(client):
@@ -201,20 +277,87 @@ def test_batch_analyzes_folder_and_caches(client, tmp_path):
         return [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
 
     lines = run()
-    assert lines[0] == {"total": 3}
-    results = lines[1:]
+    assert lines[0]["job"] and lines[1] == {"total": 3}  # id first, then the walk's count
+    assert lines[-1] == {"done": True, "cancelled": False, "processed": 3, "total": 3}
+    results = lines[2:-1]
     assert len(results) == 3
     assert all(r["ok"] for r in results)
     assert all(r["cached"] is False for r in results)  # first pass: freshly analyzed
     assert all(r.get("hash") for r in results)
 
     again = run()  # same content hashes -> all cache hits
-    assert again[0] == {"total": 3}
-    assert all(r["cached"] is True for r in again[1:])
+    assert again[1] == {"total": 3} and again[0]["job"] != lines[0]["job"]
+    assert all(r["cached"] is True for r in again[2:-1])
 
 
 def test_batch_missing_dir_400(client):
     assert client.post("/batch", json={"path": "/no/such/dir"}).status_code == 400
+
+
+def _decode_failing_with(monkeypatch, exc):
+    """The REAL analyze() path, with every child process failing as `exc(cmd)`."""
+    import subprocess
+
+    from vibenative import analysis, decode, metadata
+
+    def fail(cmd, **kw):
+        raise exc(cmd)
+
+    monkeypatch.setattr(subprocess, "run", fail)
+    monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
+    monkeypatch.setattr(metadata, "find_tool", lambda name: name)
+    monkeypatch.setattr(analysis, "FAKE", False)
+    monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
+
+
+@pytest.mark.parametrize("kind", ["not-audio", "anything-else"])
+def test_batch_logs_non_audio_as_one_warning_and_keeps_tracebacks_otherwise(
+    client, tmp_path, monkeypatch, caplog, kind
+):
+    import logging
+    import subprocess
+
+    exc = {
+        "not-audio": lambda cmd: subprocess.CalledProcessError(1, cmd),  # ffprobe: "Invalid data"
+        "anything-else": lambda cmd: OSError("disk on fire"),
+    }[kind]
+    _decode_failing_with(monkeypatch, exc)
+    bad = tmp_path / "lib" / "notes.mp3"
+    bad.parent.mkdir()
+    bad.write_bytes(b"this is not audio")
+
+    with caplog.at_level(logging.INFO, logger="vibenative"):
+        r = client.post("/batch", json={"path": str(bad.parent), "workers": 1})
+    lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
+    result = lines[2]
+    assert result["ok"] is False and result["filename"] == "notes.mp3"
+    loud = [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
+    if kind == "not-audio":
+        assert result["error"] == "not a readable audio file"
+        assert len(loud) == 1 and loud[0].levelno == logging.WARNING
+        assert str(bad) in loud[0].getMessage() and "ffprobe exited 1" in loud[0].getMessage()
+        assert not any(rec.exc_info for rec in caplog.records)  # no traceback
+        assert "Traceback" not in caplog.text
+    else:
+        assert result["error"] == "analysis failed"
+        assert any(rec.exc_info and rec.levelno == logging.ERROR for rec in loud)  # kept
+
+
+def test_analyze_upload_that_is_not_audio_is_422_and_one_warning(client, monkeypatch, caplog):
+    import logging
+    import subprocess
+
+    _decode_failing_with(monkeypatch, lambda cmd: subprocess.CalledProcessError(1, cmd))
+    with caplog.at_level(logging.INFO, logger="vibenative"):
+        r = client.post(
+            "/analyze",
+            data={"file": (io.BytesIO(b"not audio"), "renamed.mp3")},
+            content_type="multipart/form-data",
+        )
+    assert r.status_code == 422 and r.get_json()["error"] == "not a readable audio file"
+    loud = [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
+    assert len(loud) == 1 and "renamed.mp3" in loud[0].getMessage()
+    assert not any(rec.exc_info for rec in caplog.records)
 
 
 def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
@@ -253,8 +396,9 @@ def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
     r = client.post("/batch", json={"path": str(tmp_path), "workers": 1})
     assert r.status_code == 200
     lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
-    assert lines[0] == {"total": 2}
-    first, second = lines[1:]
+    assert lines[1] == {"total": 2}
+    assert lines[-1] == {"done": True, "cancelled": False, "processed": 2, "total": 2}
+    first, second = lines[2:-1]
     assert first["ok"] is False and first["filename"] == "a_hung.wav"
     assert second["ok"] is True and second["cached"] is True
 
@@ -957,11 +1101,12 @@ def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
             (d / f"{i}.mp3").write_bytes(b"x")
     (root / "Sparse" / "._junk.mp3").write_bytes(b"x")  # AppleDouble must not count
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
 
     from vibenative import create_app
 
     app = create_app()
-    with app.test_client() as c:
+    with authed(app) as c:
         d = c.get("/training/status").get_json()
     by = {g["genre"]: g for g in d["genres"]}
     assert by["Ready"]["state"] == "ready" and by["Ready"]["needs"] == 0
@@ -984,10 +1129,11 @@ def test_vibe_description_round_trips_unbounded_text(tmp_path, monkeypatch):
 
     importlib.reload(dbmod)
     dbmod.init_db()
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
     from vibenative import create_app
 
     app = create_app()
-    with app.test_client() as c:
+    with authed(app) as c:
         vid = c.post("/vibes", json={"name": "Notes Test"}).get_json()["id"]
         text = "First para.\n\nSecond para.\n\n" + ("word " * 2000)
         out = c.post(f"/vibes/{vid}/description", json={"description": text}).get_json()

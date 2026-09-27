@@ -16,6 +16,7 @@ keywords = ["music", "genre", "onnx", "audio-analysis", "flask", "directml"]
 dependencies = [
     "flask>=3.1",
     "numpy>=2",
+    "waitress>=3",  # the WSGI server (python -m vibenative and the desktop shell)
     "onnxruntime-directml; sys_platform == 'win32'",
     "onnxruntime; sys_platform != 'win32'",
 ]

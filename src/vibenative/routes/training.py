@@ -12,8 +12,10 @@ from ..db import (
     _db_lock,
     cosine,
     db,
+    is_library_filepath,
 )
 from ._shared import bp
+from .analysis import UploadError, _check_upload
 
 
 @bp.post("/save_training")
@@ -35,9 +37,13 @@ def save_training_route():
     dest_dir = Path.home() / "genre_training" / safe
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # server-side path (batch mode) -- just copy directly
+    # server-side path (batch mode) -- only a track already in the library. Checked
+    # before touching the filesystem, so this can neither copy an arbitrary file
+    # nor serve as an oracle for which paths exist.
     filepath = request.form.get("filepath", "").strip()
     if filepath:
+        if not is_library_filepath(filepath):
+            return jsonify({"error": "not a track in the library"}), 400
         src = Path(filepath)
         if not src.is_file():
             return jsonify({"error": f"file not found: {filepath}"}), 404
@@ -49,12 +55,31 @@ def save_training_route():
 
     # browser upload (dropped tracks)
     f = request.files.get("file")
-    if f is None:
-        return jsonify({"error": "no file or filepath provided"}), 400
-    dest = dest_dir / Path(f.filename).name
+    try:
+        suffix = _check_upload(f, "no file or filepath provided")
+    except UploadError as e:
+        return jsonify({"error": str(e)}), e.status
+    dest = dest_dir / _safe_upload_name(f.filename, suffix)
     if not dest.exists():
         f.save(str(dest))
     return jsonify({"saved": str(dest), "genre": safe})
+
+
+def _safe_upload_name(filename, suffix):
+    """The browser-supplied filename, made safe to use as a path.
+
+    secure_filename drops directory parts and anything outside ASCII; if that
+    leaves nothing, or loses the audio extension (a name that was all non-ASCII),
+    fall back to a short stable hash of the original name + the validated suffix."""
+    import hashlib
+
+    from werkzeug.utils import secure_filename
+
+    name = secure_filename(filename or "")
+    if not name or Path(name).suffix.lower() != suffix:
+        digest = hashlib.sha1((filename or "").encode("utf-8")).hexdigest()[:12]  # nosec B324  # a stable filename, not security
+        name = f"upload-{digest}{suffix}"
+    return name
 
 
 # ---------------------------------------------------------------------------

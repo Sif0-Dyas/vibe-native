@@ -53,11 +53,15 @@ def parse_track(payload, title, filename):
 
 
 def _discogs_auth():
-    """Discogs auth params: a personal access token, else a consumer key+secret."""
+    """The Discogs ``Authorization`` header value, or None if unconfigured.
+
+    A personal access token wins, else a consumer key+secret -- both in the forms
+    Discogs documents for the header. Credentials go ONLY in this header, never in
+    the query string: a URL ends up in logs, proxies and exception messages."""
     if DISCOGS_TOKEN:
-        return {"token": DISCOGS_TOKEN}
+        return f"Discogs token={DISCOGS_TOKEN}"
     if DISCOGS_KEY and DISCOGS_SECRET:
-        return {"key": DISCOGS_KEY, "secret": DISCOGS_SECRET}
+        return f"Discogs key={DISCOGS_KEY}, secret={DISCOGS_SECRET}"
     return None
 
 
@@ -78,10 +82,22 @@ def _errmsg(e):
     return "lookup failed"
 
 
-def _get_json(url):
+def _log_failure(source, url, e):
+    """Log a failed lookup by host and status only.
+
+    Never the URL (Last.fm's api_key has to ride in its query string), the headers
+    (Discogs' Authorization) or str(e) -- some exceptions quote the URL they were
+    given."""
+    host = urllib.parse.urlsplit(url).hostname
+    status = e.code if isinstance(e, urllib.error.HTTPError) else type(e).__name__
+    log.info("%s lookup failed: host=%s status=%s", source, host, status)
+
+
+def _get_json(url, headers=None):
     """GET a JSON document with the app User-Agent and a hard timeout."""
     req = urllib.request.Request(
-        url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json", **(headers or {})},
     )
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosec B310  # https, fixed API hosts only
         return json.loads(r.read().decode("utf-8", "replace"))
@@ -98,15 +114,14 @@ def fetch_discogs(artist, title):
         "artist": artist,
         "release_title": title,
         "per_page": 5,
-        **auth,
     }
     url = "https://api.discogs.com/database/search?" + urllib.parse.urlencode(
         {k: v for k, v in params.items() if v}
     )
     try:
-        return _get_json(url), None
+        return _get_json(url, {"Authorization": auth}), None
     except Exception as e:  # degrade per-source, never fatal
-        log.info("discogs lookup failed: %s", e)
+        _log_failure("discogs", url, e)
         return None, _errmsg(e)
 
 
@@ -142,7 +157,7 @@ def fetch_musicbrainz(artist, title):
             data = _get_json(url)
             return data, None
         except Exception as e:  # degrade per-source, never fatal
-            log.info("musicbrainz lookup failed: %s", e)
+            _log_failure("musicbrainz", url, e)
             return None, _errmsg(e)
         finally:
             _mb_last[0] = time.monotonic()
@@ -184,7 +199,7 @@ def fetch_lastfm(artist, title):
     try:
         data = _get_json(url)
     except Exception as e:  # degrade per-source, never fatal
-        log.info("last.fm lookup failed: %s", e)
+        _log_failure("last.fm", url, e)
         return None, _errmsg(e)
     if isinstance(data, dict) and data.get("error"):
         return None, str(data.get("message") or "last.fm error")
