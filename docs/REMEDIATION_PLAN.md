@@ -162,7 +162,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 **Phase 2 — engine and data paths (re-run the oracle gate after)**
 
-- [ ] Decode once per track; remove `_rss_mb`
+- [x] Decode once per track; remove `_rss_mb`
 - [ ] Denormalized columns via a new migration; rewrite `/library`, `/similar`, `/training/candidates`
 - [ ] Indexes
 - [ ] Thread-local connections; retire `_db_lock` for reads

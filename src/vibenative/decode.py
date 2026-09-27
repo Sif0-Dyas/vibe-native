@@ -133,9 +133,11 @@ def _linear_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
 def decode_mono(path, sr: int = SR) -> np.ndarray:
     """Decode any audio file to `sr` Hz mono float32, matching Essentia MonoLoader.
 
-    The RESAMPLE_PHASE calibration was fit for the 16 kHz genre path; the tempo
-    (11025) and key (44100) paths reuse it but have loose acceptance (BPM 2%/octave,
-    key exact-match), so the sub-sample offset is immaterial there."""
+    Analysis uses decode_both instead (one decode for 16 kHz + 44.1 kHz); this stays
+    for single-rate callers such as the 11025 Hz waveform path. The RESAMPLE_PHASE
+    calibration was fit for the 16 kHz genre path; other rates reuse it with loose
+    acceptance (BPM 2%/octave, key exact-match), where the sub-sample offset is
+    immaterial."""
     src_sr, ch = _probe(path)
     try:
         raw = subprocess.run(  # nosec B603  # ffmpeg from _tool(); args are a list (no shell), path is a local file
@@ -150,6 +152,52 @@ def decode_mono(path, sr: int = SR) -> np.ndarray:
     a = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
     mono = a if ch == 1 else a.reshape(-1, ch).mean(axis=1)  # (L+R)/2
     return _linear_resample(mono, src_sr, sr).astype(np.float32)
+
+
+def _mono_pan(channels: int) -> str | None:
+    """The ffmpeg filter reproducing decode_mono's mix: an equal-weight mean of ALL
+    channels -- (L+R)/2 for stereo, 1/N each for N (LFE and surrounds included; no
+    layout-aware downmix, exactly like the numpy mean). ``=``, not ``<``: gains are
+    used as written, never renormalised. None for mono -- no filter at all."""
+    if channels <= 1:
+        return None
+    gain = repr(1.0 / channels)
+    return "pan=mono|c0=" + "+".join(f"{gain}*c{i}" for i in range(channels))
+
+
+def decode_both(path) -> tuple[np.ndarray, np.ndarray]:
+    """``(audio16, audio44)`` from ONE decode: the 16 kHz genre input and the
+    44.1 kHz tempo/key input, both mono float32.
+
+    One ffprobe + one ffmpeg per track (decode_16k_mono + decode_mono(44100) was two
+    of each). ffmpeg decodes stream a:0 -- the stream _probe read -- at the file's
+    native rate and mixes to mono itself (``_mono_pan``), so the full multi-channel
+    buffer never reaches Python, and the mono result stays float32. That one buffer
+    is resampled twice by the same linear resampler, calibrated phase included;
+    only its input dtype differs from decode_mono."""
+    src_sr, ch = _probe(path)
+    # aformat=flt FIRST: pan mixes in the input's own sample format, so an int16
+    # source (a WAV) would be mixed in integers and rounded to 16-bit steps --
+    # decode_mono converts to float and then averages. Float in, float mix.
+    pan = _mono_pan(ch)
+    af = "aformat=sample_fmts=flt" + (f",{pan}" if pan else "")
+    cmd = [_tool("ffmpeg"), "-v", "error", "-i", str(path), "-map", "0:a:0", "-af", af]
+    cmd += ["-f", "f32le", "-"]
+    try:
+        raw = subprocess.run(  # nosec B603  # ffmpeg from _tool(); args are a list (no shell), path is a local file
+            cmd,
+            capture_output=True,
+            check=True,
+            creationflags=NO_WINDOW,
+            timeout=DECODE_TIMEOUT_S,
+        ).stdout
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"ffmpeg timed out after {DECODE_TIMEOUT_S} s decoding {path}") from e
+    mono = np.frombuffer(raw, dtype=np.float32)
+    del raw  # the frombuffer view keeps the bytes alive; drop the extra name
+    audio16 = _linear_resample(mono, src_sr, SR).astype(np.float32)
+    audio44 = _linear_resample(mono, src_sr, 44100).astype(np.float32)
+    return audio16, audio44
 
 
 def decode_16k_mono(path) -> np.ndarray:
