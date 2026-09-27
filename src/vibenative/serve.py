@@ -31,8 +31,16 @@ def create_server(app, host: str, port: int):
 
 
 def serve(app, host: str, port: int) -> None:
-    """Serve ``app`` until the process ends. Run the port pre-flight first."""
-    create_server(app, host, port).run()
+    """Serve ``app`` until the process ends. Run the port pre-flight first.
+
+    Ctrl+C stops it quietly -- one line, not a KeyboardInterrupt traceback."""
+    server = create_server(app, host, port)
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        logging.getLogger("vibenative").info("stopped (Ctrl+C)")
+    finally:
+        server.close()
 
 
 def log_requests(app) -> None:

@@ -294,6 +294,72 @@ def test_batch_missing_dir_400(client):
     assert client.post("/batch", json={"path": "/no/such/dir"}).status_code == 400
 
 
+def _decode_failing_with(monkeypatch, exc):
+    """The REAL analyze() path, with every child process failing as `exc(cmd)`."""
+    import subprocess
+
+    from vibenative import analysis, decode, metadata
+
+    def fail(cmd, **kw):
+        raise exc(cmd)
+
+    monkeypatch.setattr(subprocess, "run", fail)
+    monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
+    monkeypatch.setattr(metadata, "find_tool", lambda name: name)
+    monkeypatch.setattr(analysis, "FAKE", False)
+    monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
+
+
+@pytest.mark.parametrize("kind", ["not-audio", "anything-else"])
+def test_batch_logs_non_audio_as_one_warning_and_keeps_tracebacks_otherwise(
+    client, tmp_path, monkeypatch, caplog, kind
+):
+    import logging
+    import subprocess
+
+    exc = {
+        "not-audio": lambda cmd: subprocess.CalledProcessError(1, cmd),  # ffprobe: "Invalid data"
+        "anything-else": lambda cmd: OSError("disk on fire"),
+    }[kind]
+    _decode_failing_with(monkeypatch, exc)
+    bad = tmp_path / "lib" / "notes.mp3"
+    bad.parent.mkdir()
+    bad.write_bytes(b"this is not audio")
+
+    with caplog.at_level(logging.INFO, logger="vibenative"):
+        r = client.post("/batch", json={"path": str(bad.parent), "workers": 1})
+    lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
+    result = lines[2]
+    assert result["ok"] is False and result["filename"] == "notes.mp3"
+    loud = [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
+    if kind == "not-audio":
+        assert result["error"] == "not a readable audio file"
+        assert len(loud) == 1 and loud[0].levelno == logging.WARNING
+        assert str(bad) in loud[0].getMessage() and "ffprobe exited 1" in loud[0].getMessage()
+        assert not any(rec.exc_info for rec in caplog.records)  # no traceback
+        assert "Traceback" not in caplog.text
+    else:
+        assert result["error"] == "analysis failed"
+        assert any(rec.exc_info and rec.levelno == logging.ERROR for rec in loud)  # kept
+
+
+def test_analyze_upload_that_is_not_audio_is_422_and_one_warning(client, monkeypatch, caplog):
+    import logging
+    import subprocess
+
+    _decode_failing_with(monkeypatch, lambda cmd: subprocess.CalledProcessError(1, cmd))
+    with caplog.at_level(logging.INFO, logger="vibenative"):
+        r = client.post(
+            "/analyze",
+            data={"file": (io.BytesIO(b"not audio"), "renamed.mp3")},
+            content_type="multipart/form-data",
+        )
+    assert r.status_code == 422 and r.get_json()["error"] == "not a readable audio file"
+    loud = [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
+    assert len(loud) == 1 and "renamed.mp3" in loud[0].getMessage()
+    assert not any(rec.exc_info for rec in caplog.records)
+
+
 def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
     # A file that stalls ffmpeg/ffprobe must fail on its own, not pin a batch worker.
     # Runs the REAL analyze() path (FAKE off for the analysis module) with every

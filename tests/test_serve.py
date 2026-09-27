@@ -97,3 +97,21 @@ def test_batch_ndjson_streams_through_waitress(client, monkeypatch, tmp_path):
     assert results[0][0] < final[0] - 2 * SLOW_S
     gaps = [b[0] - a[0] for a, b in zip(results, results[1:], strict=False)]
     assert sum(g > SLOW_S / 2 for g in gaps) >= 2
+
+
+def test_ctrl_c_stops_the_server_quietly(monkeypatch, caplog):
+    closed = []
+
+    class Server:
+        def run(self):
+            raise KeyboardInterrupt
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(serve, "create_server", lambda app, host, port: Server())
+    with caplog.at_level(logging.INFO):
+        serve.serve(object(), "127.0.0.1", 5005)  # returns: no KeyboardInterrupt escapes
+    assert closed == [True]
+    assert "stopped (Ctrl+C)" in caplog.text
+    assert "Traceback" not in caplog.text

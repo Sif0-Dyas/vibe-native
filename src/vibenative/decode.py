@@ -46,6 +46,16 @@ DECODE_TIMEOUT_S = 120
 PROBE_TIMEOUT_S = 30
 
 
+class UnreadableAudio(RuntimeError):
+    """ffprobe can't read the file as audio: it exited non-zero, or found no audio
+    stream. An expected outcome for a stray non-audio file with an audio extension,
+    so callers log it as one line, not a traceback."""
+
+    def __init__(self, path, reason):
+        super().__init__(f"not a readable audio file: {path} ({reason})")
+        self.path, self.reason = path, reason
+
+
 def _tool(name: str) -> str:
     exe = shutil.which(name)
     if exe:
@@ -98,7 +108,12 @@ def _probe(path) -> tuple[int, int]:
         ).stdout
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(f"ffprobe timed out after {PROBE_TIMEOUT_S} s on {path}") from e
-    s = json.loads(out)["streams"][0]
+    except subprocess.CalledProcessError as e:
+        raise UnreadableAudio(path, f"ffprobe exited {e.returncode}") from e
+    try:
+        s = json.loads(out)["streams"][0]
+    except (ValueError, KeyError, IndexError) as e:
+        raise UnreadableAudio(path, "no audio stream") from e
     return int(s["sample_rate"]), int(s["channels"])
 
 

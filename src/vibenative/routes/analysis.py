@@ -33,6 +33,7 @@ from ..db import (
     waveform_cache_get,
     waveform_cache_put,
 )
+from ..decode import UnreadableAudio
 from ..serve import MAX_BATCH_WORKERS
 from ._shared import bp
 
@@ -135,6 +136,11 @@ def analyze_route():
             return jsonify(payload)
     except UploadError as e:
         return jsonify({"error": str(e)}), e.status
+    except UnreadableAudio as e:
+        log.warning(
+            "analyze: %s is not a readable audio file (%s)", upload_label(f.filename), e.reason
+        )
+        return jsonify({"error": "not a readable audio file"}), 422
     except Exception:
         log.exception("request failed")
         return jsonify({"error": "internal error"}), 500
@@ -509,6 +515,15 @@ def batch_route():
             payload.update({"ok": True, "hash": h, "cached": False})
             log.info("  · OK %s (%.1fs, rss=%sMB)", path.name, _time.time() - t0, _rss_mb())
             return payload
+        except UnreadableAudio as e:
+            # A stray non-audio file: one line, no traceback -- the trace says nothing.
+            log.warning("  · SKIP %s: not a readable audio file (%s)", path, e.reason)
+            return {
+                "ok": False,
+                "filename": path.name,
+                "filepath": str(path),
+                "error": "not a readable audio file",
+            }
         except Exception:
             log.exception("  · FAIL %s (%.1fs)", path.name, _time.time() - t0)
             return {
