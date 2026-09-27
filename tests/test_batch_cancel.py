@@ -177,3 +177,123 @@ def test_cancel_during_the_folder_walk(client, batch, tmp_path, monkeypatch):
     assert 0 < len(yielded) < 5000  # the walk stopped early
     assert calls == []  # nothing was analysed
     _assert_fully_stopped(mod, executors, job)
+
+
+# --- guards: folders that are never a music library, and big batches -----------
+
+
+@pytest.fixture()
+def profile(tmp_path, monkeypatch):
+    """A stand-in user profile with Roaming/Local app data, as the env describes it."""
+    from pathlib import Path
+
+    home = tmp_path / "Users" / "someone"
+    roaming, local = home / "AppData" / "Roaming", home / "AppData" / "Local"
+    for d in (roaming, local):
+        d.mkdir(parents=True)
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("APPDATA", str(roaming))
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+    return home
+
+
+@pytest.mark.parametrize(
+    "which, words",
+    [
+        ("drive", "whole drive"),
+        ("home", "whole user folder"),
+        ("appdata", "application data"),
+        ("localappdata", "application data"),
+        ("AppData", "application data"),
+    ],
+)
+def test_batch_refuses_folders_that_are_never_a_library(client, profile, which, words):
+    import os
+    from pathlib import Path
+
+    folder = {
+        "drive": Path(profile.anchor),
+        "home": profile,
+        "appdata": Path(os.environ["APPDATA"]),
+        "localappdata": Path(os.environ["LOCALAPPDATA"]),
+        "AppData": profile / "AppData",
+    }[which]
+    # buffered=False and no iteration: a guard that failed must not walk a drive.
+    r = client.post("/batch", json={"path": str(folder)}, buffered=False)
+    assert r.status_code == 400
+    assert words in json.loads(r.get_data())["error"]
+    r.close()
+    # the check ignores case, as Windows does
+    r = client.post("/batch", json={"path": str(folder).upper()}, buffered=False)
+    assert r.status_code == 400
+    r.close()
+
+
+def test_a_folder_inside_app_data_is_still_allowed(client, batch, profile):
+    import os
+    from pathlib import Path
+
+    inner = _folder(Path(os.environ["LOCALAPPDATA"]) / "Temp" / "unzipped", 2)
+    r, lines, first = _start(client, inner)
+    assert first["total"] == 2
+    assert [json.loads(x) for x in lines][-1]["processed"] == 2
+
+
+def _read_all(lines, into):
+    for chunk in lines:
+        into.append(chunk)
+
+
+def test_a_big_batch_waits_for_confirm(client, batch, tmp_path, monkeypatch):
+    from conftest import authed
+
+    mod, calls, executors = batch
+    monkeypatch.setattr(mod, "BATCH_CONFIRM_OVER", 3)
+    monkeypatch.setattr(mod, "CONFIRM_KEEPALIVE_S", 0.1)
+    r = client.post("/batch", json={"path": str(_folder(tmp_path / "lib", 5))}, buffered=False)
+    lines = iter(r.response)
+    job = json.loads(next(lines))["job"]
+    assert json.loads(next(lines)) == {"total": 5, "needs_confirm": True}
+
+    got = []
+    reader = threading.Thread(target=_read_all, args=(lines, got))
+    reader.start()
+    time.sleep(0.6)
+    assert calls == []  # waiting: nothing analysed
+    assert got and all(not c.strip() for c in got)  # only keepalives so far
+    other = authed(client.application)
+    assert other.post(f"/batch/{job}/confirm", json={}).status_code == 400  # must say true
+    assert other.post(f"/batch/{job}/confirm", json={"confirm": True}).status_code == 200
+    reader.join(timeout=10)
+
+    rows = [json.loads(c) for c in got if c.strip()]
+    assert rows[-1] == {"done": True, "cancelled": False, "processed": 5, "total": 5}
+    assert len(rows) == 6 and len(calls) == 5
+    _assert_fully_stopped(mod, executors, job)
+
+
+def test_cancel_at_the_confirm_prompt(client, batch, tmp_path, monkeypatch):
+    from conftest import authed
+
+    mod, calls, executors = batch
+    monkeypatch.setattr(mod, "BATCH_CONFIRM_OVER", 3)
+    monkeypatch.setattr(mod, "CONFIRM_KEEPALIVE_S", 0.1)
+    r = client.post("/batch", json={"path": str(_folder(tmp_path / "lib", 5))}, buffered=False)
+    lines = iter(r.response)
+    job = json.loads(next(lines))["job"]
+    next(lines)  # the needs_confirm total
+    got = []
+    reader = threading.Thread(target=_read_all, args=(lines, got))
+    reader.start()
+    time.sleep(0.3)
+    assert authed(client.application).post(f"/batch/{job}/cancel").status_code == 200
+    reader.join(timeout=10)
+    rows = [json.loads(c) for c in got if c.strip()]
+    assert rows == [{"done": True, "cancelled": True, "processed": 0, "total": 5}]
+    assert calls == []
+    _assert_fully_stopped(mod, executors, job)
+
+
+def test_confirm_of_an_unknown_job_is_404(client):
+    assert client.post("/batch/nope/confirm", json={"confirm": True}).status_code == 404

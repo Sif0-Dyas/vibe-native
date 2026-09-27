@@ -78,11 +78,14 @@ header .sub{color:var(--dim); font-size:11.5px; font-family:'JetBrains Mono',mon
 }
 #batch-btn:hover{border-color:var(--dim)}
 #batch-btn.active{border-color:var(--accent-a); color:var(--accent-a)}
-#batch-cancel{
+#batch-cancel, #batch-start{
   font-family:'JetBrains Mono',monospace; font-size:10.5px;
   background:none; border:1px solid var(--line); border-radius:var(--r-sm);
   color:var(--dim); padding:4px 10px; cursor:pointer; white-space:nowrap;
 }
+#batch-start{color:var(--text); border-color:var(--accent-a)}
+#batch-start:disabled{opacity:.6; cursor:default}
+#batch-start[hidden]{display:none}
 #batch-cancel:hover:not(:disabled){border-color:var(--err); color:var(--err)}
 #batch-cancel:disabled{opacity:.6; cursor:default}
 #batch-cancel[hidden]{display:none}

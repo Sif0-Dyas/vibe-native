@@ -471,6 +471,9 @@ def batch_route():
 
     if not folder.is_dir():
         return jsonify({"error": f"not a directory: {folder}"}), 400
+    refusal = _refuse_folder(folder)
+    if refusal:
+        return jsonify({"error": refusal}), 400
 
     def analyze_one(path: Path):
         # Log BEFORE the heavy work (with the file size + current RSS) and FLUSH via
@@ -525,9 +528,10 @@ def batch_route():
         # Registered here, not in the route: if the response is never iterated,
         # nothing is left behind. The client learns the id from the first line,
         # which is yielded only after this.
-        cancel = threading.Event()
+        state = _Job()
+        cancel = state.cancel
         with _BATCH_JOBS_LOCK:
-            _BATCH_JOBS[job] = cancel
+            _BATCH_JOBS[job] = state
         ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch-{job}")
         done, total = 0, None
         try:
@@ -545,10 +549,27 @@ def batch_route():
                 return
             files.sort()
             total = len(files)
-            yield _json.dumps({"total": total}) + "\n"
+            needs_confirm = total > BATCH_CONFIRM_OVER
+            head = {"total": total, "needs_confirm": True} if needs_confirm else {"total": total}
+            yield _json.dumps(head) + "\n"
             if not files:
                 yield final(0, 0, False, error="no audio files found")
                 return
+            if needs_confirm:
+                # A big folder waits for POST /batch/<job>/confirm {"confirm": true}.
+                # The blank keepalive line (NDJSON readers skip it) is what lets a
+                # closed tab be noticed -- a disconnect only shows up on a write.
+                quiet = 0.0
+                while not state.confirm.wait(0.25):
+                    if cancel.is_set():
+                        break
+                    quiet += 0.25
+                    if quiet >= CONFIRM_KEEPALIVE_S:
+                        quiet = 0.0
+                        yield "\n"
+                if cancel.is_set():
+                    yield final(0, total, True)  # cancelled at the prompt
+                    return
             log.info(
                 "batch START: %s  (%d files, %d workers, rss=%sMB)",
                 folder,
@@ -603,19 +624,74 @@ def _iter_folder(folder: Path):
     return folder.rglob("*")
 
 
-# Running /batch jobs: job id -> its cancel flag. An entry lives exactly as long
-# as that job's generator (added at its start, removed in its finally).
-_BATCH_JOBS: dict[str, threading.Event] = {}
+# More audio files than this and a batch waits for an explicit go-ahead.
+BATCH_CONFIRM_OVER = 2000
+# While it waits: seconds between keepalive lines.
+CONFIRM_KEEPALIVE_S = 5.0
+
+
+class _Job:
+    """A running batch's two flags: cancel it, or confirm a big one may start."""
+
+    def __init__(self):
+        self.cancel = threading.Event()
+        self.confirm = threading.Event()
+
+
+# Running /batch jobs: job id -> its _Job. An entry lives exactly as long as that
+# job's generator (added at its start, removed in its finally).
+_BATCH_JOBS: dict[str, _Job] = {}
 _BATCH_JOBS_LOCK = threading.Lock()
+
+
+def _job(job):
+    with _BATCH_JOBS_LOCK:
+        return _BATCH_JOBS.get(job)
 
 
 @bp.post("/batch/<job>/cancel")
 def batch_cancel_route(job):
     """Ask a running batch to stop: no new files start; the ones already being
     analysed finish (and are cached), then the stream ends with a cancelled line."""
-    with _BATCH_JOBS_LOCK:
-        cancel = _BATCH_JOBS.get(job)
-    if cancel is None:
+    state = _job(job)
+    if state is None:
         return jsonify({"error": "no such batch"}), 404
-    cancel.set()
+    state.cancel.set()
     return jsonify({"ok": True, "job": job})
+
+
+@bp.post("/batch/<job>/confirm")
+def batch_confirm_route(job):
+    """Let a batch that stopped at "N files -- start?" go ahead."""
+    if (request.get_json(silent=True) or {}).get("confirm") is not True:
+        return jsonify({"error": 'send {"confirm": true} to start the batch'}), 400
+    state = _job(job)
+    if state is None:
+        return jsonify({"error": "no such batch"}), 404
+    state.confirm.set()
+    return jsonify({"ok": True, "job": job})
+
+
+def _refuse_folder(folder: Path):
+    """Why ``folder`` must not be batch-scanned, or None if it's fine.
+
+    Walking a whole drive, a whole user profile or an app-data root finds thousands
+    of sound files that aren't music (app sounds, caches, other programs' samples)
+    -- how 435 of them once landed in the library. Compared case-insensitively on
+    Windows."""
+
+    def norm(p):
+        return os.path.normcase(os.path.abspath(str(p)))
+
+    here = norm(folder.resolve())
+    if Path(here).parent == Path(here):
+        return f"{folder} is a whole drive -- choose your music folder instead"
+    home = Path(os.environ.get("USERPROFILE") or Path.home())
+    if here in (norm(home), norm(Path.home())):
+        return f"{folder} is your whole user folder -- choose the music folder inside it"
+    # The app-data ROOTS only (and the AppData folder holding both): a folder
+    # somewhere inside, like a zip extracted under Temp, is a deliberate choice.
+    for app in (os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA"), home / "AppData"):
+        if app and here == norm(app):
+            return f"{folder} is application data, not music -- choose your music folder"
+    return None

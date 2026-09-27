@@ -1997,6 +1997,7 @@ applyEqStyle();
 const batchBtn = document.getElementById('batch-btn');
 const batchStatus = document.getElementById('batch-status');
 const batchCancelBtn = document.getElementById('batch-cancel');
+const batchStartBtn = document.getElementById('batch-start');
 let batchRunning = false;
 let batchJob = null;         // the running batch's id, from the stream's first line
 const BATCH_ROW_CAP = 250;   // most recent rows to keep on screen during a batch
@@ -2012,6 +2013,23 @@ batchCancelBtn.addEventListener('click', async () => {
     await fetch(`/batch/${encodeURIComponent(batchJob)}/cancel`, {method:'POST'});
   } catch(e){
     clientLog('batch cancel failed: ' + (e && e.message), 'error');
+  }
+});
+
+// A big folder (over 2,000 files) waits at "N files -- start?" until this says go.
+batchStartBtn.addEventListener('click', async () => {
+  if (!batchJob) return;
+  batchStartBtn.disabled = true;
+  try {
+    const r = await fetch(`/batch/${encodeURIComponent(batchJob)}/confirm`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({confirm: true}),
+    });
+    if (r.ok){ batchStartBtn.hidden = true; batchStatus.textContent = 'starting…'; }
+    else batchStartBtn.disabled = false;
+  } catch(e){
+    batchStartBtn.disabled = false;
+    clientLog('batch confirm failed: ' + (e && e.message), 'error');
   }
 });
 
@@ -2094,7 +2112,14 @@ async function runBatch(folderPath){
         // Second line: how many audio files the walk found.
         if ('total' in d && !('ok' in d)){
           total = d.total;
-          updateStatus();
+          if (d.needs_confirm){
+            // Waits server-side until Start (or Cancel); nothing is analysed yet.
+            batchStatus.textContent = `${total.toLocaleString()} files — start?`;
+            batchStartBtn.hidden = false;
+            batchStartBtn.disabled = false;
+          } else {
+            updateStatus();
+          }
           continue;
         }
         done = d.progress || done + 1;
@@ -2149,6 +2174,7 @@ async function runBatch(folderPath){
     batchRunning = false;
     batchJob = null;
     batchCancelBtn.hidden = true;
+    batchStartBtn.hidden = true;
     batchBtn.classList.remove('active');
     batchBtn.textContent = '⊕ batch folder';
   }
