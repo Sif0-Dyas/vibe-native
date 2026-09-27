@@ -138,3 +138,23 @@ def test_writes_from_another_site_are_refused(client, site, status):
 def test_reads_are_not_subject_to_the_fetch_site_check(client):
     # Only writes are refused; a cross-site GET still needs the token like any other.
     assert client.get("/library", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200
+
+
+def test_the_right_k_wins_over_a_stale_cookie_and_replaces_it(anon):
+    # Another Vibe instance on 127.0.0.1 left its cookie behind (cookies ignore the
+    # port). The right ?k= must still get in, and fix the cookie for what follows.
+    anon.set_cookie("vibe_token", "some-other-instances-token")
+    assert anon.get("/library").status_code == 403  # the stale cookie alone
+    assert anon.get("/", query_string={"k": "wrong"}).status_code == 403
+    r = anon.get("/", query_string={"k": TEST_TOKEN})
+    assert r.status_code == 200
+    assert f"vibe_token={TEST_TOKEN}" in r.headers.get("Set-Cookie", "")
+    assert anon.get("/library").status_code == 200  # the replaced cookie now works
+
+
+def test_a_valid_cookie_is_not_undone_by_an_unrelated_k(client):
+    # ?k= is also /similar's neighbour count (map.js asks for ?k=12); with a good
+    # cookie that must not be read as a wrong token.
+    assert (
+        client.get("/similar/deadbeef", query_string={"k": "12"}).status_code == 404
+    )  # past the guard

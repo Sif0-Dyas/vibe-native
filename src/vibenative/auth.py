@@ -104,8 +104,16 @@ def _loopback_guard():
     host = (request.host or "").rsplit(":", 1)[0]
     if host not in _LOOPBACK_HOSTS:
         abort(403)  # not addressed to loopback -> likely DNS rebinding
-    supplied = request.cookies.get(TOKEN_COOKIE) or request.args.get("k", "")
-    if not hmac.compare_digest(supplied, token):
+    # Either the cookie or ?k= may carry the token; one matching is enough.
+    # - Cookies aren't port-scoped, so a browser that has visited another Vibe
+    #   instance on 127.0.0.1 (a dev server, an earlier desktop launch -- each with
+    #   its own token) still sends that one's cookie. Cookie-only locked the right
+    #   ?k= URL out; now it gets in, and _promote_token_cookie replaces the cookie.
+    # - ?k= is also an ordinary parameter on /similar (the neighbour count), so
+    #   ?k= alone can't be required to match either.
+    cookie = request.cookies.get(TOKEN_COOKIE, "")
+    k = request.args.get("k", "")
+    if not (hmac.compare_digest(cookie, token) or hmac.compare_digest(k, token)):
         abort(403)
     # Defence in depth for writes. The SameSite=Strict cookie already keeps a
     # cross-site page from authenticating, but a browser that labels a write as
