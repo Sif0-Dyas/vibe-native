@@ -97,16 +97,31 @@ def _session():  # -> onnxruntime.InferenceSession (imported lazily below, so no
     return _engine["sess"]
 
 
+# Work in blocks, never whole-track arrays: output samples per resampling block, and
+# frames per mel block. Done over a whole track, the float64 copy of the 44.1 kHz
+# input, the index arrays, frame matrix and complex128 FFT peaked at ~540 MB.
+RESAMPLE_BLOCK = 1 << 20
+BLOCK_FRAMES = 1024
+
+
 def _resample_11025(x: np.ndarray, sr: int) -> np.ndarray:
     if sr == SR:
         return x.astype(np.float64)
-    x = x.astype(np.float64)
+    x = np.asarray(x)
     n = int(round(len(x) * SR / sr))
-    pos = np.arange(n) * (sr / SR)
-    i0 = np.clip(np.floor(pos).astype(np.int64), 0, len(x) - 1)
-    frac = pos - np.floor(pos)
-    i1 = np.clip(i0 + 1, 0, len(x) - 1)
-    return (1 - frac) * x[i0] + frac * x[i1]
+    ratio = sr / SR
+    out = np.empty(n, dtype=np.float64)
+    for s in range(0, n, RESAMPLE_BLOCK):
+        # the same positions arange(n) * ratio gives, one block at a time
+        pos = np.arange(s, min(n, s + RESAMPLE_BLOCK)) * ratio
+        i0 = np.clip(np.floor(pos).astype(np.int64), 0, len(x) - 1)
+        frac = pos - np.floor(pos)
+        i1 = np.clip(i0 + 1, 0, len(x) - 1)
+        # gathered samples widen to float64 exactly, as x.astype(float64)[i] did
+        out[s : s + len(pos)] = (1 - frac) * x[i0].astype(np.float64) + frac * x[i1].astype(
+            np.float64
+        )
+    return out
 
 
 def _melspectrogram(audio: np.ndarray) -> np.ndarray:
@@ -114,9 +129,12 @@ def _melspectrogram(audio: np.ndarray) -> np.ndarray:
     if len(x) < FRAME:
         return np.empty((0, N_MELS), dtype=np.float32)
     n = (len(x) - FRAME) // HOP + 1  # non-centered (startFromZero)
-    frames = x[HOP * np.arange(n)[:, None] + np.arange(FRAME)[None, :]]
-    mag = np.abs(np.fft.rfft(frames * _HANN, axis=1))  # power=1 (magnitude)
-    return (mag @ _MELFB).astype(np.float32)
+    frames = np.lib.stride_tricks.sliding_window_view(x, FRAME)[::HOP][:n]  # a view
+    out = np.empty((n, N_MELS), dtype=np.float32)
+    for s in range(0, n, BLOCK_FRAMES):
+        mag = np.abs(np.fft.rfft(frames[s : s + BLOCK_FRAMES] * _HANN, axis=1))  # power=1
+        out[s : s + BLOCK_FRAMES] = mag @ _MELFB
+    return out
 
 
 def estimate(audio: np.ndarray, sr: int) -> tuple[float, float]:

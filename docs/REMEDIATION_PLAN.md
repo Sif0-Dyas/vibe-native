@@ -163,7 +163,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 **Phase 2 — engine and data paths (re-run the oracle gate after)**
 
 - [x] Decode once per track; remove `_rss_mb`
-- [ ] Chunk the per-frame stages: `tonality.magnitudes()`, and the tempo / 16 kHz mel frontends — no whole-track frame matrices or float64 copies
+- [x] Chunk the per-frame stages: `tonality.magnitudes()`, and the tempo / 16 kHz mel frontends — no whole-track frame matrices or float64 copies
 - [ ] Denormalized columns via a new migration; rewrite `/library`, `/similar`, `/training/candidates`
 - [ ] Indexes
 - [ ] Thread-local connections; retire `_db_lock` for reads
