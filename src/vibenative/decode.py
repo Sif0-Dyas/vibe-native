@@ -117,17 +117,36 @@ def _probe(path) -> tuple[int, int]:
     return int(s["sample_rate"]), int(s["channels"])
 
 
-def _linear_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
+# Output samples per resampling block. Done over a whole track, the float64/int64
+# position arrays (pos, base, frac, i0, i1) over ~25 M output samples peaked at
+# ~1.7 GB -- the largest allocation of an analysis on a 48 kHz source.
+RESAMPLE_BLOCK = 1 << 20
+
+
+def _linear_resample(x: np.ndarray, sr_in: int, sr_out: int, out_dtype=None) -> np.ndarray:
+    """Linear-interpolation resample with the calibrated RESAMPLE_PHASE.
+
+    Computed RESAMPLE_BLOCK output samples at a time. Each block uses the positions
+    ``arange(n_out) * step + RESAMPLE_PHASE`` would give (``arange(start, end)``
+    converts to float exactly), and gathers from the WHOLE input, so no input sample
+    is lost or repeated at a block edge. The arithmetic is float64 as before; with
+    ``out_dtype`` each block is rounded straight into that dtype -- the same values
+    as building the float64 result and calling ``.astype(out_dtype)``, without
+    ever holding the whole float64 result."""
     if sr_in == sr_out:
-        return x
+        return x if out_dtype is None else x.astype(out_dtype)
     step = sr_in / sr_out
     n_out = int(round(len(x) * sr_out / sr_in))
-    pos = np.arange(n_out) * step + RESAMPLE_PHASE
-    base = np.floor(pos)
-    frac = pos - base
-    i0 = np.clip(base.astype(np.int64), 0, len(x) - 1)
-    i1 = np.clip(i0 + 1, 0, len(x) - 1)
-    return (1.0 - frac) * x[i0] + frac * x[i1]
+    out = np.empty(n_out, dtype=out_dtype or np.result_type(x.dtype, np.float64))
+    last = len(x) - 1
+    for s in range(0, n_out, RESAMPLE_BLOCK):
+        pos = np.arange(s, min(n_out, s + RESAMPLE_BLOCK)) * step + RESAMPLE_PHASE
+        base = np.floor(pos)
+        frac = pos - base
+        i0 = np.clip(base.astype(np.int64), 0, last)
+        i1 = np.clip(i0 + 1, 0, last)
+        out[s : s + len(pos)] = (1.0 - frac) * x[i0] + frac * x[i1]
+    return out
 
 
 def decode_mono(path, sr: int = SR) -> np.ndarray:
@@ -151,7 +170,7 @@ def decode_mono(path, sr: int = SR) -> np.ndarray:
         raise RuntimeError(f"ffmpeg timed out after {DECODE_TIMEOUT_S} s decoding {path}") from e
     a = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
     mono = a if ch == 1 else a.reshape(-1, ch).mean(axis=1)  # (L+R)/2
-    return _linear_resample(mono, src_sr, sr).astype(np.float32)
+    return _linear_resample(mono, src_sr, sr, np.float32)
 
 
 def _mono_pan(channels: int) -> str | None:
@@ -195,8 +214,8 @@ def decode_both(path) -> tuple[np.ndarray, np.ndarray]:
         raise RuntimeError(f"ffmpeg timed out after {DECODE_TIMEOUT_S} s decoding {path}") from e
     mono = np.frombuffer(raw, dtype=np.float32)
     del raw  # the frombuffer view keeps the bytes alive; drop the extra name
-    audio16 = _linear_resample(mono, src_sr, SR).astype(np.float32)
-    audio44 = _linear_resample(mono, src_sr, 44100).astype(np.float32)
+    audio16 = _linear_resample(mono, src_sr, SR, np.float32)
+    audio44 = _linear_resample(mono, src_sr, 44100, np.float32)
     return audio16, audio44
 
 

@@ -62,3 +62,45 @@ def test_tempo_frontend_equals_whole_track(seconds):
     assert np.array_equal(r_new, r_old)
     m_new, m_old = T._melspectrogram(r_new), _whole_track_tempo_mel(r_old)
     assert m_new.shape == m_old.shape and np.array_equal(m_new, m_old)
+
+
+def _whole_track_linear_resample(x, sr_in, sr_out):
+    """decode._linear_resample before chunking."""
+    from vibenative.decode import RESAMPLE_PHASE
+
+    if sr_in == sr_out:
+        return x
+    step = sr_in / sr_out
+    n_out = int(round(len(x) * sr_out / sr_in))
+    pos = np.arange(n_out) * step + RESAMPLE_PHASE
+    base = np.floor(pos)
+    frac = pos - base
+    i0 = np.clip(base.astype(np.int64), 0, len(x) - 1)
+    i1 = np.clip(i0 + 1, 0, len(x) - 1)
+    return (1.0 - frac) * x[i0] + frac * x[i1]
+
+
+@pytest.mark.parametrize("sr_in, sr_out", [(48000, 16000), (48000, 44100), (44100, 16000)])
+@pytest.mark.parametrize("n", [700, 73_457])  # under one block; dozens of 1,000-sample blocks
+def test_decode_resampler_equals_whole_track_across_block_edges(monkeypatch, sr_in, sr_out, n):
+    from vibenative import decode
+
+    monkeypatch.setattr(decode, "RESAMPLE_BLOCK", 1000)  # many edges: an off-by-one shows
+    x = np.random.default_rng(3).standard_normal(n).astype(np.float32)
+    ref = _whole_track_linear_resample(x, sr_in, sr_out)
+    assert np.array_equal(decode._linear_resample(x, sr_in, sr_out), ref)  # float64 out
+    as32 = decode._linear_resample(x, sr_in, sr_out, np.float32)
+    assert as32.dtype == np.float32 and np.array_equal(as32, ref.astype(np.float32))
+    x64 = x.astype(np.float64)  # decode_mono's input
+    assert np.array_equal(
+        decode._linear_resample(x64, sr_in, sr_out),
+        _whole_track_linear_resample(x64, sr_in, sr_out),
+    )
+
+
+def test_decode_resampler_same_rate_returns_a_writable_copy():
+    from vibenative import decode
+
+    x = np.frombuffer(np.arange(10, dtype=np.float32).tobytes(), dtype=np.float32)  # read-only
+    y = decode._linear_resample(x, 44100, 44100, np.float32)
+    assert np.array_equal(x, y) and y.flags.writeable and y is not x
