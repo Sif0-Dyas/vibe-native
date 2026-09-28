@@ -10,7 +10,7 @@ from ._shared import bp
 
 @bp.get("/tags")
 def tags_list():
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT t.id, t.name, COUNT(tt.hash) FROM tags t "
             "LEFT JOIN track_tags tt ON tt.tag_id = t.id "
@@ -57,7 +57,7 @@ def tags_for_many(hashes):
     """
     out = {h: [] for h in hashes}
     keys = list(out)
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         for i in range(0, len(keys), 500):
             chunk = keys[i : i + 500]
             q = ",".join("?" * len(chunk))

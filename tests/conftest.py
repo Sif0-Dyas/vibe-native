@@ -42,6 +42,16 @@ def _isolated_taxonomy(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
     monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "config"))
+    yield
+    _close_db_connections()
+
+
+def _close_db_connections():
+    """Close the connections db() keeps per thread (vibenative.db.close_all), so no
+    test leaves a database file open for the next -- or locked for deletion."""
+    mod = sys.modules.get("vibenative.db")
+    if mod is not None and hasattr(mod, "close_all"):
+        mod.close_all()
 
 
 def seed_track(h, payload):
@@ -92,4 +102,5 @@ def client(monkeypatch):
     with authed(app) as c:
         yield c
 
+    _close_db_connections()  # db() keeps one per thread; Windows won't delete an open file
     os.unlink(tmp.name)

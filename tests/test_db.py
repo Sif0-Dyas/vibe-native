@@ -312,3 +312,64 @@ def test_migration_10_indexes_serve_the_per_track_lookups(tmp_path, monkeypatch)
         n.startswith("idx_key_labels") or n.startswith("idx_training_labels") for n in names
     )
     conn.close()
+
+
+def test_readers_and_writers_share_the_db_concurrently(tmp_path, monkeypatch):
+    # Reads no longer take _db_lock and every thread has its own connection (WAL):
+    # 4 readers and 2 writers for a few seconds, no "database is locked", no errors.
+    import threading
+    import time
+
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "conc.db")
+    db.init_db()
+    for i in range(50):
+        db.cache_put(
+            f"seed{i:036d}", "s.mp3", "", "s", {"styles": [{"style": "House"}]}, np.ones(8)
+        )
+
+    stop, errors, counts = threading.Event(), [], {"reads": 0, "writes": 0}
+    written = [[], []]
+
+    def reader():
+        try:
+            while not stop.is_set():
+                assert db.cache_get(f"seed{7:036d}")["styles"][0]["style"] == "House"
+                db.key_labels_map()
+                assert db.track_embedding(f"seed{3:036d}") is not None
+                with db.closing(db.db()) as conn, conn as c:
+                    c.execute("SELECT COUNT(*), MAX(created) FROM tracks").fetchone()
+                counts["reads"] += 1
+        except Exception as e:  # surfaced below
+            errors.append(e)
+
+    def writer(w):
+        try:
+            i = 0
+            while not stop.is_set():
+                h = f"w{w}-{i:035d}"
+                db.cache_put(
+                    h, "w.mp3", "", "w", {"styles": [{"style": "Techno"}], "bpm": 128}, np.ones(8)
+                )
+                db.key_label_put(h, "A", "minor")
+                written[w].append(h)
+                counts["writes"] += 1
+                i += 1
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=reader) for _ in range(4)]
+    threads += [threading.Thread(target=writer, args=(w,)) for w in range(2)]
+    for t in threads:
+        t.start()
+    time.sleep(3)
+    stop.set()
+    for t in threads:
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads)
+    assert errors == []
+    assert counts["reads"] > 50 and counts["writes"] > 20
+    everything = written[0] + written[1]
+    assert all(db.cache_get(h) is not None for h in everything)  # every write committed
+    assert set(db.key_labels_map()) >= set(everything)
+    db.close_all()

@@ -24,7 +24,7 @@ from contextlib import closing
 from . import keystone as K
 from . import palette as P
 from . import taxonomy
-from .db import _db_lock, db
+from .db import db
 
 # Conventional tempo ranges and a one-line character sketch per keystone.
 #
@@ -186,7 +186,7 @@ def _octave_flag(observed_median, canonical):
 
 
 def _rows():
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         return c.execute("SELECT hash, title, filename, payload FROM tracks").fetchall()
 
 

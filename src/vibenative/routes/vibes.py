@@ -14,7 +14,7 @@ from ._shared import bp
 
 @bp.get("/vibes")
 def vibes_list():
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT v.id, v.name, COUNT(t.hash), COALESCE(v.description, '') FROM vibes v "
             "LEFT JOIN vibe_tracks t ON t.vibe_id = v.id "
@@ -149,7 +149,7 @@ def vibes_delete():
 def vibes_export():
     """Export every vibe + its member tracks (content hash + weight) as JSON, for
     backup, sharing, or moving to another machine."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         vibes = c.execute("SELECT id, name FROM vibes ORDER BY name").fetchall()
         out = []
         for vid, name in vibes:
@@ -209,7 +209,7 @@ def vibes_import():
 def vibes_members(vid):
     """Member tracks of a vibe with their current weights, for the weight editor.
     Ordered strongest-pull first."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT vt.hash, vt.weight, t.title, t.filename FROM vibe_tracks vt "
             "LEFT JOIN tracks t ON t.hash=vt.hash WHERE vt.vibe_id=? "
@@ -242,7 +242,7 @@ def vibes_membership():
     track it draws and looks them up by hash, so anything more would be payload
     it throws away.
     """
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT v.id, v.name, vt.hash FROM vibes v "
             "LEFT JOIN vibe_tracks vt ON vt.vibe_id = v.id ORDER BY v.name"
@@ -260,7 +260,7 @@ def _vibe_centroids():
     """[(id, name, centroid)] for every vibe that has one. Computed once per
     request: a centroid is a pass over the vibe's members, and asking for it
     per track would repeat that for every row on screen."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         vibes = c.execute("SELECT id, name FROM vibes").fetchall()
     out = []
     for vid, name in vibes:
@@ -304,7 +304,7 @@ def vibes_match_batch():
         return jsonify({})
     centroids = _vibe_centroids()
     out = {}
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         for i in range(0, len(hashes), 500):
             chunk = hashes[i : i + 500]
             q = ",".join("?" * len(chunk))
@@ -326,7 +326,7 @@ def vibes_playlist(vid):
     threshold = float(request.args.get("threshold", 0.60))
     import numpy as np
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, title, filename, payload, embedding FROM tracks "
             "WHERE embedding IS NOT NULL"

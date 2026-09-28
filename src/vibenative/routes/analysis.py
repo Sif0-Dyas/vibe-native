@@ -222,7 +222,7 @@ def _backfill_filepath(h, path):
 def _segment_overrides(h):
     """The persisted segment overrides for a track, oldest span first. Each carries
     its rowid as ``id`` so the client can target it for removal."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT rowid, start_s, end_s, genre FROM segment_overrides WHERE hash=? "
             "ORDER BY start_s",
@@ -244,7 +244,7 @@ def _backfill_waveform(h, upload):
     """
     if waveform_cache_get(h) is not None:
         return
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     if row and row[0] and Path(row[0]).is_file():
         return  # GET /waveform can decode that itself
@@ -308,7 +308,7 @@ def audio_route(h):
     not an arbitrary-file endpoint). Supports HTTP Range so the browser can seek.
     Browser-dropped files have no server path -- those play client-side via a
     blob URL instead, so a 404 here is expected for them."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath, filename FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row or not row[0]:
         return jsonify({"error": "no server-side file for this track"}), 404
@@ -330,7 +330,7 @@ def waveform_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row:
         return jsonify({"error": "track not in database"}), 404
@@ -365,7 +365,7 @@ def waveform_upload_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)  # raced another tab; nothing to do
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
     # Only for tracks already in the library: this must not become a way to have
     # the server decode arbitrary uploads under an arbitrary key.

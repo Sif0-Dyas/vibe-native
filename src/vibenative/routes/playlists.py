@@ -15,7 +15,7 @@ from ._shared import bp
 @bp.get("/playlists")
 def playlists_list():
     """List saved playlists (id, name, track count, last-updated), newest first."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT id, name, tracks, updated FROM playlists ORDER BY updated DESC"
         ).fetchall()
@@ -52,7 +52,7 @@ def playlists_save():
 @bp.get("/playlists/<int:pid>")
 def playlists_get(pid):
     """Return a saved playlist's track list."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT name, tracks FROM playlists WHERE id=?", (pid,)).fetchone()
     if not row:
         return jsonify({"error": "playlist not found"}), 404
@@ -162,7 +162,7 @@ def playlist_rekordbox(pid):
     from .. import ratings
     from ..routes._shared import _artist_of
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT name, tracks FROM playlists WHERE id=?", (pid,)).fetchone()
         if not row:
             return jsonify({"error": "playlist not found"}), 404

@@ -44,14 +44,79 @@ def _resolve_db_path() -> Path:
 
 
 DB_PATH = _resolve_db_path()
+
+# Serialises WRITES only. Many write blocks read, change and write back (a payload,
+# a rating); holding this across the block keeps two threads from losing each
+# other's update. Reads no longer take it: in WAL mode they run alongside a writer
+# and see the last committed state, so a batch writing tracks no longer stalls the
+# Library or Map tabs.
 _db_lock = threading.Lock()
+
+# One connection per thread, opened on first use and kept (a new connection per
+# call cost an open + two PRAGMAs every time). Registered so close_all() can close
+# every one -- on Windows an open connection keeps the database file from being
+# deleted or replaced.
+_local = threading.local()
+_open: list = []
+_open_lock = threading.Lock()
+_generation = 0
+
+
+class _ThreadConnection:
+    """What db() returns: this thread's connection, unchanged, except that close()
+    does nothing -- every call site is ``with _db_lock, closing(db()) as conn, conn
+    as c:`` and the connection must outlive the block. ``conn as c`` is still the
+    sqlite3 Connection's own transaction context: commit on success, rollback on
+    an exception, exactly as when each call had its own connection."""
+
+    __slots__ = ("_conn",)
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self._conn.__enter__()
+
+    def __exit__(self, *exc):
+        return self._conn.__exit__(*exc)
+
+    def close(self):
+        pass  # kept for the thread's next call; close_all() really closes
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=5)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
+    """This thread's connection to DB_PATH (WAL, busy_timeout 5 s), opened once.
+    A new one is opened if DB_PATH has changed since (tests repoint it) or after
+    close_all()."""
+    key = (DB_PATH, _generation)
+    conn = getattr(_local, "conn", None)
+    if conn is None or _local.key != key:
+        # check_same_thread=False only so close_all() may close it from another
+        # thread; in use, each connection stays with the thread that opened it.
+        conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        with _open_lock:
+            _open.append(conn)
+        _local.conn, _local.key = conn, key
+    return _ThreadConnection(conn)
+
+
+def close_all():
+    """Close every connection db() has opened, in any thread; later calls reopen.
+    For shutdown and tests (which delete their database files afterwards)."""
+    global _generation
+    with _open_lock:
+        conns, _open[:] = list(_open), []
+        _generation += 1
+    for conn in conns:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass  # already closed, or mid-use elsewhere: nothing more to do
 
 
 # --- schema migrations -------------------------------------------------------
@@ -388,7 +453,7 @@ def file_hash(path) -> str:
 
 
 def cache_get(h: str):
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
     return json.loads(row[0]) if row else None
 
@@ -409,7 +474,7 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
 
 def key_label_get(h: str):
     """The corrected (key, scale) for a track, or None."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT key, scale FROM key_labels WHERE hash=?", (h,)).fetchone()
     return (row[0], row[1]) if row else None
 
@@ -458,14 +523,14 @@ def forget_track(h: str) -> int:
 
 def key_labels_map():
     """{hash: (key, scale)} for every correction -- one query for a whole listing."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         return {r[0]: (r[1], r[2]) for r in c.execute("SELECT hash, key, scale FROM key_labels")}
 
 
 def key_labels_all():
     """[(hash, filepath, key, scale)] for every corrected track that still has a
     file on disk recorded -- the training set tools/eval_key.py reads."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         return c.execute(
             "SELECT l.hash, t.filepath, l.key, l.scale FROM key_labels l "
             "JOIN tracks t ON t.hash = l.hash WHERE t.filepath != ''"
@@ -473,7 +538,7 @@ def key_labels_all():
 
 
 def waveform_cache_get(h: str):
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT data_json FROM waveform_cache WHERE hash=?", (h,)).fetchone()
     return json.loads(row[0]) if row else None
 
@@ -491,7 +556,7 @@ def is_library_filepath(path: str) -> bool:
 
     Routes that act on a caller-named server file (/save_training's copy) accept
     only these, so the request can't name an arbitrary file on disk."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT 1 FROM tracks WHERE filepath=? LIMIT 1", (path,)).fetchone()
     return row is not None
 
@@ -499,7 +564,7 @@ def is_library_filepath(path: str) -> bool:
 def track_embedding(h: str):
     import numpy as np
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT embedding FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row or row[0] is None:
         return None
@@ -526,7 +591,7 @@ def vibe_centroid(vibe_id: int):
     to the old plain mean. Returns None if the vibe has no usable members."""
     import numpy as np
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT t.embedding, v.weight FROM vibe_tracks v JOIN tracks t "
             "ON t.hash=v.hash WHERE v.vibe_id=? AND t.embedding IS NOT NULL",
