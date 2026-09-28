@@ -120,15 +120,11 @@ DEFAULT_PROFILE = "model" if MODEL else ("edm" if "edm" in PROFILES else "temper
 # --- spectral front end -----------------------------------------------------------
 
 
-def _frames(audio: np.ndarray, frame: int = FRAME, hop: int = HOP) -> np.ndarray:
-    """(n_frames, frame) view of the signal; pads the tail so short clips still
-    yield one frame."""
-    x = np.asarray(audio, dtype=np.float32).ravel()
-    if x.size < frame:
-        x = np.pad(x, (0, frame - x.size))
-    n = 1 + (x.size - frame) // hop
-    idx = np.arange(frame)[None, :] + hop * np.arange(n)[:, None]
-    return x[idx]
+# Frames per block in ``magnitudes``. Every step is per-frame, so blocking changes
+# only how much is alive at once: done over the whole track, the framed copies,
+# the float64 RMS square and the FFT's complex128 work buffers peaked at ~1.4 GB
+# on a 9-minute track -- the single largest allocation of an analysis.
+BLOCK_FRAMES = 256
 
 
 def magnitudes(
@@ -136,20 +132,33 @@ def magnitudes(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Per-frame max-normalised magnitude spectra of the non-silent frames,
     restricted to [F_LO, F_HI]. Returns (mags (n, bins), bin_freqs (bins,)).
-    Separate from ``emphasise`` so tools can sweep settings on one FFT pass."""
-    fr = _frames(audio, frame, hop or frame // 2)
-    rms = np.sqrt(np.mean(fr.astype(np.float64) ** 2, axis=1))
-    fr = fr[rms > SILENCE_RMS]
-    if fr.shape[0] == 0:
-        return np.zeros((0, 0)), np.zeros(0)
+    Separate from ``emphasise`` so tools can sweep settings on one FFT pass.
+
+    Processed BLOCK_FRAMES frames at a time over a strided view of the signal (no
+    index grid, no whole-track frame copy); each block runs exactly the per-frame
+    steps the whole-track version did -- float64 RMS gate, periodic Hann, rfft,
+    magnitude, band cut, per-frame max-normalise -- so the output is unchanged."""
+    x = np.asarray(audio, dtype=np.float32).ravel()
+    if x.size < frame:  # a short clip still yields one frame
+        x = np.pad(x, (0, frame - x.size))
+    frames = np.lib.stride_tricks.sliding_window_view(x, frame)[:: hop or frame // 2]
     win = np.hanning(frame + 1)[:-1].astype(np.float32)  # periodic Hann
-    mag = np.abs(np.fft.rfft(fr * win, axis=1))
     freqs = np.fft.rfftfreq(frame, 1.0 / sr)
     keep = (freqs >= F_MIN) & (freqs <= F_HI)
-    mag = mag[:, keep]
-    top = mag.max(axis=1, keepdims=True)
-    top[top == 0] = 1.0
-    return (mag / top).astype(np.float32), freqs[keep]
+    out = []
+    for start in range(0, frames.shape[0], BLOCK_FRAMES):
+        fr = frames[start : start + BLOCK_FRAMES]  # a view: nothing copied yet
+        rms = np.sqrt(np.mean(fr.astype(np.float64) ** 2, axis=1))
+        fr = fr[rms > SILENCE_RMS]
+        if fr.shape[0] == 0:
+            continue
+        mag = np.abs(np.fft.rfft(fr * win, axis=1))[:, keep]
+        top = mag.max(axis=1, keepdims=True)
+        top[top == 0] = 1.0
+        out.append((mag / top).astype(np.float32))
+    if not out:
+        return np.zeros((0, 0)), np.zeros(0)
+    return np.concatenate(out), freqs[keep]
 
 
 def emphasise(
