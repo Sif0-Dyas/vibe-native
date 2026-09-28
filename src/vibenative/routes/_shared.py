@@ -5,6 +5,8 @@ from pathlib import Path
 
 from flask import Blueprint
 
+from ..db import artist_tag as _artist_tag
+
 bp = Blueprint("main", __name__)
 
 
@@ -16,8 +18,12 @@ bp = Blueprint("main", __name__)
 def _artist_of(payload, title, filename):
     """Best-effort artist: prefer the file's `artist` metadata tag (stored under
     payload['tags']['tag']); otherwise parse it out of an 'Artist - Title' name."""
-    tag = ((payload or {}).get("tags") or {}).get("tag") or {}
-    tagged = (tag.get("artist") or tag.get("albumartist") or "").strip()
+    return _artist_from(_artist_tag(payload), title, filename)
+
+
+def _artist_from(tagged, title, filename):
+    """_artist_of without a payload: the tag artist already extracted (the
+    ``tracks.tag_artist`` column), else parsed from an 'Artist - Title' name."""
     if tagged:
         return tagged
     base = (title or "") or (Path(filename).stem if filename else "")

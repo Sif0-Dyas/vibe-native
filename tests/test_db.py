@@ -231,3 +231,61 @@ def test_cache_put_round_trips(tmp_path, monkeypatch):
     conn.close()
     assert row[:4] == ("h" * 40, "song.mp3", "", "Song")  # None filepath is stored as ""
     assert isinstance(row[4], float) and row[4] > 0
+    # the listing columns (migration 9) are written alongside
+    conn = sqlite3.connect(db.DB_PATH)
+    names = ", ".join(n for n, _ in db.TRACK_COLUMNS)
+    cols = conn.execute(f"SELECT {names} FROM tracks WHERE hash=?", ("h" * 40,)).fetchone()  # nosec B608
+    conn.close()
+    assert cols == db._track_columns(payload) == ("House", 124.0, None, None, None, None, "")
+
+
+def test_migration_9_backfills_the_listing_columns(tmp_path, monkeypatch):
+    # An existing (v8) library: rows written before the columns existed. The one
+    # UPDATE must give exactly what cache_put now writes for the same payload.
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "v8.db")
+    conn = sqlite3.connect(db.DB_PATH)
+    for version, migrate in db.MIGRATIONS:
+        if version <= 8:
+            migrate(conn)
+    conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
+    conn.execute("INSERT INTO schema_version(version) VALUES(8)")
+    payloads = {
+        "a" * 40: {
+            "styles": [{"style": "House", "score": 0.4}],
+            "bpm": 124.5,
+            "key": "A",
+            "scale": "minor",
+            "camelot": "8A",
+            "duration": 301.2,
+            "tags": {"tag": {"artist": " Floating Points ", "albumartist": "X"}},
+        },
+        "b" * 40: {"styles": [], "bpm": 128, "tags": {"tag": {"artist": "", "albumartist": "VA "}}},
+        "c" * 40: {"styles": [{"style": "Techno"}], "tags": {"tag": {"artist": "   "}}},
+        "d" * 40: {},
+    }
+    for h, p in payloads.items():
+        conn.execute(
+            "INSERT INTO tracks(hash, filename, filepath, title, payload, embedding, created) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (h, f"{h[:4]}.mp3", "", "t", json.dumps(p), None, 0.0),
+        )
+    conn.commit()
+    conn.close()
+
+    db.init_db()  # runs migration 9
+
+    conn = sqlite3.connect(db.DB_PATH)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] >= 9
+    names = ", ".join(n for n, _ in db.TRACK_COLUMNS)
+    for h, p in payloads.items():
+        row = conn.execute(f"SELECT {names} FROM tracks WHERE hash=?", (h,)).fetchone()  # nosec B608
+        assert row == db._track_columns(p), h
+    # a JSON integer stays an integer (no REAL affinity), so /library's JSON is unchanged
+    assert conn.execute("SELECT typeof(bpm) FROM tracks WHERE hash=?", ("b" * 40,)).fetchone() == (
+        "integer",
+    )
+    assert conn.execute("SELECT tag_artist FROM tracks WHERE hash=?", ("b" * 40,)).fetchone() == (
+        "VA",
+    )
+    conn.close()
+    db.init_db()  # idempotent: re-running leaves everything as it is

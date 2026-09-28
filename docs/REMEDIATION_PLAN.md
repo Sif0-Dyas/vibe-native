@@ -164,7 +164,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 - [x] Decode once per track; remove `_rss_mb`
 - [x] Chunk the per-frame stages: `tonality.magnitudes()`, and the tempo / 16 kHz mel frontends — no whole-track frame matrices or float64 copies
-- [ ] Denormalized columns via a new migration; rewrite `/library`, `/similar`, `/training/candidates`
+- [x] Denormalized columns via a new migration (v9: style, bpm, key, scale, camelot, duration, tag_artist); `/library` reads them and parses no payloads. `/similar`, `/training/candidates` and `insight.check` still parse: they need embeddings and the override-aware style (Phase 3 `dominant_style()`)
 - [ ] Indexes
 - [ ] Thread-local connections; retire `_db_lock` for reads
 
@@ -173,6 +173,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] `Settings` object; delete the conftest reload hack
 - [ ] Repository layer; routes contain no SQL
 - [ ] One `dominant_style()`; one `@bp.errorhandler`; `trainsets` stops importing from `routes`
+  - `/similar`, `/training/candidates` and `insight.check` are waiting on `dominant_style()` before they can drop payload parsing: each needs the override/weights/relabel-aware style, which the v9 `style` column (raw `styles[0]`) is not.
 - [ ] `fake_engine.py`; FAKE branches out of routes and `analysis.py`
 - [ ] Dedupe sanitizer / training root / mel filterbank; drop the 21 lazy numpy imports
 - [ ] `taxonomy/` package

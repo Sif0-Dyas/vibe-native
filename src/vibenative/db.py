@@ -247,6 +247,76 @@ def _migration_8(c):
         source TEXT, created REAL)""")
 
 
+def artist_tag(payload) -> str:
+    """The artist a track's own tags name -- ``artist``, else ``albumartist`` --
+    stripped; '' if neither. The first half of ``_artist_of`` (its fallback parses
+    the title/filename), kept here so the ``tracks.tag_artist`` column, cache_put
+    and the routes all apply exactly one rule."""
+    tag = ((payload or {}).get("tags") or {}).get("tag") or {}
+    return (tag.get("artist") or tag.get("albumartist") or "").strip()
+
+
+# Denormalized from the payload so listings needn't parse it: (column, declared type).
+# bpm and duration have NO declared type on purpose: REAL affinity would turn a
+# JSON integer (bpm 128) into 128.0 and change what /library returns.
+TRACK_COLUMNS = (
+    ("style", "TEXT"),
+    ("bpm", ""),
+    ("key", "TEXT"),
+    ("scale", "TEXT"),
+    ("camelot", "TEXT"),
+    ("duration", ""),
+    ("tag_artist", "TEXT"),
+)
+
+
+def _track_columns(payload: dict) -> tuple:
+    """TRACK_COLUMNS' values for one payload -- what _migration_9's UPDATE computes."""
+    styles = payload.get("styles") or []
+    return (
+        styles[0].get("style") if styles else None,
+        payload.get("bpm"),
+        payload.get("key"),
+        payload.get("scale"),
+        payload.get("camelot"),
+        payload.get("duration"),
+        artist_tag(payload),
+    )
+
+
+def _migration_9(c):
+    """v9 -- the fields listings show, as columns: top style (``styles[0]``, the raw
+    analysis read -- the override/weights merge is Phase 3's), bpm, key, scale,
+    camelot, duration, and the artist the track's tags name. /library read and
+    json-parsed every payload -- megabytes of segments and frames -- for these.
+
+    Guarded ALTERs, then one UPDATE with json_extract. ``tag_artist`` uses
+    Python's str.strip (SQLite's trim() strips only spaces), so the column is
+    byte-for-byte what artist_tag() gives."""
+    have = {r[1] for r in c.execute("PRAGMA table_info(tracks)")}
+    for name, decl in TRACK_COLUMNS:
+        if name not in have:
+            c.execute(f"ALTER TABLE tracks ADD COLUMN {name} {decl}".rstrip())
+    conn = getattr(c, "connection", c)  # a Cursor or the Connection itself
+    conn.create_function(
+        "py_strip", 1, lambda s: s.strip() if isinstance(s, str) else s, deterministic=True
+    )
+    c.execute(
+        """UPDATE tracks SET
+            style      = json_extract(payload, '$.styles[0].style'),
+            bpm        = json_extract(payload, '$.bpm'),
+            key        = json_extract(payload, '$.key'),
+            scale      = json_extract(payload, '$.scale'),
+            camelot    = json_extract(payload, '$.camelot'),
+            duration   = json_extract(payload, '$.duration'),
+            tag_artist = py_strip(COALESCE(
+                NULLIF(json_extract(payload, '$.tags.tag.artist'), ''),
+                NULLIF(json_extract(payload, '$.tags.tag.albumartist'), ''),
+                ''))
+           WHERE json_valid(payload)"""
+    )
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -257,6 +327,7 @@ MIGRATIONS = [
     (6, _migration_6),
     (7, _migration_7),
     (8, _migration_8),
+    (9, _migration_9),
 ]
 
 
@@ -307,9 +378,11 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
     blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute(
-            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, created) "
-            "VALUES(?,?,?,?,?,?,?)",
-            (h, filename, filepath or "", title, json.dumps(payload), blob, time.time()),
+            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, "
+            "created, style, bpm, key, scale, camelot, duration, tag_artist) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (h, filename, filepath or "", title, json.dumps(payload), blob, time.time())
+            + _track_columns(payload),
         )
 
 
