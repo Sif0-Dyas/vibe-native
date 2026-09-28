@@ -317,6 +317,26 @@ def _migration_9(c):
     )
 
 
+def _migration_10(c):
+    """v10 -- indexes for the per-track lookups that scanned their table.
+
+    * segment_overrides(hash, start_s): read for EVERY cached response (a batch
+      re-scan, a cache hit) as ``WHERE hash=? ORDER BY start_s`` -- the second
+      column also returns the rows already in order.
+    * track_tags(hash), vibe_tracks(hash): the tags route's ``WHERE hash IN (...)``
+      and forget_track's deletes; their UNIQUE indexes lead with tag_id / vibe_id.
+    * tracks(style): for Phase 3 queries by genre on the v9 column.
+    Not added: key_labels(hash) is already its PRIMARY KEY, and training_labels
+    already has UNIQUE(hash, genre) -- duplicates would only slow writes."""
+    for name, table, cols in (
+        ("idx_segment_overrides_hash", "segment_overrides", "hash, start_s"),
+        ("idx_track_tags_hash", "track_tags", "hash"),
+        ("idx_vibe_tracks_hash", "vibe_tracks", "hash"),
+        ("idx_tracks_style", "tracks", "style"),
+    ):
+        c.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table}({cols})")  # nosec B608
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -328,6 +348,7 @@ MIGRATIONS = [
     (7, _migration_7),
     (8, _migration_8),
     (9, _migration_9),
+    (10, _migration_10),
 ]
 
 

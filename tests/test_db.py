@@ -289,3 +289,26 @@ def test_migration_9_backfills_the_listing_columns(tmp_path, monkeypatch):
     )
     conn.close()
     db.init_db()  # idempotent: re-running leaves everything as it is
+
+
+def test_migration_10_indexes_serve_the_per_track_lookups(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "idx.db")
+    db.init_db()
+    conn = sqlite3.connect(db.DB_PATH)
+
+    def plan(q, *args):
+        return " | ".join(r[3] for r in conn.execute("EXPLAIN QUERY PLAN " + q, args))
+
+    p = plan("SELECT rowid FROM segment_overrides WHERE hash=? ORDER BY start_s", "x")
+    assert "idx_segment_overrides_hash" in p and "TEMP B-TREE" not in p  # no sort either
+    assert "idx_track_tags_hash" in plan(
+        "SELECT tag_id FROM track_tags WHERE hash IN (?,?)", "a", "b"
+    )
+    assert "idx_vibe_tracks_hash" in plan("DELETE FROM vibe_tracks WHERE hash=?", "x")
+    assert "idx_tracks_style" in plan("SELECT hash FROM tracks WHERE style=?", "House")
+    # the two not added were already indexed: no duplicate index was created
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert not any(
+        n.startswith("idx_key_labels") or n.startswith("idx_training_labels") for n in names
+    )
+    conn.close()

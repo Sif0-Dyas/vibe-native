@@ -165,7 +165,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] Decode once per track; remove `_rss_mb`
 - [x] Chunk the per-frame stages: `tonality.magnitudes()`, and the tempo / 16 kHz mel frontends — no whole-track frame matrices or float64 copies
 - [x] Denormalized columns via a new migration (v9: style, bpm, key, scale, camelot, duration, tag_artist); `/library` reads them and parses no payloads. `/similar`, `/training/candidates` and `insight.check` still parse: they need embeddings and the override-aware style (Phase 3 `dominant_style()`)
-- [ ] Indexes
+- [x] Indexes (v10): segment_overrides(hash, start_s), track_tags(hash), vibe_tracks(hash), tracks(style). key_labels(hash) and training_labels(hash, genre) were already indexed (PRIMARY KEY / UNIQUE) -- not duplicated
 - [ ] Thread-local connections; retire `_db_lock` for reads
 
 **Phase 3 — structure (one PR each, in this order)**
