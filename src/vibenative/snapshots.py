@@ -28,6 +28,7 @@ from contextlib import closing
 from .config import log
 from .db import _db_lock, db
 from .settings import current
+from .style import dominant_style
 
 # The word a caller must pass to reset(). The UI asks the user to type it.
 CONFIRM_WORD = "RESET"
@@ -144,7 +145,10 @@ def _clear():
                 continue
             if p.get("override"):
                 p.pop("override", None)
-                c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+                c.execute(
+                    "UPDATE tracks SET payload=?, style=? WHERE hash=?",
+                    (json.dumps(p), dominant_style(p), h),
+                )
 
 
 def reset(confirm, label="pre-reset"):
@@ -217,7 +221,10 @@ def restore(snapshot_id):
             except (TypeError, ValueError):
                 continue
             p["override"] = override
-            c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+            c.execute(
+                "UPDATE tracks SET payload=?, style=? WHERE hash=?",
+                (json.dumps(p), dominant_style(p), h),
+            )
 
     head = path / "custom_head.npz"
     if head.is_file():

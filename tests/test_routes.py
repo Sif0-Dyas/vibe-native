@@ -542,8 +542,8 @@ def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
     ranked read. A relabel used to move the label but leave the blend and the
     candidates on the pre-relabel salience, so the dot argued with its own name."""
     from vibenative.routes import _second_style
-    from vibenative.routes._shared import _dominant_style
     from vibenative.routes.map import _override_candidates
+    from vibenative.style import dominant_read
 
     payload = {
         "salience": [{"style": "Techno", "score": 0.6}, {"style": "House", "score": 0.4}],
@@ -554,13 +554,13 @@ def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
             ]
         },
     }
-    style, score = _dominant_style(payload)
+    style, score = dominant_read(payload)
     assert style == "Trance"
     assert _second_style(payload, style, score) == ["Progressive House", 0.3]
     assert [c["style"] for c in _override_candidates(payload, style)] == ["Progressive House"]
     # ...and a genre removed by hand is not offered back as a one-click correction.
     payload["drops"] = ["Progressive House"]
-    style, score = _dominant_style(payload)
+    style, score = dominant_read(payload)
     assert style == "Trance" and _override_candidates(payload, style) == []
 
 

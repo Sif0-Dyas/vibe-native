@@ -15,6 +15,7 @@ import numpy as np
 
 from .config import log
 from .db import db
+from .style import dominant_read, dominant_style
 
 # Thresholds (tuned on the reference library -> ~5% flag rate).
 CONF_MAX = 0.55  # only second-guess a shaky top read
@@ -41,19 +42,6 @@ def _families():
 
 def family_of(style):
     return _families().get((style or "").lower(), style or "Other")
-
-
-def dominant(payload):
-    """(top_style, confidence) from a stored payload -- manual override, then salience."""
-    if payload.get("override"):
-        return payload["override"], 1.0
-    sal = payload.get("salience") or []
-    if sal:
-        return sal[0].get("style"), float(sal[0].get("score", 0))
-    st = payload.get("styles") or []
-    if st:
-        return st[0].get("style"), float(st[0].get("score", 0))
-    return None, 0.0
 
 
 def _score(top_style, top_conf, neighbours):
@@ -102,7 +90,7 @@ def check(emb, top_style, top_conf, exclude_hash=None):
             continue
         e = np.frombuffer(blob, dtype=np.float32)
         e = e / (np.linalg.norm(e) + 1e-9)
-        s, _ = dominant(json.loads(payload))
+        s = dominant_style(json.loads(payload))
         sims.append((float(q @ e), s))
     if len(sims) < 3:  # cold start: not enough neighbours
         return None
@@ -170,8 +158,8 @@ def _audit_core(hashes, titles, payloads, embs):
             # decisions match the previous argsort()[:K] behaviour exactly.
             nn = np.argpartition(-row, kth)[:K]
             nn = nn[np.argsort(-row[nn])]
-            top_style, top_conf = dominant(payloads[i])
-            neighbours = [(float(row[int(j)]), dominant(payloads[int(j)])[0]) for j in nn]
+            top_style, top_conf = dominant_read(payloads[i])
+            neighbours = [(float(row[int(j)]), dominant_style(payloads[int(j)])) for j in nn]
             res = _score(top_style, top_conf, neighbours)
             if res and res["flag"]:
                 out.append(

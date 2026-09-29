@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from .. import db as _db
+from ..style import dominant_style
 from . import NotFound, reading, writing
 
 
@@ -122,6 +123,9 @@ def update_payload(h, change):
     between. ``change`` gets the stored JSON rather than a parsed dict because
     callers differ on a corrupt one (fail, or start from {}).
 
+    The ``style`` column is recomputed from the new payload in the same write,
+    so /library (which reads the column) shows what every other view does.
+
     Returns (filepath, the new payload); raises NotFound if the track isn't in the
     library. Keep ``change`` to in-memory work: it runs under the write lock."""
     with writing() as c:
@@ -129,7 +133,10 @@ def update_payload(h, change):
         if not row:
             raise NotFound(h)
         p = change(row[1])
-        c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+        c.execute(
+            "UPDATE tracks SET payload=?, style=? WHERE hash=?",
+            (json.dumps(p), dominant_style(p), h),
+        )
     return row[0], p
 
 

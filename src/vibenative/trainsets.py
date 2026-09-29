@@ -28,6 +28,7 @@ from pathlib import Path
 from .config import log
 from .repo import tracks as tracks_repo
 from .repo import training as training_repo
+from .style import dominant_read
 
 # Mirrors routes.training: the folder /override and /save_training file into,
 # and the one training/train_head.py consumes.
@@ -72,7 +73,6 @@ def detail(genre, top_n=10):
     working" and as the pool to pick more training examples from.
     """
     from . import keystone as K
-    from .routes._shared import _dominant_style
 
     d = folder(genre)
     files = _audio_files(d)
@@ -87,7 +87,7 @@ def detail(genre, top_n=10):
             p = json.loads(payload) if isinstance(payload, str) else (payload or {})
         except (TypeError, ValueError):
             continue
-        style, score = _dominant_style(p)
+        style, score = dominant_read(p)
         # Match either the exact style or the keystone it rolls up to, so
         # clicking "House" finds the deep/tech/progressive house tracks too.
         if not style:

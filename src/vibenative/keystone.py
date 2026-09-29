@@ -598,7 +598,7 @@ def classify(payload):
     result. Returns None when nothing in the read maps to a keystone.
 
     A manual override (POST /override) wins outright, exactly as it does for
-    ``_dominant_style`` -- if you've told the app what a track is, that's what
+    ``style.dominant_style`` -- if you've told the app what a track is, that's what
     it is, and it reports as a single keystone with full confidence.
     """
     payload = payload or {}
@@ -620,14 +620,14 @@ def classify(payload):
             "override": True,
         }
 
-    # Precedence matches routes._shared._dominant_style: a retroactive re-label
+    # Precedence matches style.dominant_style: a retroactive re-label
     # is a newer head's judgement and outranks the original salience read.
     # Salience is otherwise the better signal, but it's energy-weighted and can
     # come back all-zero on a very quiet track, so the flat scores backstop it
     # rather than dropping the track out of the taxonomy entirely.
     from .weights import read_with_steps
 
-    # Same precedence as routes._shared._dominant_style, or the map and the
+    # Same precedence as style.dominant_style, or the map and the
     # label would disagree about a track you had just adjusted by hand.
     weights, styles = _tally(read_with_steps(payload))
     if not weights:

@@ -32,9 +32,10 @@ import numpy as np
 
 from .config import log
 from .db import _db_lock, db
+from .style import dominant_style
 
 # Marks a payload's re-labelled read. Consumers prefer this over `salience` when
-# present -- see routes._shared._dominant_style.
+# present -- see style.dominant_style.
 KEY = "relabel"
 
 TOPK = 8
@@ -172,9 +173,9 @@ def apply(limit=None):
             # future full-audio re-analysis can be distinguished from this.
             "method": "mean-embedding",
         }
-        updates.append((json.dumps(p), h))
+        updates.append((json.dumps(p), dominant_style(p), h))
     with _db_lock, closing(db()) as conn, conn as c:
-        c.executemany("UPDATE tracks SET payload=? WHERE hash=?", updates)
+        c.executemany("UPDATE tracks SET payload=?, style=? WHERE hash=?", updates)
     log.info(
         "relabel: %d tracks updated, %d skipped (manual override), head=%s",
         len(updates),
@@ -195,8 +196,8 @@ def revert():
                 continue
             if KEY in p:
                 p.pop(KEY, None)
-                cleared.append((json.dumps(p), h))
-        c.executemany("UPDATE tracks SET payload=? WHERE hash=?", cleared)
+                cleared.append((json.dumps(p), dominant_style(p), h))
+        c.executemany("UPDATE tracks SET payload=?, style=? WHERE hash=?", cleared)
     log.info("relabel: reverted %d tracks", len(cleared))
     return {"reverted": len(cleared)}
 

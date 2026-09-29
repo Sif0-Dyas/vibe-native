@@ -18,7 +18,8 @@ from ..db import (
 )
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
-from ._shared import _artist_from, _artist_of, _dominant_style, bp
+from ..style import dominant_style
+from ._shared import _artist_from, _artist_of, bp
 
 
 @bp.post("/forget/<h>")
@@ -522,7 +523,7 @@ def similar_route(h):
     for hh, title, filename, filepath, payload, blob in rows:
         emb = np.frombuffer(blob, dtype=np.float32)
         p = json.loads(payload)
-        style, _ = _dominant_style(p)
+        style = dominant_style(p)
         out.append(
             {
                 "hash": hh,

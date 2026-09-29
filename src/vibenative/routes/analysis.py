@@ -35,6 +35,7 @@ from ..decode import UnreadableAudio
 from ..repo import tracks as tracks_repo
 from ..serve import MAX_BATCH_WORKERS
 from ..settings import current
+from ..style import dominant_read
 from ._shared import bp
 
 
@@ -125,7 +126,7 @@ def analyze_route():
             emb = result.pop("emb_mean", None)
             wave = result.pop("wave", None)  # DAW-style min/max/rms -> its own cache
             payload = build_payload(name, None, title, tags, result)
-            nc = insight.check(emb, *insight.dominant(payload)) if emb is not None else None
+            nc = insight.check(emb, *dominant_read(payload)) if emb is not None else None
             if nc:
                 payload["neighbor_check"] = nc  # flag likely misreads
             cache_put(h, name, None, title, payload, emb)

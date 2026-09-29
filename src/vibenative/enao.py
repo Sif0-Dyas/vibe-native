@@ -275,7 +275,7 @@ def position(styles):
     """Score-weighted centroid of several styles in the 2-D genre space.
 
     ``styles`` is the classifier's ranked list -- ``[{"style": ..., "score":
-    ...}, ...]``, the same shape ``_dominant_style`` consumes; bare strings work
+    ...}, ...]``, the same shape ``style.dominant_style`` consumes; bare strings work
     too and count equally. Unmapped styles are skipped rather than dragging the
     centroid toward an arbitrary point, so a track whose top style is unmapped
     still places using its runners-up. Returns ``(x, y)``, or None if nothing

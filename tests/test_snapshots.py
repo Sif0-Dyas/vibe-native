@@ -15,7 +15,7 @@ from vibenative.settings import current
 
 SCHEMA = """
 CREATE TABLE tracks(hash TEXT PRIMARY KEY, filename TEXT, filepath TEXT, title TEXT,
-                    payload TEXT, embedding BLOB, created REAL);
+                    payload TEXT, embedding BLOB, created REAL, style TEXT);
 CREATE TABLE training_labels(hash TEXT, genre TEXT, source TEXT, created REAL,
                              UNIQUE(hash, genre));
 CREATE TABLE training_rejects(hash TEXT, genre TEXT, UNIQUE(hash, genre));

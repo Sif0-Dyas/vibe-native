@@ -11,7 +11,8 @@ from .. import insight, taxonomy
 from ..config import log
 from ..repo import tags as tags_repo
 from ..repo import tracks as tracks_repo
-from ._shared import _artist_of, _dominant_style, _ranked_read, _second_style, bp
+from ..style import dominant_read, ranked_read
+from ._shared import _artist_of, _second_style, bp
 
 # A runner-up needs at least this share before it's worth offering as a fix.
 # Measured against the library: at 3% about 91% of tracks still keep at least one
@@ -29,12 +30,12 @@ def _override_candidates(p, top_style, limit=5):
     Sending the weights with the node means correcting it is a click instead of
     remembering how to spell it.
 
-    The same ranked read ``_dominant_style`` decides from (``_ranked_read``), so
+    The same ranked read ``style.dominant_style`` decides from (``ranked_read``), so
     the candidates are the runners-up of the read the label actually came from:
     a relabelled track offers the relabel's runners-up, and a genre you removed
     by hand is not offered back as a one-click correction.
     """
-    ranked = _ranked_read(p)
+    ranked = ranked_read(p)
     out = []
     for entry in ranked:
         style = (entry or {}).get("style")
@@ -109,7 +110,7 @@ def _keystone_fields(p, style, mode="dark"):
 
 def _map_node(h, title, filename, payload, filepath="", tags=(), mode="dark"):
     p = payload if isinstance(payload, dict) else json.loads(payload)
-    style, score = _dominant_style(p)
+    style, score = dominant_read(p)
     return {
         **_keystone_fields(p, style, mode),
         "cands": _override_candidates(p, style),

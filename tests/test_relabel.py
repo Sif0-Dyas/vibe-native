@@ -14,7 +14,7 @@ import pytest
 
 SCHEMA = """
 CREATE TABLE tracks(hash TEXT PRIMARY KEY, filename TEXT, filepath TEXT, title TEXT,
-                    payload TEXT, embedding BLOB, created REAL);
+                    payload TEXT, embedding BLOB, created REAL, style TEXT);
 """
 
 LABELS = ["Electronic---House", "Electronic---Techno", "Electronic---Dubstep"]
@@ -183,13 +183,13 @@ def test_status_tracks_coverage_and_staleness(rl, head, monkeypatch):
 
 # --- precedence ---------------------------------------------------------------
 def test_relabel_outranks_salience_but_not_an_override():
-    from vibenative.routes._shared import _dominant_style
+    from vibenative.style import dominant_style
 
     base = {"salience": [{"style": "House", "score": 0.9}]}
-    assert _dominant_style(base)[0] == "House"
+    assert dominant_style(base) == "House"
     withrel = dict(base, relabel={"styles": [{"style": "Chillhop", "score": 0.8}]})
-    assert _dominant_style(withrel)[0] == "Chillhop"
-    assert _dominant_style(dict(withrel, override="Trance"))[0] == "Trance"
+    assert dominant_style(withrel) == "Chillhop"
+    assert dominant_style(dict(withrel, override="Trance")) == "Trance"
 
 
 def test_keystone_follows_the_relabel_too():

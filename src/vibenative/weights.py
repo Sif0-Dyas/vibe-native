@@ -196,7 +196,7 @@ def base_read(payload):
     """The ranked style read a track's adjustments apply to.
 
     A hand relabel outranks the salience read, which outranks the flat style
-    list -- the same precedence ``_dominant_style`` uses, so an adjustment
+    list -- the same precedence ``style.dominant_style`` uses, so an adjustment
     nudges whatever the track currently reads as rather than resurrecting an
     older analysis underneath it. Named once here because every caller that
     spelled the chain out for itself was one tier away from disagreeing.

@@ -8,6 +8,7 @@ import time
 from contextlib import closing
 
 from .settings import current
+from .style import dominant_style
 
 # Serialises WRITES only. Many write blocks read, change and write back (a payload,
 # a rating); holding this across the block keeps two threads from losing each
@@ -301,10 +302,11 @@ TRACK_COLUMNS = (
 
 
 def _track_columns(payload: dict) -> tuple:
-    """TRACK_COLUMNS' values for one payload -- what _migration_9's UPDATE computes."""
-    styles = payload.get("styles") or []
+    """TRACK_COLUMNS' values for one payload. ``style`` is the track's identity
+    (style.dominant_style, as _migration_11 backfilled it); the rest are what
+    _migration_9's UPDATE computes."""
     return (
-        styles[0].get("style") if styles else None,
+        dominant_style(payload),
         payload.get("bpm"),
         payload.get("key"),
         payload.get("scale"),
@@ -367,6 +369,28 @@ def _migration_10(c):
         c.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table}({cols})")  # nosec B608
 
 
+def _migration_11(c):
+    """v11 -- ``tracks.style`` holds the track's identity, style.dominant_style:
+    override, then weight adjustments, then re-label, then salience, then
+    styles[0]. v9 filled it with the raw ``styles[0]``, so the Library tab
+    ignored every override, adjustment and re-label -- and salience.
+
+    Computed in Python with the same function every payload write now uses
+    (repo.tracks.update_payload, cache_put, relabel, snapshots), so the column
+    and the payload cannot disagree. A payload that doesn't parse keeps its
+    column, as v9's ``WHERE json_valid(payload)`` did."""
+    conn = getattr(c, "connection", c)  # a Cursor or the Connection itself
+    updates = []
+    for h, payload in conn.execute("SELECT hash, payload FROM tracks"):
+        try:
+            p = json.loads(payload) if isinstance(payload, str) else None
+        except ValueError:
+            continue
+        if isinstance(p, dict):
+            updates.append((dominant_style(p), h))
+    c.executemany("UPDATE tracks SET style=? WHERE hash=?", updates)
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -379,6 +403,7 @@ MIGRATIONS = [
     (8, _migration_8),
     (9, _migration_9),
     (10, _migration_10),
+    (11, _migration_11),
 ]
 
 

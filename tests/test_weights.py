@@ -160,13 +160,13 @@ def test_read_with_steps_nudges_the_read_that_is_actually_in_effect():
 
 
 def test_adjustments_outrank_automatic_reads_but_not_an_override():
-    from vibenative.routes._shared import _dominant_style
+    from vibenative.style import dominant_style
 
     base = {"salience": REAL}
-    assert _dominant_style(base)[0] == "Techno"
+    assert dominant_style(base) == "Techno"
     adjusted = dict(base, weights={"House": 3})
-    assert _dominant_style(adjusted)[0] == "House"
-    assert _dominant_style(dict(adjusted, override="Trance"))[0] == "Trance"
+    assert dominant_style(adjusted) == "House"
+    assert dominant_style(dict(adjusted, override="Trance")) == "Trance"
 
 
 def test_keystone_follows_the_adjustment_too():
@@ -335,11 +335,11 @@ def test_read_with_steps_applies_a_drop_with_no_steps_at_all():
 
 
 def test_a_dropped_top_read_changes_what_the_track_is():
-    from vibenative.routes._shared import _dominant_style
+    from vibenative.style import dominant_style
 
     p = {"salience": REAL}
-    assert _dominant_style(p)[0] == "Techno"
-    assert _dominant_style(dict(p, drops=["Techno"]))[0] == "House"
+    assert dominant_style(p) == "Techno"
+    assert dominant_style(dict(p, drops=["Techno"])) == "House"
 
 
 # --- the HTTP surface ----------------------------------------------------------
