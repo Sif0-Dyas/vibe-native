@@ -9,7 +9,7 @@ import numpy as np
 from flask import jsonify, request
 
 from .. import lookup
-from ..names import safe_name
+from ..names import GENRE_NEEDS_ALNUM, genre_folder
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo.keys import key_label_delete, key_label_put, key_labels_map
@@ -227,6 +227,9 @@ def override_route(h):
     genre = (data.get("genre") or "").strip()
     if not genre:
         return jsonify({"error": "genre required"}), 400
+    safe = genre_folder(genre)
+    if not safe:
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
 
     def set_override(payload):
         p = json.loads(payload)
@@ -242,7 +245,6 @@ def override_route(h):
     # not move into the update (never hold the DB lock across disk I/O).
     trained = False
     if filepath:
-        safe = safe_name(genre)
         src = Path(filepath)
         if safe and src.is_file():
             dest_dir = current().training_root / safe
@@ -311,7 +313,7 @@ def _remove_segment_clip(h, genre, start, end):
     ext from the track's source file). Returns True if a file was removed."""
     row = tracks_repo.file_info(h)
     filepath = row[0] if row else None
-    safe = safe_name(genre)
+    safe = genre_folder(genre)
     if not safe:
         return False
     ext = (Path(filepath).suffix.lower() if filepath else "") or ".wav"
@@ -381,6 +383,9 @@ def override_segment_route():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
+    safe = genre_folder(genre)
+    if not safe:
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
     try:
         start = float(data.get("start"))
         end = float(data.get("end"))
@@ -416,8 +421,7 @@ def override_segment_route():
 
     new_id = tracks_repo.add_segment(h, start, end, genre)
     # ffmpeg extraction stays OUTSIDE the DB lock (subprocess + disk I/O)
-    safe = safe_name(genre)
-    clip, err = _extract_segment(src, safe, h, start, end) if safe else (None, "invalid genre name")
+    clip, err = _extract_segment(src, safe, h, start, end)
     return jsonify(
         {
             "ok": True,

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from flask import jsonify, request
 
-from ..names import safe_name
+from ..names import GENRE_NEEDS_ALNUM, genre_folder
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo import training as training_repo
@@ -29,9 +29,9 @@ def save_training_route():
         return jsonify({"error": "genre required"}), 400
 
     # sanitize the genre name for use as a folder name
-    safe = safe_name(genre_raw)
+    safe = genre_folder(genre_raw)
     if not safe:
-        return jsonify({"error": "invalid genre name"}), 400
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
 
     dest_dir = current().training_root / safe
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -94,7 +94,7 @@ def _copy_into_training(filepath, genre):
 
     if not filepath:
         return False
-    safe = safe_name(genre)
+    safe = genre_folder(genre)
     src = Path(filepath)
     if not safe or not src.is_file():
         return False
@@ -185,6 +185,8 @@ def training_confirm():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
+    if not genre_folder(genre):
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
     try:
         filepath = training_repo.confirm(h, genre)
     except NotFound:
@@ -291,12 +293,14 @@ def trainset_export(genre):
 
     from .. import trainsets
 
+    safe = genre_folder(genre)
+    if not safe:
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
     data = trainsets.export(genre)
-    safe = safe_name(genre)
     return Response(
         json.dumps(data, indent=1),
         mimetype="application/json",
-        headers={"Content-Disposition": f'attachment; filename="training-{safe or "genre"}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="training-{safe}.json"'},
     )
 
 
@@ -322,14 +326,12 @@ def trainset_add(genre):
     audio across when a server-side path is known -- no re-analysis, and it
     works from anywhere a track can be selected.
     """
-    from .. import trainsets
 
     hashes = [h for h in ((request.get_json(silent=True) or {}).get("hashes") or []) if h]
     if not hashes:
         return jsonify({"error": "hashes required"}), 400
-    safe = trainsets._safe(genre)
-    if not safe:
-        return jsonify({"error": "invalid genre name"}), 400
+    if not genre_folder(genre):
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
 
     rows = training_repo.add_manual(genre, hashes)
     copied = 0

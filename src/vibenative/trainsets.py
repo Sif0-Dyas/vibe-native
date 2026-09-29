@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 
 from .config import log
-from .names import safe_name
+from .names import GENRE_NEEDS_ALNUM, genre_folder
 from .repo import tracks as tracks_repo
 from .repo import training as training_repo
 from .settings import current
@@ -46,24 +46,8 @@ def _archive():
 MANIFEST_VERSION = 1
 
 
-def _safe(genre):
-    """The folder name a genre maps to, or None if the name isn't usable.
-
-    Same character substitution as ``/override`` and ``/save_training`` so the
-    three agree on where a genre's audio lives. It adds one rejection those
-    don't: a name with no alphanumeric character at all. "///" sanitises to
-    "___", which would silently create a junk folder and then let a reset claim
-    it had cleared something real.
-    """
-    raw = genre or ""
-    if not any(c.isalnum() for c in raw):
-        return None
-    keep = safe_name(raw)
-    return keep or None
-
-
 def folder(genre):
-    s = _safe(genre)
+    s = genre_folder(genre)
     return (_root() / s) if s else None
 
 
@@ -135,7 +119,7 @@ def reset(genre):
     """
     d = folder(genre)
     if not d:
-        raise ValueError("invalid genre name")
+        raise ValueError(GENRE_NEEDS_ALNUM)
     moved = None
     if d.is_dir() and _audio_files(d):
         archive = _archive()
@@ -215,9 +199,9 @@ def import_(manifest, genre=None, copy_audio=True):
     target = (genre or manifest.get("genre") or "").strip()
     if not target:
         raise ValueError("no genre in the manifest and none given")
-    safe = _safe(target)
+    safe = genre_folder(target)
     if not safe:
-        raise ValueError("invalid genre name")
+        raise ValueError(GENRE_NEEDS_ALNUM)
 
     wanted = [entry.get("hash") for entry in (manifest.get("labels") or []) if entry.get("hash")]
     rejects = [h for h in (manifest.get("rejects") or []) if h]
