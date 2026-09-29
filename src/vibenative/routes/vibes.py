@@ -6,9 +6,10 @@ import json
 
 from flask import jsonify, request
 
-from ..db import cosine, track_embedding, vibe_centroid
 from ..repo import tracks as tracks_repo
 from ..repo import vibes as vibes_repo
+from ..repo.tracks import cosine, track_embedding
+from ..repo.vibes import vibe_centroid
 from ._shared import bp
 
 

@@ -106,7 +106,7 @@ def seed_track(h, payload):
     The three test modules that build a library each spelled out the same
     ``cache_put`` call; this is the one place that knows its argument order.
     """
-    from vibenative.db import cache_put
+    from vibenative.repo.tracks import cache_put
 
     cache_put(h, f"{h}.mp3", "", h, payload, None)
     return h

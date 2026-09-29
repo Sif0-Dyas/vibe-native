@@ -6,8 +6,8 @@ from pathlib import Path
 from flask import Blueprint, jsonify
 from werkzeug.exceptions import HTTPException
 
+from ..artists import artist_tag as _artist_tag
 from ..config import log
-from ..db import artist_tag as _artist_tag
 from ..style import ranked_read
 
 bp = Blueprint("main", __name__)

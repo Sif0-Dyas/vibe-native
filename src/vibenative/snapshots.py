@@ -23,12 +23,10 @@ import itertools
 import json
 import shutil
 import time
-from contextlib import closing
 
 from .config import log
-from .db import _db_lock, db
+from .repo import snapshots as snapshots_repo
 from .settings import current
-from .style import dominant_style
 
 # The word a caller must pass to reset(). The UI asks the user to type it.
 CONFIRM_WORD = "RESET"
@@ -53,20 +51,7 @@ def _capture():
     table, so they're pulled out by hash -- restoring writes them back into the
     payload without disturbing the analysis stored alongside.
     """
-    state = {"tables": {}, "overrides": {}}
-    with closing(db()) as conn, conn as c:
-        for t in _TABLES:
-            cur = c.execute(f"SELECT * FROM {t}")  # nosec B608  # fixed table allow-list
-            cols = [d[0] for d in cur.description]
-            state["tables"][t] = {"columns": cols, "rows": [list(r) for r in cur.fetchall()]}
-        for h, payload in c.execute("SELECT hash, payload FROM tracks"):
-            try:
-                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-            except (TypeError, ValueError):
-                continue
-            if p.get("override"):
-                state["overrides"][h] = p["override"]
-    return state
+    return snapshots_repo.capture(_TABLES)
 
 
 # Windows' wall clock ticks every 15.6 ms (`time.get_clock_info("time").resolution`),
@@ -135,20 +120,7 @@ def list_all():
 
 def _clear():
     """Wipe the live learned state. Only ever called after a snapshot exists."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        for t in _TABLES:
-            c.execute(f"DELETE FROM {t}")  # nosec B608  # fixed table allow-list
-        for h, payload in c.execute("SELECT hash, payload FROM tracks").fetchall():
-            try:
-                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-            except (TypeError, ValueError):
-                continue
-            if p.get("override"):
-                p.pop("override", None)
-                c.execute(
-                    "UPDATE tracks SET payload=?, style=? WHERE hash=?",
-                    (json.dumps(p), dominant_style(p), h),
-                )
+    snapshots_repo.clear(_TABLES)
 
 
 def reset(confirm, label="pre-reset"):
@@ -199,32 +171,7 @@ def restore(snapshot_id):
     before = create(f"pre-restore-{snapshot_id}")
     _clear()
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        for t, blob in state.get("tables", {}).items():
-            if t not in _TABLES:
-                continue  # ignore anything not on the allow-list
-            cols, rows = blob.get("columns") or [], blob.get("rows") or []
-            if not cols or not rows:
-                continue
-            ph = ",".join("?" * len(cols))
-            names = ",".join(cols)
-            c.executemany(
-                f"INSERT OR REPLACE INTO {t} ({names}) VALUES ({ph})",  # nosec B608
-                [tuple(r) for r in rows],
-            )
-        for h, override in (state.get("overrides") or {}).items():
-            row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
-            if not row:
-                continue  # the track is gone; its override has nowhere to land
-            try:
-                p = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})
-            except (TypeError, ValueError):
-                continue
-            p["override"] = override
-            c.execute(
-                "UPDATE tracks SET payload=?, style=? WHERE hash=?",
-                (json.dumps(p), dominant_style(p), h),
-            )
+    snapshots_repo.restore(state, _TABLES)
 
     head = path / "custom_head.npz"
     if head.is_file():

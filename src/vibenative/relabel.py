@@ -26,12 +26,10 @@ one key, and you can always tell a re-labelled read from a measured one.
 
 import json
 import time
-from contextlib import closing
 
 import numpy as np
 
 from .config import log
-from .db import db
 from .repo import NotFound
 from .repo import tracks as tracks_repo
 
@@ -79,11 +77,7 @@ def _read(pred, labels, topk=TOPK):
 
 
 def _rows(limit=None):
-    q = "SELECT hash, title, filename, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
-    if limit:
-        q += f" LIMIT {int(limit)}"
-    with closing(db()) as conn, conn as c:
-        return c.execute(q).fetchall()
+    return tracks_repo.embedded_rows(limit)
 
 
 def _current_top(p):
@@ -234,8 +228,7 @@ def revert():
     apply() uses, so nothing but the ``relabel`` key changes and the style
     column follows. (Unlike apply, revert never raced: it always read and
     wrote under one lock. This is for one write path, not a fix.)"""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, payload FROM tracks").fetchall()
+    rows = tracks_repo.hash_payloads()
     cleared = 0
     for h, payload in rows:
         try:
@@ -265,17 +258,16 @@ def status():
     """How much of the library currently carries a re-label, and from which head."""
     total = relabelled = 0
     heads = {}
-    with closing(db()) as conn, conn as c:
-        for (payload,) in c.execute("SELECT payload FROM tracks"):
-            try:
-                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-            except (TypeError, ValueError):
-                continue
-            total += 1
-            r = p.get(KEY)
-            if r:
-                relabelled += 1
-                heads[r.get("head", "?")] = heads.get(r.get("head", "?"), 0) + 1
+    for _h, payload in tracks_repo.hash_payloads():
+        try:
+            p = json.loads(payload) if isinstance(payload, str) else (payload or {})
+        except (TypeError, ValueError):
+            continue
+        total += 1
+        r = p.get(KEY)
+        if r:
+            relabelled += 1
+            heads[r.get("head", "?")] = heads.get(r.get("head", "?"), 0) + 1
     return {
         "total": total,
         "relabelled": relabelled,

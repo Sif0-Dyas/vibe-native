@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from .. import db as _db
+from ..artists import artist_tag
 from ..style import dominant_style
 from . import NotFound, reading, writing
 
@@ -13,7 +14,8 @@ from . import NotFound, reading, writing
 def library_rev() -> int:
     """The current library revision (see db._migration_7)."""
     with reading() as c:
-        return _db.library_rev(c)
+        row = c.execute("SELECT rev FROM library_rev WHERE id = 1").fetchone()
+    return int(row[0]) if row else 0
 
 
 def map_rows():
@@ -220,10 +222,152 @@ def embeddings_for(hashes) -> dict:
     return out
 
 
-def embedded_rows():
-    """(hash, title, filename, payload, embedding) for every track with an embedding."""
+def embedded_rows(limit=None):
+    """(hash, title, filename, payload, embedding) for every track with an
+    embedding (the first ``limit`` of them, if given)."""
+    q = "SELECT hash, title, filename, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
+    if limit:
+        q += f" LIMIT {int(limit)}"
+    with reading() as c:
+        return c.execute(q).fetchall()
+
+
+# --- the analysis cache ----------------------------------------------------------
+def track_columns(payload: dict) -> tuple:
+    """db.TRACK_COLUMNS' values for one payload. ``style`` is the track's identity
+    (style.dominant_style, as db._migration_11 backfilled it); the rest are what
+    db._migration_9's UPDATE computes."""
+    return (
+        dominant_style(payload),
+        payload.get("bpm"),
+        payload.get("key"),
+        payload.get("scale"),
+        payload.get("camelot"),
+        payload.get("duration"),
+        artist_tag(payload),
+    )
+
+
+def cache_get(h: str):
+    with reading() as c:
+        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def cache_put(h: str, filename, filepath, title, payload: dict, emb):
+    import numpy as np
+
+    blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
+    with writing() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, "
+            "created, style, bpm, key, scale, camelot, duration, tag_artist) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (h, filename, filepath or "", title, json.dumps(payload), blob, time.time())
+            + track_columns(payload),
+        )
+
+
+def forget_track(h: str) -> int:
+    """Delete everything stored about one track, in one transaction. Returns how
+    many `tracks` rows went (0 or 1). The tracks/track_tags triggers bump
+    library_rev, so the map cache rebuilds. The audio file is never touched."""
+    with writing() as c:
+        deleted = c.execute("DELETE FROM tracks WHERE hash=?", (h,)).rowcount
+        for t in _db.TRACK_TABLES[1:]:
+            c.execute(f"DELETE FROM {t} WHERE hash=?", (h,))  # nosec B608  # t from TRACK_TABLES
+    return deleted
+
+
+def waveform_cache_get(h: str):
+    with reading() as c:
+        row = c.execute("SELECT data_json FROM waveform_cache WHERE hash=?", (h,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def waveform_cache_put(h: str, data: dict):
+    with writing() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO waveform_cache(hash, data_json, created) VALUES(?,?,?)",
+            (h, json.dumps(data), time.time()),
+        )
+
+
+# --- file paths ----------------------------------------------------------------------
+def is_library_filepath(path: str) -> bool:
+    """True if ``path`` is exactly the server-side path of a track in the library.
+
+    Routes that act on a caller-named server file (/save_training's copy) accept
+    only these, so the request can't name an arbitrary file on disk."""
+    with reading() as c:
+        row = c.execute("SELECT 1 FROM tracks WHERE filepath=? LIMIT 1", (path,)).fetchone()
+    return row is not None
+
+
+def path_rows():
+    """(hash, title, filename, filepath) for every track."""
+    with reading() as c:
+        return c.execute("SELECT hash, title, filename, filepath FROM tracks").fetchall()
+
+
+def hash_filepaths():
+    """(hash, filepath) for every track."""
+    with reading() as c:
+        return c.execute("SELECT hash, filepath FROM tracks").fetchall()
+
+
+def set_filepaths(pairs):
+    """Record each (filepath, hash) in ``pairs``, in one transaction."""
+    with writing() as c:
+        c.executemany("UPDATE tracks SET filepath=? WHERE hash=?", pairs)
+
+
+# --- payloads, whole-library -----------------------------------------------------------
+def hash_payloads():
+    """(hash, payload JSON) for every track."""
+    with reading() as c:
+        return c.execute("SELECT hash, payload FROM tracks").fetchall()
+
+
+def summary_rows():
+    """(hash, title, filename, payload JSON) for every track."""
+    with reading() as c:
+        return c.execute("SELECT hash, title, filename, payload FROM tracks").fetchall()
+
+
+def style_embeddings():
+    """(hash, style column, embedding) for every track with an embedding."""
     with reading() as c:
         return c.execute(
-            "SELECT hash, title, filename, payload, embedding FROM tracks "
-            "WHERE embedding IS NOT NULL"
+            "SELECT hash, style, embedding FROM tracks WHERE embedding IS NOT NULL"
         ).fetchall()
+
+
+def audit_rows():
+    """(hash, title, payload JSON, embedding) for every track with an embedding."""
+    with reading() as c:
+        return c.execute(
+            "SELECT hash, title, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
+        ).fetchall()
+
+
+# --- one embedding, and comparing two ---------------------------------------------------
+def track_embedding(h: str):
+    import numpy as np
+
+    with reading() as c:
+        row = c.execute("SELECT embedding FROM tracks WHERE hash=?", (h,)).fetchone()
+    if not row or row[0] is None:
+        return None
+    return np.frombuffer(row[0], dtype=np.float32)
+
+
+def cosine(a, b):
+    """Cosine similarity of two embeddings (maths, not SQL -- kept beside the
+    readers whose vectors it compares); 0.0 if either is all zeros."""
+    import numpy as np
+
+    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return float(np.dot(a, b) / (na * nb))

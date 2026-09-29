@@ -1,10 +1,9 @@
-"""SQLite persistence: analysis cache, embeddings, and vibe centroids."""
+"""The database itself: per-thread connections, the write lock, the schema and
+its migrations. Reading and writing rows is vibenative.repo's job."""
 
-import hashlib
 import json
 import sqlite3
 import threading
-import time
 from contextlib import closing
 
 from .settings import current
@@ -278,15 +277,6 @@ def _migration_8(c):
         source TEXT, created REAL)""")
 
 
-def artist_tag(payload) -> str:
-    """The artist a track's own tags name -- ``artist``, else ``albumartist`` --
-    stripped; '' if neither. The first half of ``_artist_of`` (its fallback parses
-    the title/filename), kept here so the ``tracks.tag_artist`` column, cache_put
-    and the routes all apply exactly one rule."""
-    tag = ((payload or {}).get("tags") or {}).get("tag") or {}
-    return (tag.get("artist") or tag.get("albumartist") or "").strip()
-
-
 # Denormalized from the payload so listings needn't parse it: (column, declared type).
 # bpm and duration have NO declared type on purpose: REAL affinity would turn a
 # JSON integer (bpm 128) into 128.0 and change what /library returns.
@@ -299,21 +289,6 @@ TRACK_COLUMNS = (
     ("duration", ""),
     ("tag_artist", "TEXT"),
 )
-
-
-def _track_columns(payload: dict) -> tuple:
-    """TRACK_COLUMNS' values for one payload. ``style`` is the track's identity
-    (style.dominant_style, as _migration_11 backfilled it); the rest are what
-    _migration_9's UPDATE computes."""
-    return (
-        dominant_style(payload),
-        payload.get("bpm"),
-        payload.get("key"),
-        payload.get("scale"),
-        payload.get("camelot"),
-        payload.get("duration"),
-        artist_tag(payload),
-    )
 
 
 def _migration_9(c):
@@ -427,64 +402,8 @@ def init_db():
             c.execute("UPDATE schema_version SET version=?", (current,))
 
 
-def library_rev(c) -> int:
-    """The current library revision (see _migration_7), on an open cursor."""
-    row = c.execute("SELECT rev FROM library_rev WHERE id = 1").fetchone()
-    return int(row[0]) if row else 0
-
-
-def file_hash(path) -> str:
-    """Content hash: same song caches regardless of filename or location."""
-    h = hashlib.sha1()  # nosec B324  # content cache key (dedupe by audio), not security
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def cache_get(h: str):
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
-    return json.loads(row[0]) if row else None
-
-
-def cache_put(h: str, filename, filepath, title, payload: dict, emb):
-    import numpy as np
-
-    blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, "
-            "created, style, bpm, key, scale, camelot, duration, tag_artist) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (h, filename, filepath or "", title, json.dumps(payload), blob, time.time())
-            + _track_columns(payload),
-        )
-
-
-def key_label_get(h: str):
-    """The corrected (key, scale) for a track, or None."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT key, scale FROM key_labels WHERE hash=?", (h,)).fetchone()
-    return (row[0], row[1]) if row else None
-
-
-def key_label_put(h: str, key: str, scale: str, source: str = "manual"):
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT OR REPLACE INTO key_labels(hash, key, scale, source, created) VALUES(?,?,?,?,?)",
-            (h, key, scale, source, time.time()),
-        )
-
-
-def key_label_delete(h: str):
-    """Drop a correction; the detector's own answer stands again."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute("DELETE FROM key_labels WHERE hash=?", (h,))
-
-
 # Every table holding per-track rows, keyed by the content hash in a `hash`
-# column. forget_track deletes from all of them; test_db checks this list against
+# column. repo.tracks.forget_track deletes from all of them; test_db checks this list against
 # the live schema, so a new per-track table cannot be silently left behind.
 TRACK_TABLES = (
     "tracks",
@@ -498,103 +417,3 @@ TRACK_TABLES = (
     "training_rejects",
     "key_labels",
 )
-
-
-def forget_track(h: str) -> int:
-    """Delete everything stored about one track, in one transaction. Returns how
-    many `tracks` rows went (0 or 1). The tracks/track_tags triggers bump
-    library_rev, so the map cache rebuilds. The audio file is never touched."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        deleted = c.execute("DELETE FROM tracks WHERE hash=?", (h,)).rowcount
-        for t in TRACK_TABLES[1:]:
-            c.execute(f"DELETE FROM {t} WHERE hash=?", (h,))  # nosec B608  # t from TRACK_TABLES
-    return deleted
-
-
-def key_labels_map():
-    """{hash: (key, scale)} for every correction -- one query for a whole listing."""
-    with closing(db()) as conn, conn as c:
-        return {r[0]: (r[1], r[2]) for r in c.execute("SELECT hash, key, scale FROM key_labels")}
-
-
-def key_labels_all():
-    """[(hash, filepath, key, scale)] for every corrected track that still has a
-    file on disk recorded -- the training set tools/eval_key.py reads."""
-    with closing(db()) as conn, conn as c:
-        return c.execute(
-            "SELECT l.hash, t.filepath, l.key, l.scale FROM key_labels l "
-            "JOIN tracks t ON t.hash = l.hash WHERE t.filepath != ''"
-        ).fetchall()
-
-
-def waveform_cache_get(h: str):
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT data_json FROM waveform_cache WHERE hash=?", (h,)).fetchone()
-    return json.loads(row[0]) if row else None
-
-
-def waveform_cache_put(h: str, data: dict):
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT OR REPLACE INTO waveform_cache(hash, data_json, created) VALUES(?,?,?)",
-            (h, json.dumps(data), time.time()),
-        )
-
-
-def is_library_filepath(path: str) -> bool:
-    """True if ``path`` is exactly the server-side path of a track in the library.
-
-    Routes that act on a caller-named server file (/save_training's copy) accept
-    only these, so the request can't name an arbitrary file on disk."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT 1 FROM tracks WHERE filepath=? LIMIT 1", (path,)).fetchone()
-    return row is not None
-
-
-def track_embedding(h: str):
-    import numpy as np
-
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT embedding FROM tracks WHERE hash=?", (h,)).fetchone()
-    if not row or row[0] is None:
-        return None
-    return np.frombuffer(row[0], dtype=np.float32)
-
-
-def cosine(a, b):
-    import numpy as np
-
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
-
-
-def vibe_centroid(vibe_id: int):
-    """Preference-weighted center of a vibe (Rocchio relevance feedback):
-
-        center = Σ (weightᵢ · embeddingᵢ) / Σ |weightᵢ|
-
-    Positive-weight (liked) tracks pull the center toward them; negative-weight
-    (disliked) tracks push it away. Cosine ranking is scale-invariant, so the
-    normalization just keeps magnitudes tame. With all weights = 1 this reduces
-    to the old plain mean. Returns None if the vibe has no usable members."""
-    import numpy as np
-
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT t.embedding, v.weight FROM vibe_tracks v JOIN tracks t "
-            "ON t.hash=v.hash WHERE v.vibe_id=? AND t.embedding IS NOT NULL",
-            (vibe_id,),
-        ).fetchall()
-    acc, wsum = None, 0.0
-    for blob, w in rows:
-        if not blob:
-            continue
-        w = 1.0 if w is None else float(w)
-        emb = np.frombuffer(blob, dtype=np.float32) * w
-        acc = emb if acc is None else acc + emb
-        wsum += abs(w)
-    if acc is None or wsum == 0:
-        return None
-    return acc / wsum

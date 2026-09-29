@@ -6,13 +6,10 @@ from pathlib import Path
 
 from flask import jsonify, request
 
-from ..db import (
-    cosine,
-    is_library_filepath,
-)
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo import training as training_repo
+from ..repo.tracks import cosine, is_library_filepath
 from ._shared import bp
 from .analysis import _check_upload
 

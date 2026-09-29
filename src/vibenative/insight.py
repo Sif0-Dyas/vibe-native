@@ -9,12 +9,11 @@ library dominated by one genre, auto-correcting would create an echo chamber).
 """
 
 import json
-from contextlib import closing
 
 import numpy as np
 
 from .config import log
-from .db import db
+from .repo import tracks as tracks_repo
 from .style import dominant_read, dominant_style
 
 # Thresholds (tuned on the reference library -> ~5% flag rate).
@@ -80,10 +79,7 @@ def check(emb, top_style, top_conf, exclude_hash=None):
         return None
     # tracks.style is style.dominant_style(payload), kept current on every write,
     # so the neighbours' styles come from the column and no payload is parsed.
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, style, embedding FROM tracks WHERE embedding IS NOT NULL"
-        ).fetchall()
+    rows = tracks_repo.style_embeddings()
     q = np.asarray(emb, dtype=np.float32)
     q = q / (np.linalg.norm(q) + 1e-9)
     sims = []
@@ -123,10 +119,7 @@ def audit(prepared=None):
         embs = [r[3] for r in rows]
         return _audit_core(hashes, titles, payloads, embs)
 
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
-        ).fetchall()
+    rows = tracks_repo.audit_rows()
     if len(rows) < 4:
         return []
     hashes, titles, payloads, embs = [], [], [], []

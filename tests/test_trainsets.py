@@ -110,7 +110,7 @@ def test_export_hashes_the_folder_not_just_the_label_table(ts):
 
 
 def test_export_merges_folder_and_table_without_duplicates(ts):
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     f = put_file(ts, "Dubstep", "a.mp3", b"unique-a")
     label(ts, file_hash(f), "Dubstep")  # same track, reachable both ways
@@ -128,7 +128,7 @@ def test_export_skips_applesidecars(ts):
 
 # --- import -------------------------------------------------------------------
 def test_import_restores_labels_and_copies_audio(ts, tmp_path):
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     src = tmp_path / "music" / "song.mp3"
     src.parent.mkdir(parents=True)
@@ -160,7 +160,7 @@ def test_import_reports_tracks_the_library_does_not_have(ts):
 
 
 def test_import_merges_and_is_idempotent(ts, tmp_path):
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     src = tmp_path / "s.mp3"
     src.write_bytes(b"x")
@@ -174,7 +174,7 @@ def test_import_merges_and_is_idempotent(ts, tmp_path):
 
 
 def test_import_can_retarget_a_manifest_to_another_genre(ts, tmp_path):
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     src = tmp_path / "s.mp3"
     src.write_bytes(b"x")
@@ -194,7 +194,7 @@ def test_import_rejects_junk(ts):
 
 # --- round trip ---------------------------------------------------------------
 def test_export_import_round_trip_survives_a_reset(ts, tmp_path):
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     src = tmp_path / "music" / "song.mp3"
     src.parent.mkdir(parents=True)

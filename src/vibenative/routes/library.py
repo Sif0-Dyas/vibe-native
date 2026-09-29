@@ -8,16 +8,10 @@ from pathlib import Path
 from flask import jsonify, request
 
 from .. import lookup
-from ..db import (
-    cosine,
-    forget_track,
-    key_label_delete,
-    key_label_put,
-    key_labels_map,
-    track_embedding,
-)
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
+from ..repo.keys import key_label_delete, key_label_put, key_labels_map
+from ..repo.tracks import cosine, forget_track, track_embedding
 from ._shared import _artist_from, bp
 
 

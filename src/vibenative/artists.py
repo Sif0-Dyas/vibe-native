@@ -40,6 +40,16 @@ artist and corrupts a real one.
 
 import re
 
+
+def artist_tag(payload) -> str:
+    """The artist a track's own tags name -- ``artist``, else ``albumartist`` --
+    stripped; '' if neither. The first half of ``_artist_of`` (its fallback parses
+    the title/filename), kept here so the ``tracks.tag_artist`` column, cache_put
+    and the routes all apply exactly one rule."""
+    tag = ((payload or {}).get("tags") or {}).get("tag") or {}
+    return (tag.get("artist") or tag.get("albumartist") or "").strip()
+
+
 # Separators that are safe to split on unconditionally. Ordered longest-first
 # where they share a prefix ("featuring" before "feat") so the longer wins.
 _WORDS = re.compile(

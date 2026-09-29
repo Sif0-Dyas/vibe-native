@@ -19,12 +19,11 @@ mapping changes.
 
 import json
 import statistics
-from contextlib import closing
 
 from . import keystone as K
 from . import palette as P
 from . import taxonomy
-from .db import db
+from .repo import tracks as tracks_repo
 
 # Conventional tempo ranges and a one-line character sketch per keystone.
 #
@@ -186,8 +185,7 @@ def _octave_flag(observed_median, canonical):
 
 
 def _rows():
-    with closing(db()) as conn, conn as c:
-        return c.execute("SELECT hash, title, filename, payload FROM tracks").fetchall()
+    return tracks_repo.summary_rows()
 
 
 def summarise(top_n=5, mode="dark"):

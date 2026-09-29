@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vibenative.config import AUDIO_EXTS, log  # noqa: E402
-from vibenative.db import file_hash  # noqa: E402
+from vibenative.hashing import file_hash  # noqa: E402
 
 
 def iter_labeled_files(data_dir: Path):

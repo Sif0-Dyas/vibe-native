@@ -161,7 +161,7 @@ def export(genre):
     which makes it the source of truth -- exporting from the table alone
     produced a manifest that restored nothing.
     """
-    from .db import file_hash
+    from .hashing import file_hash
 
     d = folder(genre)
     files = _audio_files(d)

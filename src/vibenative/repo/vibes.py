@@ -150,3 +150,33 @@ def import_(vibes):
                 c.execute(_UPSERT_MEMBER, (vid, h, w))
                 links += 1
     return created, merged, links
+
+
+def vibe_centroid(vibe_id: int):
+    """Preference-weighted center of a vibe (Rocchio relevance feedback):
+
+        center = Σ (weightᵢ · embeddingᵢ) / Σ |weightᵢ|
+
+    Positive-weight (liked) tracks pull the center toward them; negative-weight
+    (disliked) tracks push it away. Cosine ranking is scale-invariant, so the
+    normalization just keeps magnitudes tame. With all weights = 1 this reduces
+    to the old plain mean. Returns None if the vibe has no usable members."""
+    import numpy as np
+
+    with reading() as c:
+        rows = c.execute(
+            "SELECT t.embedding, v.weight FROM vibe_tracks v JOIN tracks t "
+            "ON t.hash=v.hash WHERE v.vibe_id=? AND t.embedding IS NOT NULL",
+            (vibe_id,),
+        ).fetchall()
+    acc, wsum = None, 0.0
+    for blob, w in rows:
+        if not blob:
+            continue
+        w = 1.0 if w is None else float(w)
+        emb = np.frombuffer(blob, dtype=np.float32) * w
+        acc = emb if acc is None else acc + emb
+        wsum += abs(w)
+    if acc is None or wsum == 0:
+        return None
+    return acc / wsum

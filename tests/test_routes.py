@@ -71,7 +71,7 @@ def test_save_training_refuses_a_path_that_is_not_in_the_library(client, tmp_pat
     assert r.status_code == 400
 
     # the same file, once it is a library track, is copied
-    from vibenative.db import cache_put
+    from vibenative.repo.tracks import cache_put
 
     cache_put("f" * 40, stray.name, str(stray), "t", {}, None)
     r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
@@ -181,7 +181,10 @@ def test_forget_clears_every_per_track_table(client):
     # schema, so a new per-track table fails here until forget_track covers it.
     from contextlib import closing
 
-    from vibenative.db import TRACK_TABLES, db, library_rev
+    from vibenative.db import TRACK_TABLES, db
+
+    def library_rev(c):
+        return c.execute("SELECT rev FROM library_rev WHERE id = 1").fetchone()[0]
 
     with closing(db()) as conn, conn as c:
         keyed = {
@@ -369,7 +372,7 @@ def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch, 
 
     from conftest import seed_track
     from vibenative import analysis, decode, metadata
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     def hang(cmd, **kw):
         raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))

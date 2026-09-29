@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from vibenative import db
+from vibenative.repo import keys as keys_repo
+from vibenative.repo import tracks as tracks_repo
 from vibenative.settings import current
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -221,10 +223,10 @@ def test_cache_put_round_trips(tmp_path, use_settings):
 
     payload = {"styles": [{"style": "House", "score": 0.5}], "bpm": 124.0}
     emb = np.arange(1280, dtype=np.float32) / 1280
-    db.cache_put("h" * 40, "song.mp3", None, "Song", payload, emb)
+    tracks_repo.cache_put("h" * 40, "song.mp3", None, "Song", payload, emb)
 
-    assert db.cache_get("h" * 40) == payload
-    assert np.array_equal(db.track_embedding("h" * 40), emb)
+    assert tracks_repo.cache_get("h" * 40) == payload
+    assert np.array_equal(tracks_repo.track_embedding("h" * 40), emb)
     conn = sqlite3.connect(current().db_path)
     row = conn.execute(
         "SELECT hash, filename, filepath, title, created FROM tracks WHERE hash=?", ("h" * 40,)
@@ -237,7 +239,9 @@ def test_cache_put_round_trips(tmp_path, use_settings):
     names = ", ".join(n for n, _ in db.TRACK_COLUMNS)
     cols = conn.execute(f"SELECT {names} FROM tracks WHERE hash=?", ("h" * 40,)).fetchone()  # nosec B608
     conn.close()
-    assert cols == db._track_columns(payload) == ("House", 124.0, None, None, None, None, "")
+    assert (
+        cols == tracks_repo.track_columns(payload) == ("House", 124.0, None, None, None, None, "")
+    )
 
 
 def test_migration_9_backfills_the_listing_columns(tmp_path, use_settings):
@@ -280,7 +284,7 @@ def test_migration_9_backfills_the_listing_columns(tmp_path, use_settings):
     names = ", ".join(n for n, _ in db.TRACK_COLUMNS)
     for h, p in payloads.items():
         row = conn.execute(f"SELECT {names} FROM tracks WHERE hash=?", (h,)).fetchone()  # nosec B608
-        assert row == db._track_columns(p), h
+        assert row == tracks_repo.track_columns(p), h
     # a JSON integer stays an integer (no REAL affinity), so /library's JSON is unchanged
     assert conn.execute("SELECT typeof(bpm) FROM tracks WHERE hash=?", ("b" * 40,)).fetchone() == (
         "integer",
@@ -325,7 +329,7 @@ def test_readers_and_writers_share_the_db_concurrently(tmp_path, use_settings):
     use_settings(db_path=tmp_path / "conc.db")
     db.init_db()
     for i in range(50):
-        db.cache_put(
+        tracks_repo.cache_put(
             f"seed{i:036d}", "s.mp3", "", "s", {"styles": [{"style": "House"}]}, np.ones(8)
         )
 
@@ -335,9 +339,9 @@ def test_readers_and_writers_share_the_db_concurrently(tmp_path, use_settings):
     def reader():
         try:
             while not stop.is_set():
-                assert db.cache_get(f"seed{7:036d}")["styles"][0]["style"] == "House"
-                db.key_labels_map()
-                assert db.track_embedding(f"seed{3:036d}") is not None
+                assert tracks_repo.cache_get(f"seed{7:036d}")["styles"][0]["style"] == "House"
+                keys_repo.key_labels_map()
+                assert tracks_repo.track_embedding(f"seed{3:036d}") is not None
                 with db.closing(db.db()) as conn, conn as c:
                     c.execute("SELECT COUNT(*), MAX(created) FROM tracks").fetchone()
                 counts["reads"] += 1
@@ -349,10 +353,10 @@ def test_readers_and_writers_share_the_db_concurrently(tmp_path, use_settings):
             i = 0
             while not stop.is_set():
                 h = f"w{w}-{i:035d}"
-                db.cache_put(
+                tracks_repo.cache_put(
                     h, "w.mp3", "", "w", {"styles": [{"style": "Techno"}], "bpm": 128}, np.ones(8)
                 )
-                db.key_label_put(h, "A", "minor")
+                keys_repo.key_label_put(h, "A", "minor")
                 written[w].append(h)
                 counts["writes"] += 1
                 i += 1
@@ -371,6 +375,6 @@ def test_readers_and_writers_share_the_db_concurrently(tmp_path, use_settings):
     assert errors == []
     assert counts["reads"] > 50 and counts["writes"] > 20
     everything = written[0] + written[1]
-    assert all(db.cache_get(h) is not None for h in everything)  # every write committed
-    assert set(db.key_labels_map()) >= set(everything)
+    assert all(tracks_repo.cache_get(h) is not None for h in everything)  # every write committed
+    assert set(keys_repo.key_labels_map()) >= set(everything)
     db.close_all()

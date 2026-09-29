@@ -308,7 +308,7 @@ def test_playable_means_the_file_is_actually_there(client, tmp_path):
     """A recorded path is not enough: an unplugged drive leaves thousands of
     tracks with a path and no file, and the "only tracks with audio" filter
     then hid nothing while every popup offered a play button that failed."""
-    from vibenative.db import cache_put
+    from vibenative.repo.tracks import cache_put
 
     real = tmp_path / "real.wav"
     real.write_bytes(b"RIFF")

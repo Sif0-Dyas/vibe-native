@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from vibenative import db, insight
+from vibenative.repo.tracks import cache_put
 from vibenative.settings import current
 from vibenative.style import dominant_read, dominant_style
 
@@ -48,7 +49,7 @@ def library(client):
     for i, (h, p) in enumerate(
         [("ovr", BASE), ("wts", BASE), ("rel", RELABELLED), ("pl1", BASE), ("pl2", BASE)]
     ):
-        db.cache_put(h * 8, f"{h}.mp3", "", h, p, _emb(i))
+        cache_put(h * 8, f"{h}.mp3", "", h, p, _emb(i))
     assert client.post("/override/" + "ovr" * 8, json={"genre": "Dubstep"}).status_code == 200
     r = client.post("/weights/" + "wts" * 8, json={"steps": {"House": 3}})
     assert r.status_code == 200, r.get_json()

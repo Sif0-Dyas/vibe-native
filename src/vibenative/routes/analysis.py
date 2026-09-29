@@ -24,15 +24,10 @@ from ..analysis import (
     waveform_minmax,
 )
 from ..config import AUDIO_EXTS, log
-from ..db import (
-    cache_get,
-    cache_put,
-    file_hash,
-    waveform_cache_get,
-    waveform_cache_put,
-)
 from ..decode import UnreadableAudio
+from ..hashing import file_hash
 from ..repo import tracks as tracks_repo
+from ..repo.tracks import cache_get, cache_put, waveform_cache_get, waveform_cache_put
 from ..serve import MAX_BATCH_WORKERS
 from ..settings import current
 from ..style import dominant_read
@@ -83,7 +78,7 @@ def _apply_key_correction(h, payload):
     """Overlay a human-corrected key onto an analysis payload (in place).
     Corrections live outside the payload so re-analysis cannot clobber them, so
     every path that serves a payload has to put them back."""
-    from ..db import key_label_get
+    from ..repo.keys import key_label_get
 
     correction = key_label_get(h)
     if not correction:

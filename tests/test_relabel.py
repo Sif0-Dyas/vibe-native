@@ -297,13 +297,14 @@ def test_an_override_made_during_apply_survives(client, monkeypatch):
     override lands exactly there; afterwards both must be in the payload."""
     import threading
 
-    from vibenative import analysis, db, relabel
+    from vibenative import analysis, relabel
+    from vibenative.repo.tracks import cache_put
     from vibenative.style import dominant_style
 
     hashes = [c * 40 for c in "abc"]
     for i, h in enumerate(hashes):
         payload = {"salience": [{"style": "House", "score": 0.9}], "bpm": 120 + i}
-        db.cache_put(h, f"{h[:4]}.mp3", "", h[:4], payload, np.full(1280, i + 1, np.float32))
+        cache_put(h, f"{h[:4]}.mp3", "", h[:4], payload, np.full(1280, i + 1, np.float32))
 
     inferring, release = threading.Event(), threading.Event()
     engine = fake_engine("Dubstep")
