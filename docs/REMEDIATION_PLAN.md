@@ -173,9 +173,13 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] `Settings` object; delete the conftest reload hack
   - Suite time did not move (119.0 s before, 117.5–119.7 s after): the reload hack cost ~1.6 s of fixture setup. ~82 s of the two minutes is three real-engine oracle tests (`test_tonality::test_oracle_agreement`, `test_oracle_match::test_embeddings_match_oracle`, `test_tempo::test_tempo_matches_oracle`) that run whenever the models are present, `FAKE_ANALYZER=1` or not.
   - `onnx_engine.MODELS` / `tempo.MODELS` stay module constants: they locate the bundled models (`paths.models_dir()`), they are not settings.
-- [ ] Repository layer; routes contain no SQL
+- [x] Repository layer; routes contain no SQL
+  - `vibenative/repo/`: `tracks` (with `segment_overrides`, `lookup_cache`), `tags`, `vibes`, `playlists`, `training`. The write lock is taken only inside repo functions; each read-modify-write keeps its read and write under one lock. `tests/test_no_sql_in_routes.py` fails on `execute(` / `executemany(` / `cursor(` / `_db_lock` / `db()` in `routes/*.py` and `trainsets.py`.
+  - `trainsets.py`'s SQL moved to `repo/training.py`; the module keeps its folder, archive and manifest logic.
 - [ ] One `dominant_style()`; one `@bp.errorhandler`; `trainsets` stops importing from `routes`
   - `/similar`, `/training/candidates` and `insight.check` are waiting on `dominant_style()` before they can drop payload parsing: each needs the override/weights/relabel-aware style, which the v9 `style` column (raw `styles[0]`) is not.
+- [ ] `relabel.apply` lost update: it reads payloads unlocked, runs inference, then writes whole payloads back under the lock — an `/override` or `/weights` during that window is lost. Fix: write only the relabel fields per track under the lock, re-reading each payload at write time.
+- [ ] Repo follow-up: move the remaining non-route SQL (ratings 7, snapshots 8, relabel 5, filepaths 3, insight 2, genres 1) once `dominant_style` lands
 - [ ] `fake_engine.py`; FAKE branches out of routes and `analysis.py`
 - [ ] Dedupe sanitizer / training root / mel filterbank; drop the 21 lazy numpy imports
 - [ ] `taxonomy/` package
