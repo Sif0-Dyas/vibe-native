@@ -351,3 +351,23 @@ def current_db():
     from vibenative.settings import current
 
     return current().db_path
+
+
+def test_preview_reports_the_style_the_app_shows_as_from(client, monkeypatch):
+    """A track with a weight adjustment reads as its adjusted style everywhere in
+    the app; the preview's "from" must say the same, not the raw top."""
+    from vibenative import analysis, relabel
+    from vibenative.repo.tracks import cache_put
+    from vibenative.style import dominant_style
+
+    payload = {
+        "salience": [{"style": "Techno", "score": 0.6}, {"style": "House", "score": 0.3}],
+        "weights": {"House": 3},
+    }
+    assert dominant_style(payload) == "House"  # what the app shows
+    cache_put("w" * 40, "w.mp3", "", "w", payload, np.ones(1280, np.float32))
+    monkeypatch.setattr(analysis, "get_engine", lambda: fake_engine("Dubstep"))
+
+    ex = {e["hash"]: e for e in relabel.preview()["examples"]}
+    assert ex["w" * 40]["from"] == "House"
+    assert ex["w" * 40]["to"] == "Dubstep"

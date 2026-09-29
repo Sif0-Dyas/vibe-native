@@ -32,6 +32,7 @@ import numpy as np
 from .config import log
 from .repo import NotFound
 from .repo import tracks as tracks_repo
+from .style import dominant_read
 
 # Marks a payload's re-labelled read. Consumers prefer this over `salience` when
 # present -- see style.dominant_style.
@@ -80,17 +81,6 @@ def _rows(limit=None):
     return tracks_repo.embedded_rows(limit)
 
 
-def _current_top(p):
-    """What the track reads as right now, by the same precedence the app uses."""
-    if p.get("override"):
-        return p["override"]
-    for key in (KEY, "salience", "styles"):
-        entries = p.get(key) or []
-        if entries:
-            return (entries[0] or {}).get("style")
-    return None
-
-
 def preview(limit=None):
     """What a re-label *would* change, without writing anything.
 
@@ -114,7 +104,9 @@ def preview(limit=None):
         new = _read(_predict(eng, blob), labels)
         if not new:
             continue
-        before, after = _current_top(p), new[0]["style"]
+        # "from" is what the app shows for the track now (style.dominant_read:
+        # weight adjustments included), not its raw top read.
+        before, after = dominant_read(p)[0], new[0]["style"]
         if before != after:
             changed += 1
             if len(examples) < 25:
