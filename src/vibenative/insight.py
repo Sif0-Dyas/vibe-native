@@ -12,9 +12,9 @@ import json
 
 import numpy as np
 
-from .config import log
 from .repo import tracks as tracks_repo
 from .style import dominant_read, dominant_style
+from .taxonomy.classify import keystone_of
 
 # Thresholds (tuned on the reference library -> ~5% flag rate).
 CONF_MAX = 0.55  # only second-guess a shaky top read
@@ -22,25 +22,12 @@ AGREE_MIN = 0.60  # neighbours must mostly agree on one family
 SIM_MIN = 0.80  # ...and the nearest neighbour must be genuinely close
 K = 8  # neighbours to consult
 
-_FAM = None
-
-
-def _families():
-    global _FAM
-    if _FAM is None:
-        try:
-            from pathlib import Path
-
-            path = Path(__file__).with_name("static") / "genre_families.json"
-            _FAM = json.loads(path.read_text()).get("style_family", {})
-        except Exception:
-            log.warning("could not load genre_families.json for misread detection", exc_info=True)
-            _FAM = {}
-    return _FAM
-
 
 def family_of(style):
-    return _families().get((style or "").lower(), style or "Other")
+    """What a misread is judged at: the style's keystone (taxonomy.classify,
+    the user's overlay applied), or the style itself when it has none -- the
+    same resolution the map, the labels and the Analyzer's family lens use."""
+    return keystone_of(style) or style or "Other"
 
 
 def _score(top_style, top_conf, neighbours):

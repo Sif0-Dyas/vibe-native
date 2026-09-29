@@ -182,6 +182,17 @@ def overlay_get_route():
     )
 
 
+@bp.get("/taxonomy/keystones")
+def style_keystones_route():
+    """{style, lower-cased: keystone} for every known style, the overlay applied.
+
+    What the frontend resolves a style to -- the Analyzer's family lens, the
+    map's family shading -- so it groups exactly as the server does."""
+    from ..taxonomy.classify import style_keystones
+
+    return jsonify(style_keystones())
+
+
 @bp.post("/taxonomy/overlay")
 def overlay_patch_route():
     """Merge edits into the overlay.

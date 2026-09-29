@@ -15,8 +15,6 @@
 const globals = require("globals");
 
 module.exports = [
-  // genre_families.json lives in static/ too; it's data, not code -- never lint it.
-  { ignores: ["src/vibenative/static/genre_families.json"] },
   {
     files: ["src/vibenative/static/*.js"],
     languageOptions: {

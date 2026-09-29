@@ -1632,7 +1632,7 @@
     // the legend must list the same things the map labels, or clicking a legend
     // row would filter on a name nothing on screen carries.
     //
-    // Each subgenre row also remembers the PulseRoots family (n.fam) its tracks
+    // Each subgenre row also remembers the family (n.fam, the style's keystone) its tracks
     // carry, because that -- not the group -- is what focusStyle() filters on
     // and what the subgenre shade (styleShade / SUB_HUE) is keyed by. In the
     // Universe the group is a keystone or a vibe, and passing that as the
@@ -3960,10 +3960,10 @@
         count[g] = (count[g] || 0) + 1;      // a fusion counts under each parent
         /* `n.family` from the server, NOT `n.fam`.
            They sound interchangeable and are not: `n.fam` is recomputed on this
-           side from the PulseRoots table and comes out as one of ~54 fine
-           families (Metalcore, Alternative Rock, Phonk), so it is almost never
-           the string "Other" -- which is why the electronic filter used to run
-           and hide nothing at all. The server's `family` is the coarse tier the
+           side from the style's keystone (familyOf, GET /taxonomy/keystones)
+           and falls back to the style name itself, so it is almost never the
+           string "Other" -- which is why the electronic filter used to run and
+           hide nothing at all. The server's `family` is the coarse tier the
            taxonomy actually files a track under: Dance, Bass, Chill,
            Experimental, or Other for whatever it could not place. */
         famOf[g] = n.family;

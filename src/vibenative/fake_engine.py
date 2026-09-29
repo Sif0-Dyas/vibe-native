@@ -22,10 +22,8 @@ engines and never looks at the setting itself.
 """
 
 import hashlib
-import json
 import logging
 import random
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -140,21 +138,15 @@ def _decode_mono(path, sr=None):
 
 
 # --- the genre engine ------------------------------------------------------------
-_LABELS_JSON = (
-    Path(__file__).resolve().parents[2] / "models" / "genre_discogs400-discogs-effnet-1.json"
-)
 _genre = {}
 
 
 def _labels():
-    """The real 400 labels. The JSON ships with the repo and, in a packaged
-    build, beside the models (paths.models_dir)."""
-    from .paths import models_dir
+    """The real 400 labels (taxonomy.classify.discogs_labels: the JSON ships
+    with the repo, and beside the models in a packaged build)."""
+    from .taxonomy.classify import discogs_labels
 
-    for path in (models_dir() / _LABELS_JSON.name, _LABELS_JSON):
-        if path.is_file():
-            return json.loads(path.read_text(encoding="utf-8"))["classes"]
-    raise FileNotFoundError(_LABELS_JSON.name)
+    return discogs_labels()
 
 
 def _n_patches(n_samples, hop_frames):

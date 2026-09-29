@@ -256,3 +256,37 @@ def test_no_group_can_fall_off_the_genres_tab(client):
     assert "Halftime" in listed()
     client.post("/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
     assert "Halftime" in listed()
+
+
+# --- the frontend's and the misread check's family: the keystone ---------------
+def test_style_keystones_maps_known_styles_with_the_overlay(client, tmp_overlay):
+    body = client.get("/taxonomy/keystones").get_json()
+    assert body["deep house"] == "House"
+    assert body["drum n bass"] == "Drum n Bass"
+    assert all(k == k.lower() for k in body)  # keys are lower-cased, as familyOf looks up
+    assert "made-up style" not in body
+    # an overlay alias is applied, and a name it introduces is listed
+    write(tmp_overlay, {"aliases": {"deep house": "Techno", "made-up style": "Dubstep"}})
+    body = client.get("/taxonomy/keystones").get_json()
+    assert body["deep house"] == "Techno"
+    assert body["made-up style"] == "Dubstep"
+
+
+def test_the_misread_check_judges_at_the_keystone(tmp_overlay):
+    from vibenative import insight
+
+    assert insight.family_of("Deep House") == "House"
+    assert insight.family_of("Tech House") == "House"  # one family, as the map shows it
+    assert insight.family_of("made-up style") == "made-up style"  # no keystone: itself
+    assert insight.family_of("") == "Other"
+    write(tmp_overlay, {"aliases": {"made-up style": "Dubstep"}})
+    assert insight.family_of("made-up style") == "Dubstep"
+
+
+def test_the_old_family_table_is_gone(client):
+    from pathlib import Path
+
+    import vibenative
+
+    assert not (Path(vibenative.__file__).parent / "static" / "genre_families.json").exists()
+    assert client.get("/static/genre_families.json").status_code == 404

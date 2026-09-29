@@ -198,8 +198,9 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
   - Training root: 7 copies -> `Settings.training_root` (`VIBE_TRAINING_ROOT`, default `~/genre_training`, what the uninstaller removes); tests get a tmp root.
   - Mel filterbank: `frontend_mel.slaney_mel_filterbank` for both frontends; matrices bit-identical, full oracle table unchanged (cos min 0.999324 / mean 0.999817, tempo 117/121, key 90/121).
   - numpy: 17 function-local imports left (the other 4 went with moved/deleted code) -> module level. `test_import_safety` never covered numpy (a hard dependency); it guards that nothing reachable at collection imports onnxruntime at top level -- `onnx_engine` is the only module that needs it at import.
-- [ ] `taxonomy/` package
+- [x] `taxonomy/` package
   - `vibenative/taxonomy/`: `tables.py` and `classify.py` (keystone.py split into data and functions), `overlay.py` (was taxonomy.py), `lexicon.py` (was genrelex.py), `profiles.py` (genres.PROFILES), README with the precedence (overlay -> built-in tables -> lexicon). Callers moved to the new paths; the old modules are deleted. `palette` / `palettes` stay outside as presentation, and no longer import each other: `separation` / `summarise` moved to `palette.py`, so the dependency runs palette -> palettes. `vibenative.enao` deleted.
+  - Then, as its own commit: `static/genre_families.json` (the PulseRoots roll-up, 83 styles -> 14 families that disagreed with the keystone tables on 38) is deleted. The misread check (`insight.family_of`) and the frontend's `familyOf` -- the Analyzer's family lens and the map's family shading -- use the style's keystone with the overlay applied, the frontend through `GET /taxonomy/keystones`. On the local library copy the misread flag changes for 158 tracks (337 -> 369 flagged: 95 newly, 63 no longer).
 - [ ] Frontend to ES modules
 - [ ] `/api/v1`; DELETE verbs; one name; one version source
   - `palette.py` (the solved default) vs `palettes.py` (the presets) needs one name.

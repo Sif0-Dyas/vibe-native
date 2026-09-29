@@ -408,3 +408,48 @@ def label_for(keystones):
     if len(keystones) == 1:
         return keystones[0]
     return T.FUSION_NAMES.get(frozenset(keystones)) or " / ".join(keystones)
+
+
+_LABELS_JSON = "genre_discogs400-discogs-effnet-1.json"
+
+
+def discogs_labels():
+    """The classifier's 400 ``Parent---Style`` labels, from the label file that
+    ships with the models (paths.models_dir: beside the exe in a packaged build,
+    the repo's models/ in dev). Raises FileNotFoundError if it isn't there."""
+    import json
+
+    from ..paths import models_dir
+
+    path = models_dir() / _LABELS_JSON
+    if not path.is_file():
+        raise FileNotFoundError(_LABELS_JSON)
+    return json.loads(path.read_text(encoding="utf-8"))["classes"]
+
+
+def style_keystones():
+    """{style, lower-cased: keystone} for every style name this taxonomy knows,
+    with the user's overlay applied -- what the frontend resolves a style to.
+
+    Known: the classifier's 400 styles, every name in the built-in tables, the
+    overlay's aliases and the lexicon's genres. A name that resolves to no
+    keystone is left out; the caller falls back to the name itself.
+    """
+    from . import lexicon
+    from .overlay import load as user_overlay
+
+    names = set(T._STYLE_TO_KEYSTONE) | set(T._OVERRIDES) | set(T._USER_ALIASES)
+    try:
+        names |= {lab.rpartition("---")[2] for lab in discogs_labels()}
+    except FileNotFoundError:
+        pass
+    names |= set((user_overlay().get("aliases") or {}).keys())
+    names |= set(lexicon.names())
+    out = {}
+    for name in names:
+        key = str(name).strip().lower()
+        if key and key not in out:
+            k = keystone_of(key)
+            if k:
+                out[key] = k
+    return out

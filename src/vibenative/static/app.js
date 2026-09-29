@@ -304,14 +304,15 @@ const SIBLING_MAP = (() => {
   return m;
 })();
 
-/* PulseRoots family roll-up: map each Discogs style to a broad family
-   (mendiak.github.io/pulse.roots, MIT-licensed hierarchy). Resolution falls
-   back through the editable sibling groups, then to the style itself, so
-   coverage stays high even where PulseRoots has no direct entry. */
+/* Family roll-up: each style's keystone (House, Drum n Bass, Ambient...), as the
+   server's taxonomy resolves it -- the built-in tables with your overlay applied
+   (GET /taxonomy/keystones) -- so the family lens groups exactly as the map and
+   the labels do. Resolution falls back through the editable sibling groups,
+   then to the style itself, for a name the taxonomy has no keystone for. */
 let STYLE_FAMILY = {};
-fetch('/static/genre_families.json')
+fetch('/taxonomy/keystones')
   .then(r => r.ok ? r.json() : null)
-  .then(d => { if (d && d.style_family) STYLE_FAMILY = d.style_family; })
+  .then(d => { if (d && typeof d === 'object') STYLE_FAMILY = d; })
   .catch(() => {});
 function familyOf(style){
   const k = (style || '').toLowerCase();
@@ -1167,7 +1168,7 @@ function finishRow(row, data, file){
 
     const headFam = head.other ? null : familyOf(head.style);
     const famHtml = (headFam && headFam.toLowerCase() !== head.style.toLowerCase())
-      ? `<span class="famtag" title="PulseRoots family roll-up">\u25c7 ${escapeHtml(headFam)}</span>` : '';
+      ? `<span class="famtag" title="keystone (family roll-up)">\u25c7 ${escapeHtml(headFam)}</span>` : '';
     genreBody.innerHTML =
       `<div class="genre-src">${srcLabel}</div>` +
       `<span class="chip" style="--c:${hcol}"
