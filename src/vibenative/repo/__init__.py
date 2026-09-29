@@ -6,12 +6,16 @@ whole block, so a read-modify-write inside one function is atomic against every
 other writer.
 
 One module per group of tables: ``tracks`` (tracks and its per-track side tables),
-``tags``, ``vibes``, ``playlists``, ``training``.
+``tags``, ``vibes``, ``playlists``, ``training`` (labels and rejects).
 """
 
 from contextlib import closing, contextmanager
 
 from ..db import _db_lock, db
+
+
+class NotFound(LookupError):
+    """The row a write needs (a track, an override...) isn't there."""
 
 
 @contextmanager

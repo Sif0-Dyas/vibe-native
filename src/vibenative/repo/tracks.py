@@ -68,3 +68,15 @@ def segment_overrides(h):
             "ORDER BY start_s",
             (h,),
         ).fetchall()
+
+
+def embedding_rows():
+    """(hash, title, filename, payload, embedding) for every track."""
+    with reading() as c:
+        return c.execute("SELECT hash, title, filename, payload, embedding FROM tracks").fetchall()
+
+
+def payload_rows():
+    """(hash, title, filename, filepath, payload) for every track."""
+    with reading() as c:
+        return c.execute("SELECT hash, title, filename, filepath, payload FROM tracks").fetchall()

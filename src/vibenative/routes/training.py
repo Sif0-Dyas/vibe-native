@@ -2,18 +2,17 @@
 (candidates / confirm / reject)."""
 
 import json
-import time
-from contextlib import closing
 from pathlib import Path
 
 from flask import jsonify, request
 
 from ..db import (
-    _db_lock,
     cosine,
-    db,
     is_library_filepath,
 )
+from ..repo import NotFound
+from ..repo import tracks as tracks_repo
+from ..repo import training as training_repo
 from ._shared import bp
 from .analysis import UploadError, _check_upload
 
@@ -129,14 +128,9 @@ def training_candidates(genre):
         limit = 25
     limit = max(1, min(200, limit))
 
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, title, filename, payload, embedding FROM tracks").fetchall()
-        labeled = {
-            r[0] for r in c.execute("SELECT hash FROM training_labels WHERE genre=?", (genre,))
-        }
-        rejected = {
-            r[0] for r in c.execute("SELECT hash FROM training_rejects WHERE genre=?", (genre,))
-        }
+    rows = tracks_repo.embedding_rows()
+    labeled = training_repo.label_hashes(genre)
+    rejected = training_repo.reject_hashes(genre)
 
     # parse once; fold in override-labelled tracks as part of the labelled set
     parsed = {}
@@ -196,16 +190,10 @@ def training_confirm():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
-        if not row:
-            return jsonify({"error": "track not in database"}), 404
-        filepath = row[0]
-        c.execute(
-            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
-            (h, genre, "propagation", time.time()),
-        )
-        c.execute("DELETE FROM training_rejects WHERE hash=? AND genre=?", (h, genre))
+    try:
+        filepath = training_repo.confirm(h, genre)
+    except NotFound:
+        return jsonify({"error": "track not in database"}), 404
     # disk I/O stays OUTSIDE the lock (never hold the DB lock across a copy)
     trained = _copy_into_training(filepath, genre)
     return jsonify({"ok": True, "hash": h, "genre": genre, "trained": trained})
@@ -220,8 +208,7 @@ def training_reject():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute("INSERT OR IGNORE INTO training_rejects(hash, genre) VALUES(?,?)", (h, genre))
+    training_repo.reject(h, genre)
     return jsonify({"ok": True, "hash": h, "genre": genre})
 
 
@@ -342,8 +329,6 @@ def trainset_add(genre):
     audio across when a server-side path is known -- no re-analysis, and it
     works from anywhere a track can be selected.
     """
-    import time as _time
-
     from .. import trainsets
 
     hashes = [h for h in ((request.get_json(silent=True) or {}).get("hashes") or []) if h]
@@ -353,20 +338,7 @@ def trainset_add(genre):
     if not safe:
         return jsonify({"error": "invalid genre name"}), 400
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        rows = {
-            r[0]: (r[1] or "").strip()
-            for r in c.execute(
-                "SELECT hash, filepath FROM tracks WHERE hash IN (%s)"  # nosec B608  # ints/params below
-                % ",".join("?" * len(hashes)),
-                hashes,
-            )
-        }
-        now = _time.time()
-        c.executemany(
-            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
-            [(h, genre, "manual", now) for h in rows],
-        )
+    rows = training_repo.add_manual(genre, hashes)
     copied = 0
     for h, fp in rows.items():
         if fp and _copy_into_training(fp, genre):

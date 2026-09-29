@@ -23,11 +23,11 @@ also means it survives moving your music or rebuilding the database.
 import json
 import shutil
 import time
-from contextlib import closing
 from pathlib import Path
 
 from .config import log
-from .db import _db_lock, db
+from .repo import tracks as tracks_repo
+from .repo import training as training_repo
 
 # Mirrors routes.training: the folder /override and /save_training file into,
 # and the one training/train_head.py consumes.
@@ -79,15 +79,9 @@ def detail(genre, top_n=10):
     want = (genre or "").strip().lower()
 
     tracks = []
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, title, filename, filepath, payload FROM tracks").fetchall()
-        labelled = {
-            r[0]
-            for r in c.execute("SELECT hash FROM training_labels WHERE LOWER(genre)=?", (want,))
-        }
-        rejected = sum(
-            1 for _ in c.execute("SELECT 1 FROM training_rejects WHERE LOWER(genre)=?", (want,))
-        )
+    rows = tracks_repo.payload_rows()
+    labelled = {h for h, _src in training_repo.labels_any_case(genre)}
+    rejected = len(training_repo.rejects_any_case(genre))
     for h, title, filename, filepath, payload in rows:
         try:
             p = json.loads(payload) if isinstance(payload, str) else (payload or {})
@@ -134,8 +128,6 @@ def reset(genre):
     d = folder(genre)
     if not d:
         raise ValueError("invalid genre name")
-    want = (genre or "").strip().lower()
-
     moved = None
     if d.is_dir() and _audio_files(d):
         ARCHIVE.mkdir(parents=True, exist_ok=True)
@@ -143,9 +135,7 @@ def reset(genre):
         shutil.move(str(d), str(dest))
         moved = str(dest)
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        labels = c.execute("DELETE FROM training_labels WHERE LOWER(genre)=?", (want,)).rowcount
-        rejects = c.execute("DELETE FROM training_rejects WHERE LOWER(genre)=?", (want,)).rowcount
+    labels, rejects = training_repo.clear_any_case(genre)
     log.info("trainset reset %r: archived=%s labels=%d rejects=%d", genre, moved, labels, rejects)
     return {
         "genre": genre,
@@ -175,7 +165,6 @@ def export(genre):
 
     d = folder(genre)
     files = _audio_files(d)
-    want = (genre or "").strip().lower()
 
     seen, entries = set(), []
     for f in files:
@@ -188,17 +177,11 @@ def export(genre):
         seen.add(h)
         entries.append({"hash": h, "source": "folder", "name": f.name})
 
-    with closing(db()) as conn, conn as c:
-        for h, src in c.execute(
-            "SELECT hash, source FROM training_labels WHERE LOWER(genre)=?", (want,)
-        ):
-            if h not in seen:
-                seen.add(h)
-                entries.append({"hash": h, "source": src or "label"})
-        rejects = [
-            r[0]
-            for r in c.execute("SELECT hash FROM training_rejects WHERE LOWER(genre)=?", (want,))
-        ]
+    for h, src in training_repo.labels_any_case(genre):
+        if h not in seen:
+            seen.add(h)
+            entries.append({"hash": h, "source": src or "label"})
+    rejects = training_repo.rejects_any_case(genre)
     return {
         "version": MANIFEST_VERSION,
         "genre": genre,
@@ -230,24 +213,9 @@ def import_(manifest, genre=None, copy_audio=True):
     wanted = [entry.get("hash") for entry in (manifest.get("labels") or []) if entry.get("hash")]
     rejects = [h for h in (manifest.get("rejects") or []) if h]
 
-    found, missing, copied = [], [], 0
+    copied = 0
     dest = ROOT / safe
-    with _db_lock, closing(db()) as conn, conn as c:
-        for h in wanted:
-            row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
-            if row is None:
-                missing.append(h)
-            else:
-                found.append((h, (row[0] or "").strip()))
-        now = time.time()
-        c.executemany(
-            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
-            [(h, target, "import", now) for h, _ in found],
-        )
-        c.executemany(
-            "INSERT OR IGNORE INTO training_rejects(hash, genre) VALUES(?,?)",
-            [(h, target) for h in rejects],
-        )
+    found, missing = training_repo.import_labels(target, wanted, rejects)
 
     no_path = sum(1 for _h, fp in found if not fp)
     if copy_audio:
