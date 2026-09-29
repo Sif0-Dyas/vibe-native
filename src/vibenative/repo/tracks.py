@@ -17,3 +17,17 @@ def map_rows():
         return c.execute(
             "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
         ).fetchall()
+
+
+def export_rows(hashes):
+    """(hash, title, filename, filepath, payload) for each hash, in the order given
+    (a hash listed twice comes back twice); hashes not in the library are skipped."""
+    out = []
+    with reading() as c:
+        for h in hashes:
+            t = c.execute(
+                "SELECT hash, title, filename, filepath, payload FROM tracks WHERE hash=?", (h,)
+            ).fetchone()
+            if t:
+                out.append(t)
+    return out

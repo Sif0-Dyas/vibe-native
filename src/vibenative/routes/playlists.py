@@ -2,23 +2,19 @@
 list (the live working playlist stays client-side). Backed by the playlists table."""
 
 import json
-import time
-from contextlib import closing
 
 from flask import jsonify, request
 
 from ..config import log
-from ..db import _db_lock, db
+from ..repo import playlists as playlists_repo
+from ..repo import tracks as tracks_repo
 from ._shared import bp
 
 
 @bp.get("/playlists")
 def playlists_list():
     """List saved playlists (id, name, track count, last-updated), newest first."""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT id, name, tracks, updated FROM playlists ORDER BY updated DESC"
-        ).fetchall()
+    rows = playlists_repo.listing()
     out = []
     for pid, name, tracks, updated in rows:
         try:
@@ -37,23 +33,14 @@ def playlists_save():
     tracks = data.get("tracks")
     if not name or not isinstance(tracks, list):
         return jsonify({"error": "name and a tracks list are required"}), 400
-    blob = json.dumps(tracks)
-    now = time.time()
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT INTO playlists(name, tracks, created, updated) VALUES(?,?,?,?) "
-            "ON CONFLICT(name) DO UPDATE SET tracks=excluded.tracks, updated=excluded.updated",
-            (name, blob, now, now),
-        )
-        pid = c.execute("SELECT id FROM playlists WHERE name=?", (name,)).fetchone()[0]
+    pid = playlists_repo.save(name, tracks)
     return jsonify({"id": pid, "name": name, "count": len(tracks)})
 
 
 @bp.get("/playlists/<int:pid>")
 def playlists_get(pid):
     """Return a saved playlist's track list."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT name, tracks FROM playlists WHERE id=?", (pid,)).fetchone()
+    row = playlists_repo.get(pid)
     if not row:
         return jsonify({"error": "playlist not found"}), 404
     try:
@@ -66,9 +53,7 @@ def playlists_get(pid):
 @bp.post("/playlists/<int:pid>/delete")
 def playlists_delete(pid):
     """Delete a saved playlist."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        n = c.execute("DELETE FROM playlists WHERE id=?", (pid,)).rowcount
-    return jsonify({"deleted": bool(n)})
+    return jsonify({"deleted": playlists_repo.delete(pid)})
 
 
 @bp.get("/ratings/<h>")
@@ -162,39 +147,34 @@ def playlist_rekordbox(pid):
     from .. import ratings
     from ..routes._shared import _artist_of
 
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT name, tracks FROM playlists WHERE id=?", (pid,)).fetchone()
-        if not row:
-            return jsonify({"error": "playlist not found"}), 404
-        name = row[0]
+    row = playlists_repo.get(pid)
+    if not row:
+        return jsonify({"error": "playlist not found"}), 404
+    name = row[0]
+    try:
+        entries = json.loads(row[1]) if row[1] else []
+    except ValueError:
+        entries = []
+    hashes = [e if isinstance(e, str) else (e or {}).get("hash") for e in entries]
+    hashes = [h for h in hashes if h]
+    tracks = []
+    # A hash dropped from the library since the playlist was saved is skipped.
+    for t in tracks_repo.export_rows(hashes):
         try:
-            entries = json.loads(row[1]) if row[1] else []
+            p = json.loads(t[4]) if t[4] else {}
         except ValueError:
-            entries = []
-        hashes = [e if isinstance(e, str) else (e or {}).get("hash") for e in entries]
-        hashes = [h for h in hashes if h]
-        tracks = []
-        for h in hashes:
-            t = c.execute(
-                "SELECT hash, title, filename, filepath, payload FROM tracks WHERE hash=?", (h,)
-            ).fetchone()
-            if not t:
-                continue  # dropped from the library since the playlist was saved
-            try:
-                p = json.loads(t[4]) if t[4] else {}
-            except ValueError:
-                p = {}
-            tracks.append(
-                {
-                    "hash": t[0],
-                    "title": t[1] or t[2] or t[0][:8],
-                    "artist": _artist_of(p, t[1], t[2]),
-                    "filepath": t[3] or "",
-                    "bpm": p.get("bpm"),
-                    "key": p.get("key"),
-                    "duration": p.get("duration"),
-                }
-            )
+            p = {}
+        tracks.append(
+            {
+                "hash": t[0],
+                "title": t[1] or t[2] or t[0][:8],
+                "artist": _artist_of(p, t[1], t[2]),
+                "filepath": t[3] or "",
+                "bpm": p.get("bpm"),
+                "key": p.get("key"),
+                "duration": p.get("duration"),
+            }
+        )
 
     xml = ratings.playlist_xml(name, tracks, ratings.get_many([t["hash"] for t in tracks]))
     exported = sum(1 for t in tracks if str(t.get("filepath") or "").strip())
