@@ -123,7 +123,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 | Group | Delete | Keep / replace with |
 | --- | --- | --- |
 | MAEST | `get_maest`, `maest_genre`, `MAEST_PB`; `/compare` + Compare panel; `MAEST_MODEL`; `models/discogs-maest-*.json` | Nothing — decided 2026-09-23 |
-| Essentia-era config | `MODEL_DIR` default `~/essentia_models`; `CUSTOM_HEAD` default there; `.env.example` `*.pb` lines | `%APPDATA%\Vibe Identify\models\` |
+| Essentia-era config | `MODEL_DIR` default `~/essentia_models`; `CUSTOM_HEAD` default there; `.env.example` `*.pb` lines | `%APPDATA%\Vibe Identify\models\` — done (`<config_dir>/models`); an unmoved `custom_head.npz` is still read from `~/essentia_models` with a WARNING. Delete that fallback (`settings._legacy_model_dir`) once no install needs it |
 | Custom-head trainer | `training/embed_extract.py:44` Essentia import | Port to `onnx_engine`. Feature stays (decided) |
 | WSL legacy | `tools/db_cutover.py`, `tools/make_oracle.py`; `legacy.py` and its 4 route call sites (`routes/analysis.py:550`, `routes/library.py:574, 597`); the "no WSL" selftest assertions | Already isolated in `legacy.py` by design — delete in one piece once no install needs it. `_migration_2` keeps its own copy of the path rewrite |
 | Desktop two-process mode | `GENRE_DESKTOP_MULTIPROC`, `venv_python`, `start_backend`, `_shutdown_backend`, `backend_cmd/env`, `WIN_PROJECT`, `_LAUNCH_WARNING`; both `.bat` launchers; `_selftest` | Single-process only; selftest → `tests/test_desktop_shell.py` |

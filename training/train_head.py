@@ -8,7 +8,8 @@ Consumes the ``manifest.json`` + ``_cache/*.npy`` written by
 side, so validation measures generalization to unseen tracks, not unseen
 frames of seen tracks).
 
-Saves ``~/essentia_models/custom_head.npz`` in exactly the schema the app's
+Saves ``custom_head.npz`` to the app's ``Settings.custom_head_path`` (by default
+``<config dir>/models/``) in exactly the schema the app's
 ``vibenative.analysis.get_custom_head`` loads: W1, b1, W2, b2, mu, sigma,
 labels, val_acc. Restart the app after training and the "custom" row appears.
 

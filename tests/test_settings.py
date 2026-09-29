@@ -15,13 +15,19 @@ import pytest
 from vibenative import settings as S
 
 
-def test_defaults_are_the_ones_the_constants_had(tmp_path):
+@pytest.fixture()
+def legacy():
+    """conftest's stand-in for ~/essentia_models."""
+    return S._legacy_model_dir()
+
+
+def test_defaults_are_the_ones_the_constants_had(tmp_path, legacy):
     # Nothing set but an empty config dir (so no settings.ini is consulted).
     s = S.Settings.from_env({"VIBE_CONFIG_DIR": str(tmp_path)})
     assert s.db_path == Path.home() / "genre_v2.db"
     assert s.fake is False
-    assert s.model_dir == Path.home() / "essentia_models"
-    assert s.custom_head_path == Path.home() / "essentia_models" / "custom_head.npz"
+    assert s.model_dir == tmp_path / "models"  # the config dir, not ~/essentia_models
+    assert s.custom_head_path == tmp_path / "models" / "custom_head.npz"
     assert s.snapshots_dir == Path.home() / "vibe_snapshots"
     assert s.taxonomy is None and s.token == "" and s.provider == ""
     assert s.max_upload_mb == 512
@@ -82,6 +88,34 @@ def test_settings_ini_db_path_is_used_without_genre_db(tmp_path):
     assert S.Settings.from_env(env).db_path == tmp_path / "wins.db"
 
 
+def test_a_head_left_in_the_old_folder_is_still_used_with_a_warning(tmp_path, legacy, caplog):
+    legacy.mkdir()
+    (legacy / "custom_head.npz").write_bytes(b"trained before the move")
+    env = {"VIBE_CONFIG_DIR": str(tmp_path / "cfg")}
+    with caplog.at_level("WARNING", logger="vibenative"):
+        s = S.Settings.from_env(env)
+    assert s.custom_head_path == legacy / "custom_head.npz"
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+    assert str(legacy) in caplog.text and str(tmp_path / "cfg" / "models") in caplog.text
+
+    # once it has been moved, the new folder wins and nothing is said
+    (tmp_path / "cfg" / "models").mkdir(parents=True)
+    (tmp_path / "cfg" / "models" / "custom_head.npz").write_bytes(b"moved")
+    caplog.clear()
+    s = S.Settings.from_env(env)
+    assert s.custom_head_path == tmp_path / "cfg" / "models" / "custom_head.npz"
+    assert caplog.records == []
+
+
+def test_model_dir_and_custom_head_still_override_the_default(tmp_path, legacy):
+    legacy.mkdir()
+    (legacy / "custom_head.npz").write_bytes(b"old")
+    env = {"VIBE_CONFIG_DIR": str(tmp_path), "MODEL_DIR": str(tmp_path / "mine")}
+    assert S.Settings.from_env(env).model_dir == tmp_path / "mine"
+    env = {"VIBE_CONFIG_DIR": str(tmp_path), "CUSTOM_HEAD": str(tmp_path / "h.npz")}
+    assert S.Settings.from_env(env).custom_head_path == tmp_path / "h.npz"
+
+
 def test_derived_paths_follow_their_base(tmp_path):
     s = S.Settings(db_path=tmp_path / "a" / "lib.db", model_dir=tmp_path / "m")
     assert s.snapshots_dir == tmp_path / "a" / "vibe_snapshots"
@@ -96,7 +130,7 @@ def test_current_refuses_to_guess_in_the_test_suite(monkeypatch):
 
 def test_current_builds_from_the_environment_once_outside_tests(monkeypatch, tmp_path):
     # What a script gets when it imports a module without create_app().
-    built = S.Settings(db_path=tmp_path / "x.db")
+    built = S.Settings(db_path=tmp_path / "x.db", model_dir=tmp_path / "m")
     calls = []
     monkeypatch.setattr(S, "_current", None)
     monkeypatch.setattr(S, "_implicit", True)

@@ -58,10 +58,14 @@ def make_settings(tmp_path, **overrides):
 
 
 @pytest.fixture(autouse=True)
-def settings(tmp_path):
+def settings(tmp_path, monkeypatch):
     """Install this test's Settings, and afterwards close every connection db()
     opened (Windows won't delete an open file) and uninstall them, so nothing
-    between tests -- or a thread outliving one -- can use a stale test's paths."""
+    between tests -- or a thread outliving one -- can use a stale test's paths.
+
+    The Essentia-era ~/essentia_models that Settings.from_env() falls back to for
+    an unmoved custom head is redirected too, so no test looks at the real one."""
+    monkeypatch.setattr(vn_settings, "_legacy_model_dir", lambda: tmp_path / "essentia_models")
     s = vn_settings.use(make_settings(tmp_path))
     yield s
     _close_db_connections()

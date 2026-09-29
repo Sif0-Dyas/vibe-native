@@ -21,7 +21,7 @@ import os
 import sys
 from pathlib import Path
 
-from .config import _apply_dotenv
+from .config import _apply_dotenv, log
 
 _ROOT_DOTENV = Path(__file__).resolve().parent.parent.parent / ".env"  # src/vibenative -> root
 
@@ -30,11 +30,12 @@ _ROOT_DOTENV = Path(__file__).resolve().parent.parent.parent / ".env"  # src/vib
 class Settings:
     # The library database. GENRE_DB, else settings.ini's db_path, else ~/genre_v2.db.
     db_path: Path
+    # MODEL_DIR: user-supplied extras (the optional custom head); default
+    # <config_dir>/models, see _default_model_dir. The ONNX models the engine runs
+    # live in the repo's / exe's models/ (paths.models_dir).
+    model_dir: Path
     # FAKE_ANALYZER=1: instant fake results, no models loaded.
     fake: bool = False
-    # MODEL_DIR: user-supplied extras (the optional custom head). The ONNX models
-    # the engine runs live in the repo's / exe's models/ (paths.models_dir).
-    model_dir: Path = dataclasses.field(default_factory=lambda: Path.home() / "essentia_models")
     # CUSTOM_HEAD; None -> model_dir / custom_head.npz (see custom_head_path).
     custom_head: Path | None = None
     # VIBE_SNAPSHOTS; None -> beside the database (see snapshots_dir).
@@ -91,7 +92,7 @@ class Settings:
         return cls(
             db_path=_db_path(environ.get("GENRE_DB"), config_dir),
             fake=environ.get("FAKE_ANALYZER") == "1",
-            model_dir=Path(environ.get("MODEL_DIR", Path.home() / "essentia_models")),
+            model_dir=path("MODEL_DIR") or _default_model_dir(config_dir),
             custom_head=path("CUSTOM_HEAD"),
             snapshots=path("VIBE_SNAPSHOTS"),
             config_dir=config_dir,
@@ -138,6 +139,32 @@ def _db_path(env, config_dir) -> Path:
     except Exception:  # nosec B110  # a malformed settings.ini must never block startup -> fall through
         pass
     return Path.home() / "genre_v2.db"
+
+
+def _legacy_model_dir() -> Path:
+    return Path.home() / "essentia_models"
+
+
+def _default_model_dir(config_dir) -> Path:
+    """``<config_dir>/models``: per-user state, beside settings.ini (``%APPDATA%``
+    in a packaged build), not the Essentia-era ``~/essentia_models``.
+
+    A custom head trained before the move is still in the old folder. While the
+    new one has none, keep using the old folder -- a restart must not silently
+    drop the user's trained head -- and say where to move it."""
+    from .paths import resolve_config_dir
+
+    new = resolve_config_dir(config_dir) / "models"
+    old = _legacy_model_dir()
+    if not (new / "custom_head.npz").exists() and (old / "custom_head.npz").exists():
+        log.warning(
+            "custom head found in the old model folder %s; using it from there. "
+            "Move custom_head.npz to %s to stop this warning.",
+            old,
+            new,
+        )
+        return old
+    return new
 
 
 _current: Settings | None = None
