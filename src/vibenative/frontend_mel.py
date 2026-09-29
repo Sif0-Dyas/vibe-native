@@ -64,11 +64,15 @@ def _hann(size: int) -> np.ndarray:
     return (0.5 - 0.5 * np.cos(2.0 * np.pi * i / (size - 1))).astype(np.float64)
 
 
-def _slaney_mel_filterbank() -> np.ndarray:
-    """(N_MELS, FRAME/2+1) filterbank == librosa.filters.mel(htk=False, norm='slaney')
-    == Essentia MelBands(warpingFormula='slaneyMel', normalize='unit_tri')."""
-    n_freqs = FRAME // 2 + 1
-    fft_hz = np.linspace(0.0, SR / 2.0, n_freqs)
+def slaney_mel_filterbank(sr, n_fft, n_mels, fmin, fmax) -> np.ndarray:
+    """(n_mels, n_fft/2+1) float64 filterbank == librosa.filters.mel(sr, n_fft,
+    n_mels, fmin, fmax, htk=False, norm='slaney') == Essentia
+    MelBands(warpingFormula='slaneyMel', normalize='unit_tri').
+
+    The one Slaney filterbank: this module's (16 kHz, 512, 96 bands, 0-8000 Hz)
+    and tempo.py's (11025 Hz, 1024, 40 bands, 20-5000 Hz) are both built here."""
+    n_freqs = n_fft // 2 + 1
+    fft_hz = np.linspace(0.0, sr / 2.0, n_freqs)
 
     f_sp = 200.0 / 3.0
     min_log_hz = 1000.0
@@ -91,9 +95,9 @@ def _slaney_mel_filterbank() -> np.ndarray:
             f_sp * m,
         )
 
-    edges = mel2hz(np.linspace(hz2mel(FMIN), hz2mel(FMAX), N_MELS + 2))
-    fb = np.zeros((N_MELS, n_freqs), dtype=np.float64)
-    for i in range(N_MELS):
+    edges = mel2hz(np.linspace(hz2mel(fmin), hz2mel(fmax), n_mels + 2))
+    fb = np.zeros((n_mels, n_freqs), dtype=np.float64)
+    for i in range(n_mels):
         lo, ce, hi = edges[i], edges[i + 1], edges[i + 2]
         up = (fft_hz - lo) / (ce - lo)
         down = (hi - fft_hz) / (hi - ce)
@@ -102,7 +106,7 @@ def _slaney_mel_filterbank() -> np.ndarray:
 
 
 _HANN = _hann(FRAME)
-_MEL_FB = _slaney_mel_filterbank()  # (96, 257)
+_MEL_FB = slaney_mel_filterbank(SR, FRAME, N_MELS, FMIN, FMAX)  # (96, 257)
 
 
 # Frames per block in ``melspectrogram``. Every step is per-frame; done over a whole

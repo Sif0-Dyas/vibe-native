@@ -17,6 +17,7 @@ import threading
 
 import numpy as np
 
+from . import frontend_mel
 from .paths import models_dir
 
 MODELS = models_dir()  # exe-adjacent models/ in a packaged build, else <repo>/models
@@ -29,32 +30,8 @@ PATCH, PATCH_HOP = 256, 128
 PATCH_BATCH = 64
 
 
-def _mel_filterbank() -> np.ndarray:
-    freqs = np.linspace(0.0, SR / 2.0, FRAME // 2 + 1)
-    f_sp, min_log_hz = 200.0 / 3.0, 1000.0
-    min_log_mel, step = min_log_hz / f_sp, np.log(6.4) / 27.0
-
-    def h2m(f):
-        f = np.asarray(f, float)
-        return np.where(
-            f >= min_log_hz, min_log_mel + np.log(np.maximum(f, 1e-9) / min_log_hz) / step, f / f_sp
-        )
-
-    def m2h(m):
-        m = np.asarray(m, float)
-        return np.where(m >= min_log_mel, min_log_hz * np.exp(step * (m - min_log_mel)), f_sp * m)
-
-    edges = m2h(np.linspace(h2m(FMIN), h2m(FMAX), N_MELS + 2))
-    fb = np.zeros((N_MELS, len(freqs)))
-    for i in range(N_MELS):
-        lo, ce, hi = edges[i], edges[i + 1], edges[i + 2]
-        fb[i] = np.maximum(0.0, np.minimum((freqs - lo) / (ce - lo), (hi - freqs) / (hi - ce))) * (
-            2.0 / (hi - lo)
-        )
-    return fb.T.astype(np.float64)  # (n_freqs, 40)
-
-
-_MELFB = _mel_filterbank()
+# (n_freqs, 40): transposed, as the magnitude spectrum multiplies it on the right.
+_MELFB = frontend_mel.slaney_mel_filterbank(SR, FRAME, N_MELS, FMIN, FMAX).T.astype(np.float64)
 _HANN = (0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(FRAME) / FRAME)).astype(np.float64)  # periodic
 _engine: dict = {}
 
