@@ -3,16 +3,14 @@
 import hashlib
 import json
 import os
-from contextlib import closing
 from pathlib import Path
 
 from flask import Response, jsonify, render_template, request
 
 from .. import insight, taxonomy
 from ..config import log
-from ..db import (
-    db,
-)
+from ..repo import tags as tags_repo
+from ..repo import tracks as tracks_repo
 from ._shared import _artist_of, _dominant_style, _ranked_read, _second_style, bp
 
 # A runner-up needs at least this share before it's worth offering as a fix.
@@ -51,20 +49,6 @@ def _override_candidates(p, top_style, limit=5):
         out.append({"style": style, "score": score})
         if len(out) >= limit:
             break
-    return out
-
-
-def _tags_by_hash(c):
-    """{hash: [tag, ...]} for the whole library in one query.
-
-    Fetched in bulk rather than per node: the map already reads every track, and
-    a per-track tag lookup would turn one query into thousands.
-    """
-    out = {}
-    for h, name in c.execute(
-        "SELECT tt.hash, t.name FROM track_tags tt JOIN tags t ON t.id = tt.tag_id"
-    ):
-        out.setdefault(h, []).append(name)
     return out
 
 
@@ -226,11 +210,7 @@ def _map_fingerprint(rev, mode):
 
 def _map_stamp(mode):
     """The fingerprint the map would be built from right now."""
-    from ..db import library_rev
-
-    with closing(db()) as conn, conn as c:
-        rev = library_rev(c)
-    return _map_fingerprint(rev, mode)
+    return _map_fingerprint(tracks_repo.library_rev(), mode)
 
 
 def _map_cache_read(fp):
@@ -283,11 +263,8 @@ def map_route():
         resp = Response(hit, mimetype="application/json")
         resp.headers["X-Map-Cache"] = "hit"
         return resp
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
-        ).fetchall()
-        tags_by_hash = _tags_by_hash(c)
+    rows = tracks_repo.map_rows()
+    tags_by_hash = tags_repo.names_by_hash()
     # One taxonomy overlay for the whole build: every node classified and
     # painted against the same file, and one stat() instead of one per lookup.
     with taxonomy.pinned():
