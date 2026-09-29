@@ -7,7 +7,7 @@ import tempfile
 import threading
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 
 from flask import Response, jsonify, request, send_file
@@ -25,15 +25,14 @@ from ..analysis import (
 )
 from ..config import AUDIO_EXTS, log
 from ..db import (
-    _db_lock,
     cache_get,
     cache_put,
-    db,
     file_hash,
     waveform_cache_get,
     waveform_cache_put,
 )
 from ..decode import UnreadableAudio
+from ..repo import tracks as tracks_repo
 from ..serve import MAX_BATCH_WORKERS
 from ..settings import current
 from ._shared import bp
@@ -211,24 +210,13 @@ def _backfill_filepath(h, path):
     A stored path that still resolves to a real file is left untouched (so scanning
     a duplicate copy elsewhere doesn't thrash the original). Keeps audio preview,
     on-demand waveform, and section overrides working after a move."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
-        if row is None:
-            return
-        current = row[0] or ""
-        if not current or not Path(current).is_file():  # blank, or stale (moved away)
-            c.execute("UPDATE tracks SET filepath=? WHERE hash=?", (path, h))
+    tracks_repo.backfill_filepath(h, path)
 
 
 def _segment_overrides(h):
     """The persisted segment overrides for a track, oldest span first. Each carries
     its rowid as ``id`` so the client can target it for removal."""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT rowid, start_s, end_s, genre FROM segment_overrides WHERE hash=? "
-            "ORDER BY start_s",
-            (h,),
-        ).fetchall()
+    rows = tracks_repo.segment_overrides(h)
     return [{"id": r[0], "start_s": r[1], "end_s": r[2], "genre": r[3]} for r in rows]
 
 
@@ -245,8 +233,7 @@ def _backfill_waveform(h, upload):
     """
     if waveform_cache_get(h) is not None:
         return
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     if row and row[0] and Path(row[0]).is_file():
         return  # GET /waveform can decode that itself
     try:
@@ -309,8 +296,7 @@ def audio_route(h):
     not an arbitrary-file endpoint). Supports HTTP Range so the browser can seek.
     Browser-dropped files have no server path -- those play client-side via a
     blob URL instead, so a 404 here is expected for them."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath, filename FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     if not row or not row[0]:
         return jsonify({"error": "no server-side file for this track"}), 404
     p = Path(row[0])
@@ -331,8 +317,7 @@ def waveform_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     if not row:
         return jsonify({"error": "track not in database"}), 404
     filepath = row[0]
@@ -366,11 +351,9 @@ def waveform_upload_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)  # raced another tab; nothing to do
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
     # Only for tracks already in the library: this must not become a way to have
     # the server decode arbitrary uploads under an arbitrary key.
-    if not row:
+    if not tracks_repo.exists(h):
         return jsonify({"error": "track not in database"}), 404
     try:
         with saved_upload(request.files.get("file")) as up:
