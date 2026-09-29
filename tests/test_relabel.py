@@ -6,7 +6,6 @@ the model. A fake head lets a test say "now the head thinks everything is
 Chillhop" and assert the library follows.
 """
 
-import importlib
 import json
 import sqlite3
 
@@ -27,7 +26,7 @@ def _emb(seed=0):
 
 
 @pytest.fixture
-def rl(tmp_path, monkeypatch):
+def rl(tmp_path, monkeypatch, use_settings):
     dbfile = tmp_path / "lib.db"
     con = sqlite3.connect(dbfile)
     con.executescript(SCHEMA)
@@ -65,14 +64,9 @@ def rl(tmp_path, monkeypatch):
     con.commit()
     con.close()
 
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    from vibenative import db as dbmod
-
-    importlib.reload(dbmod)
+    use_settings(db_path=dbfile)
     from vibenative import relabel
 
-    monkeypatch.setattr(relabel, "db", dbmod.db)
-    monkeypatch.setattr(relabel, "_db_lock", dbmod._db_lock)
     monkeypatch.setattr(relabel, "_head_id", lambda: "custom:test")
     return relabel
 
@@ -102,7 +96,9 @@ def head(monkeypatch):
 
 
 def _payload(rl_mod, h):
-    with sqlite3.connect(rl_mod.db.__globals__["DB_PATH"]) as c:
+    from vibenative.settings import current
+
+    with sqlite3.connect(current().db_path) as c:
         return json.loads(c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()[0])
 
 

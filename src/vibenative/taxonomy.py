@@ -26,13 +26,13 @@ a broken one degrades to "no overlay" rather than taking the app down with it.
 
 import contextvars
 import json
-import os
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 
 from .config import log
 from .paths import config_dir
+from .settings import current
 
 VERSION = 1
 
@@ -64,14 +64,15 @@ _pinned = contextvars.ContextVar("taxonomy_pinned", default=None)
 def path():
     """The overlay file, beside settings.ini so the two travel together.
 
-    ``VIBE_TAXONOMY`` overrides it, matching how ``GENRE_DB`` works. The test
+    ``Settings.taxonomy`` (``VIBE_TAXONOMY``) overrides it, matching how
+    ``GENRE_DB`` works. The test
     suite needs that: this file changes how every genre resolves, so a suite
     that read the developer's real overlay would pass or fail depending on
     whose machine it ran on.
     """
-    env = os.environ.get("VIBE_TAXONOMY")
-    if env:
-        return Path(env)
+    override = current().taxonomy
+    if override:
+        return Path(override)
     return config_dir() / "taxonomy.json"
 
 

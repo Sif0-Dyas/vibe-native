@@ -236,9 +236,9 @@ def main() -> int:
     if args.out:
         out = Path(args.out).expanduser()
     else:
-        from vibenative.analysis import CUSTOM_HEAD_PATH
+        from vibenative.settings import current
 
-        out = CUSTOM_HEAD_PATH
+        out = current().custom_head_path
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out, **head)
     print(f"\nsaved -> {out}   (val track acc {acc:.1%})")

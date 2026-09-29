@@ -23,7 +23,7 @@ from ..analysis import (
     refine_segments,
     waveform_minmax,
 )
-from ..config import AUDIO_EXTS, FAKE, log
+from ..config import AUDIO_EXTS, log
 from ..db import (
     _db_lock,
     cache_get,
@@ -35,6 +35,7 @@ from ..db import (
 )
 from ..decode import UnreadableAudio
 from ..serve import MAX_BATCH_WORKERS
+from ..settings import current
 from ._shared import bp
 
 
@@ -152,7 +153,7 @@ def refine_route():
     f = request.files.get("file")
     try:
         _check_upload(f)
-        if FAKE:
+        if current().fake:
             import hashlib
             import random
 

@@ -11,17 +11,13 @@ folder" and APPDATA at a temp profile, so nothing here touches real folders.
 """
 
 import configparser
-import importlib
 import os
 import stat
 import sys
 
 import pytest
 
-
-def _paths():
-    # The client fixture re-imports the package, so always use the live module.
-    return importlib.import_module("vibenative.paths")
+from vibenative import paths, taxonomy
 
 
 def _ini(path, db_path):
@@ -36,24 +32,19 @@ def _db_path_in(path):
 
 
 @pytest.fixture()
-def packaged(tmp_path, monkeypatch):
+def packaged(tmp_path, monkeypatch, use_settings):
     """A simulated installed build: returns (install folder, per-user config dir)."""
-    paths = _paths()
     app = tmp_path / "Program Files" / "Vibe Identify"
     app.mkdir(parents=True)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(paths, "exe_dir", lambda: app)
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
-    monkeypatch.delenv("VIBE_CONFIG_DIR", raising=False)
-    monkeypatch.delenv("VIBE_TAXONOMY", raising=False)
+    use_settings(config_dir=None, taxonomy=None)
     return app, tmp_path / "Roaming" / "Vibe Identify"
 
 
-def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch):
-    paths = _paths()
-    taxonomy = importlib.import_module("vibenative.taxonomy")
-    monkeypatch.delenv("VIBE_CONFIG_DIR", raising=False)
-    monkeypatch.delenv("VIBE_TAXONOMY", raising=False)
+def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch, use_settings):
+    use_settings(config_dir=None, taxonomy=None)
 
     # dev: the repo root, exactly as before
     repo = paths.Path(paths.__file__).resolve().parents[2]
@@ -71,14 +62,13 @@ def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch):
     assert taxonomy.path() == cfg / "taxonomy.json"
 
     # the override wins in either mode
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "override"))
+    use_settings(config_dir=tmp_path / "override")
     assert paths.settings_ini() == tmp_path / "override" / "settings.ini"
     monkeypatch.delattr(sys, "frozen")
     assert taxonomy.path() == tmp_path / "override" / "taxonomy.json"
 
 
 def test_installer_seed_is_copied_exactly_once(packaged, monkeypatch):
-    paths = _paths()
     app, cfg = packaged
     _ini(app / "settings.ini", r"D:\Music\genre_v2.db")
 
@@ -101,7 +91,6 @@ def test_installer_seed_is_copied_exactly_once(packaged, monkeypatch):
 
 
 def test_unwritable_profile_falls_back_to_reading_the_seed(packaged, monkeypatch):
-    paths = _paths()
     app, cfg = packaged
     _ini(app / "settings.ini", r"D:\Music\genre_v2.db")
 
@@ -113,9 +102,9 @@ def test_unwritable_profile_falls_back_to_reading_the_seed(packaged, monkeypatch
     assert paths.settings_ini_for_read() == app / "settings.ini"
 
 
-def test_db_path_and_taxonomy_edits_write_to_the_config_dir(client, tmp_path, monkeypatch):
-    cfg = tmp_path / "config"  # conftest points VIBE_CONFIG_DIR here
-    monkeypatch.delenv("VIBE_TAXONOMY", raising=False)
+def test_db_path_and_taxonomy_edits_write_to_the_config_dir(client, tmp_path, use_settings):
+    cfg = tmp_path / "config"  # conftest's Settings.config_dir
+    use_settings(taxonomy=None)
 
     r = client.post("/db-path", json={"path": str(tmp_path / "lib.db")})
     assert r.status_code == 200, r.get_json()
@@ -126,7 +115,7 @@ def test_db_path_and_taxonomy_edits_write_to_the_config_dir(client, tmp_path, mo
     assert r.status_code == 200, r.get_json()
     saved = (cfg / "taxonomy.json").read_text(encoding="utf-8")
     assert '"Halftime": "Drum n Bass"' in saved
-    importlib.import_module("vibenative.taxonomy").load(force=True)
+    taxonomy.load(force=True)
 
 
 def test_read_only_installer_ini_no_longer_breaks_db_path(client, packaged, tmp_path):
@@ -150,47 +139,34 @@ def test_read_only_installer_ini_no_longer_breaks_db_path(client, packaged, tmp_
 @pytest.mark.skipif(sys.platform != "win32", reason="%VAR% expansion is Windows-only (ntpath)")
 def test_userprofile_db_path_resolves_to_the_file_the_app_opens(tmp_path, monkeypatch):
     # The installer writes db_path=%USERPROFILE%\genre_v2.db unexpanded; the app
-    # expands it on read. Resolve it the way startup does (a fresh import of db),
-    # open a connection through db.db(), and check where the file actually landed.
+    # expands it on read. Resolve it the way startup does (Settings.from_env, with
+    # no GENRE_DB), open a connection through db.db(), and check where the file
+    # actually landed.
     from contextlib import closing
+
+    from vibenative import db, settings
 
     profile = tmp_path / "profile"
     profile.mkdir()
-    monkeypatch.setenv("USERPROFILE", str(profile))
-    monkeypatch.delenv("GENRE_DB", raising=False)
-    _ini(
-        tmp_path / "config" / "settings.ini", r"%USERPROFILE%\genre_v2.db"
-    )  # conftest's VIBE_CONFIG_DIR
+    monkeypatch.setenv("USERPROFILE", str(profile))  # what expandvars reads
+    _ini(tmp_path / "config" / "settings.ini", r"%USERPROFILE%\genre_v2.db")
 
-    # Put back BOTH the sys.modules entry and the package attribute afterwards:
-    # import_module rebinds vibenative.db, and a module left bound there but missing
-    # from sys.modules breaks any later importlib.reload(vibenative.db).
-    pkg = importlib.import_module("vibenative")
-    saved = (sys.modules.pop("vibenative.db", None), pkg.__dict__.get("db"))
-    try:
-        db = importlib.import_module("vibenative.db")
-        assert "%" not in str(db.DB_PATH)
-        with closing(db.db()) as conn:
-            conn.execute("CREATE TABLE t(x)")
-        assert (profile / "genre_v2.db").is_file()
-        assert db.DB_PATH.samefile(profile / "genre_v2.db")
-    finally:
-        mod, attr = saved
-        if mod is None:
-            sys.modules.pop("vibenative.db", None)
-        else:
-            sys.modules["vibenative.db"] = mod
-        if attr is None:
-            pkg.__dict__.pop("db", None)
-        else:
-            pkg.db = attr
+    s = settings.use(settings.Settings.from_env({"VIBE_CONFIG_DIR": str(tmp_path / "config")}))
+    assert "%" not in str(s.db_path)
+    with closing(db.db()) as conn:
+        conn.execute("CREATE TABLE t(x)")
+    assert (profile / "genre_v2.db").is_file()
+    assert s.db_path.samefile(profile / "genre_v2.db")
 
 
-def test_first_import_of_db_without_any_fixture_lands_in_the_session_dir(tmp_path):
+def test_without_a_fixture_nothing_reaches_the_real_library(tmp_path):
     # The collection-time case: a fresh interpreter imports conftest (as pytest
     # does, before any test module) and then vibenative.db, with no fixture in
     # play -- and with GENRE_DB in the parent environment pointing at the real
-    # library, as a developer's shell might. DB_PATH must still be the throwaway one.
+    # library, as a developer's shell might. db() must refuse (no Settings
+    # installed, and conftest forbids building them from the environment), and
+    # Settings.from_env() -- what main() and wsgi.py call -- must still land in
+    # the throwaway session dir.
     import subprocess  # nosec B404  # runs this interpreter on a fixed snippet
     from pathlib import Path
 
@@ -199,8 +175,15 @@ def test_first_import_of_db_without_any_fixture_lands_in_the_session_dir(tmp_pat
     env.pop("VIBE_CONFIG_DIR", None)
     env.pop("VIBE_TAXONOMY", None)
     snippet = (
-        "import conftest, vibenative.db as d; "
-        "print(conftest.SESSION_DIR); print(d.DB_PATH); print(d.DB_PATH.exists())"
+        "import conftest\n"
+        "from vibenative import db, settings\n"
+        "try:\n"
+        "    db.db()\n"
+        "    print('opened')\n"
+        "except RuntimeError:\n"
+        "    print('refused')\n"
+        "print(conftest.SESSION_DIR)\n"
+        "print(settings.Settings.from_env().db_path)\n"
     )
     out = subprocess.run(  # nosec B603  # fixed argv, no shell
         [sys.executable, "-c", snippet],
@@ -210,7 +193,8 @@ def test_first_import_of_db_without_any_fixture_lands_in_the_session_dir(tmp_pat
         text=True,
         timeout=60,
         check=True,
-    ).stdout.split("\n")
-    session_dir, db_path = Path(out[0]), Path(out[1])
+    ).stdout.splitlines()
+    assert out[0] == "refused", out
+    session_dir, db_path = Path(out[1]), Path(out[2])
     assert db_path.is_relative_to(session_dir), (db_path, session_dir)
     assert db_path != Path.home() / "genre_v2.db"

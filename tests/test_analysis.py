@@ -48,10 +48,10 @@ def test_musical_features_degrades_on_extractor_error(monkeypatch):
     assert len(out["waveform"]) == analysis.WAVE_BINS
 
 
-def test_assemble_shape_and_values(monkeypatch):
-    # Force "no custom head" deterministically, independent of the dev machine's
-    # ~/essentia_models/custom_head.npz.
-    monkeypatch.setattr(analysis, "_custom", {"checked": True, "head": None})
+def test_assemble_shape_and_values(settings):
+    # No custom head: the test's model_dir is an empty tmp dir, independent of the
+    # dev machine's ~/essentia_models/custom_head.npz.
+    assert not settings.custom_head_path.exists()
 
     labels = ["A---House", "B---Techno", "C---Trance"]
     preds = np.array([[0.7, 0.2, 0.1], [0.1, 0.8, 0.1]], dtype=np.float32)

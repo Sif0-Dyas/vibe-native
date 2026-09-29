@@ -18,16 +18,10 @@ from vibenative import taxonomy
 
 
 @pytest.fixture(autouse=True)
-def tmp_overlay(tmp_path, monkeypatch):
-    """The scratch overlay for this test.
-
-    Driven by the env var rather than by patching ``taxonomy.path``: the client
-    fixture re-imports the whole package, so a patched attribute would sit on a
-    module object the app is no longer using -- which is exactly how the route
-    test first went green against the developer's real file.
-    """
-    f = tmp_path / "taxonomy.json"
-    monkeypatch.setenv("VIBE_TAXONOMY", str(f))
+def tmp_overlay(settings):
+    """The scratch overlay for this test: conftest's Settings.taxonomy, under
+    tmp_path -- never the developer's real file."""
+    f = settings.taxonomy
     taxonomy.load(force=True)
     yield f
     taxonomy.load(force=True)

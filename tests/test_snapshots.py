@@ -6,11 +6,12 @@ loses nothing -- is tested by round-tripping: capture state, reset, restore,
 assert the state came back byte-for-byte.
 """
 
-import importlib
 import json
 import sqlite3
 
 import pytest
+
+from vibenative.settings import current
 
 SCHEMA = """
 CREATE TABLE tracks(hash TEXT PRIMARY KEY, filename TEXT, filepath TEXT, title TEXT,
@@ -23,7 +24,7 @@ CREATE TABLE segment_overrides(hash TEXT, start_s REAL, end_s REAL, genre TEXT, 
 
 
 @pytest.fixture
-def snap(tmp_path, monkeypatch):
+def snap(tmp_path, use_settings):
     """A snapshots module bound to a scratch DB, head path and snapshot dir."""
     dbfile = tmp_path / "lib.db"
     con = sqlite3.connect(dbfile)
@@ -41,15 +42,11 @@ def snap(tmp_path, monkeypatch):
     con.commit()
     con.close()
 
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    monkeypatch.setenv("VIBE_SNAPSHOTS", str(tmp_path / "snaps"))
-    from vibenative import db as dbmod
-
-    importlib.reload(dbmod)
+    use_settings(
+        db_path=dbfile, snapshots=tmp_path / "snaps", custom_head=tmp_path / "custom_head.npz"
+    )
     from vibenative import snapshots as S
 
-    importlib.reload(S)
-    monkeypatch.setattr(S, "CUSTOM_HEAD_PATH", tmp_path / "custom_head.npz")
     return S
 
 
@@ -90,7 +87,7 @@ def test_create_is_side_effect_free(snap):
 def test_list_is_newest_first_and_survives_a_corrupt_entry(snap):
     a = snap.create("first")
     b = snap.create("second")
-    bad = snap.SNAPSHOT_DIR / "20200101-000000-broken"
+    bad = current().snapshots_dir / "20200101-000000-broken"
     bad.mkdir(parents=True)
     (bad / "meta.json").write_text("{not json", encoding="utf-8")
     ids = [m["id"] for m in snap.list_all()]
@@ -109,7 +106,7 @@ def test_reset_clears_live_state(snap):
 def test_reset_leaves_the_tracks_themselves_alone(snap):
     """Analysis is not learned state -- resetting must not cost a re-scan."""
     snap.reset("RESET")
-    with sqlite3.connect(snap.DB_PATH) as c:
+    with sqlite3.connect(current().db_path) as c:
         rows = dict(c.execute("SELECT hash, payload FROM tracks").fetchall())
     assert set(rows) == {"h1", "h2"}
     assert json.loads(rows["h1"])["bpm"] == 174  # analysis intact
@@ -123,9 +120,9 @@ def test_reset_snapshots_before_clearing(snap):
 
 
 def test_reset_moves_a_trained_head_aside_rather_than_deleting_it(snap):
-    snap.CUSTOM_HEAD_PATH.write_bytes(b"weights")
+    current().custom_head_path.write_bytes(b"weights")
     res = snap.reset("RESET")
-    assert not snap.CUSTOM_HEAD_PATH.exists()
+    assert not current().custom_head_path.exists()
     moved = res["custom_head_moved_to"]
     assert moved and open(moved, "rb").read() == b"weights"
 
@@ -140,10 +137,10 @@ def test_reset_then_restore_returns_everything(snap):
 
 
 def test_restore_brings_back_a_trained_head(snap):
-    snap.CUSTOM_HEAD_PATH.write_bytes(b"weights")
+    current().custom_head_path.write_bytes(b"weights")
     res = snap.reset("RESET")
     snap.restore(res["snapshot"]["id"])
-    assert snap.CUSTOM_HEAD_PATH.read_bytes() == b"weights"
+    assert current().custom_head_path.read_bytes() == b"weights"
 
 
 def test_restore_is_itself_undoable(snap):
@@ -159,7 +156,7 @@ def test_restore_is_itself_undoable(snap):
 
 def test_restore_skips_an_override_whose_track_is_gone(snap):
     snap_id = snap.create("has-h1")["id"]
-    with sqlite3.connect(snap.DB_PATH) as c:
+    with sqlite3.connect(current().db_path) as c:
         c.execute("DELETE FROM tracks WHERE hash='h1'")
     snap.restore(snap_id)  # must not raise
     assert _state(snap)["overrides"] == {}
@@ -189,7 +186,7 @@ def test_snapshots_from_older_versions_still_list(snap):
     """Snapshots written before `seq` existed carry no such key; they must still
     sort (against each other and against new ones) instead of raising."""
     new = snap.create("new")
-    old = snap.SNAPSHOT_DIR / "20200101-000000-legacy"
+    old = current().snapshots_dir / "20200101-000000-legacy"
     old.mkdir(parents=True)
     (old / "meta.json").write_text(
         json.dumps({"id": old.name, "label": "legacy", "created": 1.0}), encoding="utf-8"

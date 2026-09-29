@@ -189,9 +189,9 @@ NODE_SCHEMA = 3
 
 
 def _map_cache_dir():
-    from ..db import DB_PATH
+    from ..settings import current
 
-    return Path(DB_PATH).parent / "vibe-mapcache"
+    return Path(current().db_path).parent / "vibe-mapcache"
 
 
 def _map_fingerprint(rev, mode):
@@ -207,14 +207,14 @@ def _map_fingerprint(rev, mode):
     map current" costs the same on a six-thousand-track library as on six.
     """
     from .. import __version__
-    from ..db import DB_PATH
+    from ..settings import current
     from ..taxonomy import path as taxonomy_path
 
     h = hashlib.blake2b(digest_size=16)
     h.update(__version__.encode("utf-8"))
     h.update(f"schema{NODE_SCHEMA}".encode())
     h.update(mode.encode("utf-8"))
-    h.update(str(DB_PATH).encode("utf-8", "replace"))
+    h.update(str(current().db_path).encode("utf-8", "replace"))
     try:
         st = taxonomy_path().stat()
         h.update(f"{st.st_mtime_ns}:{st.st_size}".encode())

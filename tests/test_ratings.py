@@ -8,7 +8,6 @@ Storage tests run against a scratch database; the XML builder is pure and needs
 no database at all.
 """
 
-import importlib
 import sqlite3
 from xml.etree import ElementTree as ET
 
@@ -25,23 +24,14 @@ CREATE TABLE ratings(hash TEXT PRIMARY KEY, stars INTEGER DEFAULT 0,
 
 
 @pytest.fixture
-def rt(tmp_path, monkeypatch):
+def rt(tmp_path, use_settings):
     """ratings module bound to a scratch database."""
     dbfile = tmp_path / "lib.db"
     con = sqlite3.connect(dbfile)
     con.executescript(SCHEMA)
     con.commit()
     con.close()
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    from vibenative import db as dbmod
-
-    # Only db is reloaded: reload() updates the module's dict in place, so the
-    # new DB_PATH is visible to db(), which reads it at call time. Reloading
-    # ratings as well is not just redundant -- it fails outright once another
-    # test has dropped modules from sys.modules, which reload() requires.
-    importlib.reload(dbmod)
-    monkeypatch.setattr(ratings, "db", dbmod.db)
-    monkeypatch.setattr(ratings, "_db_lock", dbmod._db_lock)
+    use_settings(db_path=dbfile)
     return ratings
 
 

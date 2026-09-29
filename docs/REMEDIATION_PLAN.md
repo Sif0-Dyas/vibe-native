@@ -170,7 +170,9 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 **Phase 3 — structure (one PR each, in this order)**
 
-- [ ] `Settings` object; delete the conftest reload hack
+- [x] `Settings` object; delete the conftest reload hack
+  - Suite time did not move (119.0 s before, 117.5–119.7 s after): the reload hack cost ~1.6 s of fixture setup. ~82 s of the two minutes is three real-engine oracle tests (`test_tonality::test_oracle_agreement`, `test_oracle_match::test_embeddings_match_oracle`, `test_tempo::test_tempo_matches_oracle`) that run whenever the models are present, `FAKE_ANALYZER=1` or not.
+  - `onnx_engine.MODELS` / `tempo.MODELS` stay module constants: they locate the bundled models (`paths.models_dir()`), they are not settings.
 - [ ] Repository layer; routes contain no SQL
 - [ ] One `dominant_style()`; one `@bp.errorhandler`; `trainsets` stops importing from `routes`
   - `/similar`, `/training/candidates` and `insight.check` are waiting on `dominant_style()` before they can drop payload parsing: each needs the override/weights/relabel-aware style, which the v9 `style` column (raw `styles[0]`) is not.
@@ -201,7 +203,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
   - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.
   - Uninstall's data removal finds the DB through `{app}\settings.ini`, so it misses a database moved in Options.
-  - `db_path=%USERPROFILE%\genre_v2.db` is stored unexpanded. The app expands it on read with `os.path.expandvars` (`db._resolve_db_path`: any `%VAR%`, from the logged-in user's environment). The uninstaller's `ExistingDbPath()` only replaces the literal `%USERPROFILE%`, with `{%USERPROFILE}` from the *elevated* uninstaller process; likewise its fallback `{%USERPROFILE}\genre_v2.db` and the `genre_training` DelTree. Same answer when the user approves their own UAC prompt; the admin's profile, not the user's, when elevated as a different account. (By reasoning, not tested with a second account. `test_userprofile_db_path_resolves_to_the_file_the_app_opens` pins the app side.)
+  - `db_path=%USERPROFILE%\genre_v2.db` is stored unexpanded. The app expands it on read with `os.path.expandvars` (`settings._db_path`: any `%VAR%`, from the logged-in user's environment). The uninstaller's `ExistingDbPath()` only replaces the literal `%USERPROFILE%`, with `{%USERPROFILE}` from the *elevated* uninstaller process; likewise its fallback `{%USERPROFILE}\genre_v2.db` and the `genre_training` DelTree. Same answer when the user approves their own UAC prompt; the admin's profile, not the user's, when elevated as a different account. (By reasoning, not tested with a second account. `test_userprofile_db_path_resolves_to_the_file_the_app_opens` pins the app side.)
 
 **Post-release**
 

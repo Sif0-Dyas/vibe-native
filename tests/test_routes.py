@@ -13,7 +13,7 @@ import wave
 
 import pytest
 
-from conftest import TEST_TOKEN, authed
+from conftest import authed
 
 
 def test_index_serves_page(client):
@@ -296,9 +296,10 @@ def test_batch_missing_dir_400(client):
 
 def _decode_failing_with(monkeypatch, exc):
     """The REAL analyze() path, with every child process failing as `exc(cmd)`."""
+    import dataclasses
     import subprocess
 
-    from vibenative import analysis, decode, metadata
+    from vibenative import analysis, decode, metadata, settings
 
     def fail(cmd, **kw):
         raise exc(cmd)
@@ -306,7 +307,7 @@ def _decode_failing_with(monkeypatch, exc):
     monkeypatch.setattr(subprocess, "run", fail)
     monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
     monkeypatch.setattr(metadata, "find_tool", lambda name: name)
-    monkeypatch.setattr(analysis, "FAKE", False)
+    settings.use(dataclasses.replace(settings.current(), fake=False))
     monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
 
 
@@ -360,9 +361,9 @@ def test_analyze_upload_that_is_not_audio_is_422_and_one_warning(client, monkeyp
     assert not any(rec.exc_info for rec in caplog.records)
 
 
-def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
+def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch, use_settings):
     # A file that stalls ffmpeg/ffprobe must fail on its own, not pin a batch worker.
-    # Runs the REAL analyze() path (FAKE off for the analysis module) with every
+    # Runs the REAL analyze() path (FAKE off) with every
     # child process timing out.
     import subprocess
 
@@ -376,7 +377,7 @@ def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", hang)
     monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
     monkeypatch.setattr(metadata, "find_tool", lambda name: name)
-    monkeypatch.setattr(analysis, "FAKE", False)
+    use_settings(fake=False)
     monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
 
     hung = tmp_path / "a_hung.wav"
@@ -1087,7 +1088,7 @@ def test_applederived_sidecars_are_not_queued_for_analysis(tmp_path):
     assert _is_sidecar(tmp_path / ".hidden.mp3") is False
 
 
-def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
+def test_training_status_reports_readiness_bands(tmp_path, monkeypatch, settings):
     """The Vibes tab's "what still needs examples" view. Reads the real
     ~/genre_training folders that /override files audio into, so it reports the
     training set that exists rather than one that was intended."""
@@ -1101,11 +1102,10 @@ def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
             (d / f"{i}.mp3").write_bytes(b"x")
     (root / "Sparse" / "._junk.mp3").write_bytes(b"x")  # AppleDouble must not count
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
 
     from vibenative import create_app
 
-    app = create_app()
+    app = create_app(settings)
     with authed(app) as c:
         d = c.get("/training/status").get_json()
     by = {g["genre"]: g for g in d["genres"]}
@@ -1118,21 +1118,12 @@ def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
     assert [g["genre"] for g in d["genres"]][0] == "Ready"
 
 
-def test_vibe_description_round_trips_unbounded_text(tmp_path, monkeypatch):
+def test_vibe_description_round_trips_unbounded_text(tmp_path, use_settings):
     """A vibe is the user's own category; the notes about it get as much room as
     they need, and paragraphs must survive verbatim."""
-    import importlib
-
-    dbfile = tmp_path / "v.db"
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    from vibenative import db as dbmod
-
-    importlib.reload(dbmod)
-    dbmod.init_db()
-    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
     from vibenative import create_app
 
-    app = create_app()
+    app = create_app(use_settings(db_path=tmp_path / "v.db"))
     with authed(app) as c:
         vid = c.post("/vibes", json={"name": "Notes Test"}).get_json()["id"]
         text = "First para.\n\nSecond para.\n\n" + ("word " * 2000)

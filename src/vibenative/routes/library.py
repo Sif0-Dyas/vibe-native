@@ -100,8 +100,8 @@ def status_route():
     the ONNX engine just to report."""
     import vibenative
 
-    from ..db import DB_PATH
     from ..decode import find_tool
+    from ..settings import current
 
     with closing(db()) as conn, conn as c:
         n = c.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
@@ -119,13 +119,12 @@ def status_route():
     except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (FAKE/CI) is fine
         pass
 
-    import os
-
+    settings = current()
     return jsonify(
         {
             "version": vibenative.__version__,
-            "db_path": str(DB_PATH),
-            "log_path": os.environ.get("GENRE_BACKEND_LOG") or None,
+            "db_path": str(settings.db_path),
+            "log_path": settings.backend_log or None,
             "tracks": n,
             "ffmpeg": bool(ffmpeg),
             "ffmpeg_path": ffmpeg,
@@ -147,16 +146,15 @@ def reveal_route():
     capability than the Options tab needs, reachable from any page the browser
     can be talked into loading.
     """
-    import os
     import subprocess  # nosec B404  # fixed arg list, no shell
 
-    from ..db import DB_PATH
     from ..decode import find_tool
+    from ..settings import current
 
     what = ((request.get_json(silent=True) or {}).get("what") or "").strip()
     targets = {
-        "db": str(DB_PATH),
-        "log": os.environ.get("GENRE_BACKEND_LOG") or "",
+        "db": str(current().db_path),
+        "log": current().backend_log,
         "ffmpeg": find_tool("ffmpeg") or "",
     }
     target = targets.get(what)
@@ -182,7 +180,7 @@ def db_path_route():
     never the installer's copy beside the exe, which Program Files makes read-only).
 
     Only writes the setting -- it does not move the database or re-point the
-    running process. ``DB_PATH`` is resolved once at import and threaded through
+    running process. ``Settings.db_path`` is resolved once at startup and threaded through
     live connections, so switching underneath a running app would leave open
     handles pointing at the old file. The response says a restart is needed, and
     the Options tab says so too.

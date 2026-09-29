@@ -8,7 +8,6 @@ gets the most tests here.
 Real files on disk, because export hashes actual bytes.
 """
 
-import importlib
 import json
 import sqlite3
 
@@ -29,20 +28,15 @@ INSERT_TRACK = (
 
 
 @pytest.fixture
-def ts(tmp_path, monkeypatch):
+def ts(tmp_path, monkeypatch, use_settings):
     dbfile = tmp_path / "lib.db"
     con = sqlite3.connect(dbfile)
     con.executescript(SCHEMA)
     con.commit()
     con.close()
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    from vibenative import db as dbmod
-
-    importlib.reload(dbmod)
+    use_settings(db_path=dbfile)
     from vibenative import trainsets
 
-    monkeypatch.setattr(trainsets, "db", dbmod.db)
-    monkeypatch.setattr(trainsets, "_db_lock", dbmod._db_lock)
     monkeypatch.setattr(trainsets, "ROOT", tmp_path / "genre_training")
     monkeypatch.setattr(trainsets, "ARCHIVE", tmp_path / "genre_training" / "_archive")
     trainsets._DB = dbfile

@@ -262,14 +262,14 @@ def training_status_route():
                     "needs": max(0, TRAIN_READY - n),
                 }
             )
-    from ..analysis import CUSTOM_HEAD_PATH
+    from ..settings import current
 
     return jsonify(
         {
             "folder": str(root),
             "genres": sorted(genres, key=lambda g: -g["files"]),
             "total_files": sum(g["files"] for g in genres),
-            "custom_head": CUSTOM_HEAD_PATH.exists(),
+            "custom_head": current().custom_head_path.exists(),
             "thresholds": {"thin": TRAIN_THIN, "ready": TRAIN_READY},
         }
     )

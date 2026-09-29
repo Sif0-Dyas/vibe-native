@@ -60,7 +60,7 @@ def test_non_loopback_host_is_403_even_with_the_token(anon, url):
     assert bad.status_code == 403
 
 
-def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
+def test_dev_token_is_generated_once_and_reused(client, use_settings, tmp_path):
     # Restarting the dev server keeps an open tab signed in: with GENRE_TOKEN unset,
     # the first start writes <config_dir>/dev_token and later starts reuse it.
     import os
@@ -70,9 +70,8 @@ def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
     import vibenative
 
     cfg = tmp_path / "fresh-config"
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(cfg))
-    monkeypatch.delenv("GENRE_TOKEN", raising=False)
-    a, b = vibenative.create_app(), vibenative.create_app()
+    s = use_settings(config_dir=cfg, token="")
+    a, b = vibenative.create_app(s), vibenative.create_app(s)
     token = a.config["AUTH_TOKEN"]
     assert len(token) >= 32 and b.config["AUTH_TOKEN"] == token
     saved = cfg / "dev_token"
@@ -81,27 +80,24 @@ def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
         assert stat.S_IMODE(os.stat(saved).st_mode) == 0o600
 
 
-def test_genre_token_overrides_the_saved_dev_token(client, monkeypatch, tmp_path):
+def test_genre_token_overrides_the_saved_dev_token(client, use_settings, tmp_path):
     import vibenative
 
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "cfg"))
-    monkeypatch.delenv("GENRE_TOKEN", raising=False)
-    saved = vibenative.create_app().config["AUTH_TOKEN"]
-    monkeypatch.setenv("GENRE_TOKEN", "pinned")
-    assert vibenative.create_app().config["AUTH_TOKEN"] == "pinned"
+    s = use_settings(config_dir=tmp_path / "cfg", token="")
+    saved = vibenative.create_app(s).config["AUTH_TOKEN"]
+    assert vibenative.create_app(use_settings(token="pinned")).config["AUTH_TOKEN"] == "pinned"
     assert (tmp_path / "cfg" / "dev_token").read_text(encoding="ascii").strip() == saved
 
 
-def test_a_packaged_build_never_writes_a_dev_token(client, monkeypatch, tmp_path):
+def test_a_packaged_build_never_writes_a_dev_token(client, monkeypatch, use_settings, tmp_path):
     import sys
 
     import vibenative
 
     cfg = tmp_path / "frozen-config"
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(cfg))
-    monkeypatch.delenv("GENRE_TOKEN", raising=False)
+    s = use_settings(config_dir=cfg, token="")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    a, b = vibenative.create_app(), vibenative.create_app()
+    a, b = vibenative.create_app(s), vibenative.create_app(s)
     assert a.config["AUTH_TOKEN"] != b.config["AUTH_TOKEN"]  # fresh each start
     assert not (cfg / "dev_token").exists()
 
@@ -110,7 +106,9 @@ def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
     import vibenative.__main__ as entry
 
     served = []
+    # main() is the one path that builds Settings from the environment itself.
     monkeypatch.setenv("GENRE_PORT", "5123")
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
     monkeypatch.setattr(entry.serve, "serve", lambda app, host, port: served.append((host, port)))
     entry.main()
     out = capsys.readouterr().out

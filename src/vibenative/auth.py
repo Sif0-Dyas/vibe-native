@@ -12,10 +12,10 @@ So every request must
 (c) if it writes (POST/PUT/PATCH/DELETE) and the browser sent ``Sec-Fetch-Site``,
     come from this origin -- defence in depth on top of the SameSite=Strict cookie.
 
-There is no unauthenticated mode. ``create_app`` takes ``GENRE_TOKEN`` if it is
-set (the desktop shell sets a fresh one per launch); otherwise a dev checkout
-reuses ``<config_dir>/dev_token`` (created on first start) and a packaged build
-generates a fresh one;
+There is no unauthenticated mode. ``create_app`` takes ``Settings.token``
+(``GENRE_TOKEN``) if it is set (the desktop shell sets a fresh one per launch);
+otherwise a dev checkout reuses ``<config_dir>/dev_token`` (created on first
+start) and a packaged build generates a fresh one;
 ``python -m vibenative`` and ``wsgi.py`` print the URL carrying it.
 
 The hooks are app-level, not blueprint-level, so they also cover ``/static/*``
@@ -30,6 +30,8 @@ import secrets
 import sys
 
 from flask import abort, current_app, request
+
+from .settings import current
 
 TOKEN_COOKIE = "vibe_token"  # nosec B105  # cookie NAME (not a secret); the value is the token
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
@@ -52,9 +54,9 @@ def _resolve_token() -> str:
     a packaged build makes a new one each start; a dev checkout reuses the one in
     ``<config_dir>/dev_token``, so restarting the dev server keeps an open tab
     signed in (its cookie still matches)."""
-    env = os.environ.get("GENRE_TOKEN", "").strip()
-    if env:
-        return env
+    token = current().token.strip()
+    if token:
+        return token
     if getattr(sys, "frozen", False):
         return secrets.token_urlsafe(32)
     return _dev_token()

@@ -1,49 +1,13 @@
 """SQLite persistence: analysis cache, embeddings, and vibe centroids."""
 
-import configparser
 import hashlib
 import json
-import os
 import sqlite3
 import threading
 import time
 from contextlib import closing
-from pathlib import Path
 
-
-def _resolve_db_path() -> Path:
-    """Where the library database lives, in priority order:
-
-    1. ``GENRE_DB`` env var — always wins (power users, dev, the test suite).
-    2. ``[vibenative] db_path`` in ``settings.ini`` (``paths.settings_ini_for_read``):
-       the per-user copy in ``%APPDATA%\\Vibe Identify``, which a packaged build seeds
-       once from the installer's DB-location page (written beside the exe) and the
-       Options tab updates; the exe-adjacent file is read only if that copy is
-       missing. Env vars in the value (e.g. ``%USERPROFILE%``) are expanded at
-       runtime so a machine-wide setting still resolves per-user.
-    3. Default: ``%USERPROFILE%\\genre_v2.db``.
-    """
-    env = os.environ.get("GENRE_DB")
-    if env:
-        return Path(os.path.expandvars(env))
-    try:
-        from .paths import settings_ini_for_read
-
-        ini = settings_ini_for_read()
-        if ini.is_file():
-            # interpolation=None so a literal "%USERPROFILE%" in the value isn't parsed
-            # as configparser interpolation; os.path.expandvars expands it below.
-            cp = configparser.ConfigParser(interpolation=None)
-            cp.read(ini, encoding="utf-8")
-            val = cp.get("vibenative", "db_path", fallback="").strip()
-            if val:
-                return Path(os.path.expandvars(val))
-    except Exception:  # nosec B110  # a malformed settings.ini must never block startup -> fall through
-        pass
-    return Path.home() / "genre_v2.db"
-
-
-DB_PATH = _resolve_db_path()
+from .settings import current
 
 # Serialises WRITES only. Many write blocks read, change and write back (a payload,
 # a rating); holding this across the block keeps two threads from losing each
@@ -88,15 +52,16 @@ class _ThreadConnection:
 
 
 def db():
-    """This thread's connection to DB_PATH (WAL, busy_timeout 5 s), opened once.
-    A new one is opened if DB_PATH has changed since (tests repoint it) or after
-    close_all()."""
-    key = (DB_PATH, _generation)
+    """This thread's connection to the settings' db_path (WAL, busy_timeout 5 s),
+    opened once. A new one is opened if db_path has changed since (tests repoint
+    it) or after close_all()."""
+    path = current().db_path
+    key = (path, _generation)
     conn = getattr(_local, "conn", None)
     if conn is None or _local.key != key:
         # check_same_thread=False only so close_all() may close it from another
         # thread; in use, each connection stays with the thread that opened it.
-        conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        conn = sqlite3.connect(path, timeout=5, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
         with _open_lock:

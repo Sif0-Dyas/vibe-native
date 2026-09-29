@@ -13,8 +13,8 @@ from vibenative import taxonomy
 
 
 @pytest.fixture(autouse=True)
-def tmp_overlay(tmp_path, monkeypatch):
-    monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
+def tmp_overlay(settings):
+    # conftest's Settings already point the overlay at tmp_path; start from a clean read.
     taxonomy.load(force=True)
     yield
     taxonomy.load(force=True)

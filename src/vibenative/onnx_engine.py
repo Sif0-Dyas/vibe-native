@@ -18,7 +18,6 @@ Models load from models/*.onnx (produced by tools/convert_models.py):
 
 import json
 import logging
-import os
 import threading
 from pathlib import Path
 
@@ -27,6 +26,7 @@ import onnxruntime as ort
 
 from . import frontend_mel
 from .paths import models_dir
+from .settings import current
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ _GPU_VALUES = ("gpu", "dml", "directml", "dmlexecutionprovider")
 
 def provider_order() -> list[str]:
     """Preferred execution providers, highest priority first, per VIBE_PROVIDER."""
-    if os.environ.get("VIBE_PROVIDER", "").strip().lower() in _GPU_VALUES:
+    if current().provider.strip().lower() in _GPU_VALUES:
         return ["DmlExecutionProvider", "CPUExecutionProvider"]
     return ["CPUExecutionProvider"]
 

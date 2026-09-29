@@ -6,9 +6,9 @@ server against ``wsgi:app`` instead of this dev server.
 """
 
 import logging
-import os
 
 from . import auth, create_app, preflight, serve
+from .settings import Settings
 
 log = logging.getLogger("vibenative")
 
@@ -30,8 +30,8 @@ def _check_ffmpeg():
 
 
 def main():
-    host = os.environ.get("GENRE_HOST", "127.0.0.1")
-    port = int(os.environ.get("GENRE_PORT", "5005"))
+    settings = Settings.from_env()
+    host, port = settings.host, settings.port
     # First, before the app (and its database) is touched: refuse a port another
     # server already holds, instead of silently sharing it (see preflight.py).
     preflight.ensure_port_free(host, port)
@@ -39,8 +39,8 @@ def main():
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    app = create_app()
-    if os.environ.get("FAKE_ANALYZER") == "1":
+    app = create_app(settings)
+    if settings.fake:
         log.info("FAKE_ANALYZER=1 -- serving fake results (GUI test mode, no models).")
     else:
         _check_ffmpeg()

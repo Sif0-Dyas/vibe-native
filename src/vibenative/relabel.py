@@ -46,10 +46,10 @@ def _head_id():
     The custom head's file mtime + size is enough to tell "trained again" from
     "same head"; the stock head has no file, so it reports as such.
     """
-    from .analysis import CUSTOM_HEAD_PATH
+    from .settings import current
 
     try:
-        st = CUSTOM_HEAD_PATH.stat()
+        st = current().custom_head_path.stat()
         return f"custom:{int(st.st_mtime)}:{st.st_size}"
     except OSError:
         return "stock"

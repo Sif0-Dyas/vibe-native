@@ -1,57 +1,99 @@
 """Shared pytest fixtures.
 
-Every test runs with FAKE_ANALYZER=1 (no Essentia / no model loads) and a
-throwaway SQLite database, so the suite never touches real models or the
-user's ~/genre_v2.db. Config is read at import time, so we set the env vars
-first and reload the package per test for full isolation.
+Every test runs against its own ``Settings`` (vibenative/settings.py), installed by
+the autouse ``settings`` fixture before the test body: FAKE mode (no models), and
+a throwaway database, config dir (settings.ini, dev_token), taxonomy overlay and
+model dir (custom head) under the test's tmp_path. So the suite never touches real
+models, the user's ~/genre_v2.db, or their settings -- and since nothing in the
+package reads the environment at import, no module is reloaded between tests.
 """
 
 import atexit
+import dataclasses
 import os
 import shutil
-import sys
 import tempfile
 
 import pytest
 
-# Isolation that does not depend on any fixture, set before anything imports
-# vibenative. db.py resolves DB_PATH at first import, and that import can happen
-# during collection (a test module's top-level `from vibenative import db`) --
-# before any fixture runs. Without this, such a module, or a test that uses `db`
-# outside the client fixture, would resolve the developer's real ~/genre_v2.db.
-# Assigned outright, not setdefault: a GENRE_DB exported in the developer's shell
-# must not leak in either. The per-test fixtures below still narrow these further.
+from vibenative import settings as vn_settings
+from vibenative.settings import Settings
+
+# A test must never build settings from the real environment: settings.current()
+# before the fixture below has installed a Settings raises, instead of silently
+# reading the developer's GENRE_DB and friends.
+vn_settings._implicit = False
+
+# The one path that still reads the environment on purpose is Settings.from_env()
+# (python -m vibenative's main(), wsgi.py, create_app() without arguments). Point
+# what it would find at a throwaway dir, assigned outright rather than setdefault,
+# so a GENRE_DB exported in the developer's shell cannot leak into a test that
+# exercises one of those.
 SESSION_DIR = tempfile.mkdtemp(prefix="vibe-tests-")
 atexit.register(shutil.rmtree, SESSION_DIR, ignore_errors=True)
 os.environ["GENRE_DB"] = os.path.join(SESSION_DIR, "genre_v2.db")
 os.environ["VIBE_CONFIG_DIR"] = os.path.join(SESSION_DIR, "config")
 os.environ["VIBE_TAXONOMY"] = os.path.join(SESSION_DIR, "taxonomy.json")
+os.environ["MODEL_DIR"] = os.path.join(SESSION_DIR, "models")
+for _name in ("CUSTOM_HEAD", "VIBE_SNAPSHOTS", "GENRE_TOKEN"):
+    os.environ.pop(_name, None)
+
+# Every request needs the app's token (vibenative/auth.py) -- there is no
+# unauthenticated mode, tests included. The per-test Settings carry this one;
+# anything that builds its own app talks to it through authed().
+TEST_TOKEN = "test-token"  # nosec B105  # a fixed token for the test apps, not a secret
+
+
+def make_settings(tmp_path, **overrides):
+    """The Settings a test runs with: everything under ``tmp_path``, FAKE mode."""
+    base = {
+        "db_path": tmp_path / "genre_v2.db",
+        "fake": True,
+        "model_dir": tmp_path / "models",
+        "config_dir": tmp_path / "config",
+        "taxonomy": tmp_path / "taxonomy.json",
+        "token": TEST_TOKEN,
+    }
+    return Settings(**(base | overrides))
 
 
 @pytest.fixture(autouse=True)
-def _isolated_taxonomy(tmp_path, monkeypatch):
-    """Point the taxonomy overlay at a scratch path for every test.
-
-    The overlay changes how every genre resolves. Without this the suite would
-    read whatever the developer has saved in the app -- so a run would pass or
-    fail depending on whose machine it was on, and a genuine regression could
-    hide behind someone's local edit.
-
-    VIBE_CONFIG_DIR does the same for settings.ini: without it, a test that hit
-    /db-path would rewrite the developer's real repo-root settings.ini.
-    """
-    monkeypatch.setenv("VIBE_TAXONOMY", str(tmp_path / "taxonomy.json"))
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "config"))
-    yield
+def settings(tmp_path):
+    """Install this test's Settings, and afterwards close every connection db()
+    opened (Windows won't delete an open file) and uninstall them, so nothing
+    between tests -- or a thread outliving one -- can use a stale test's paths."""
+    s = vn_settings.use(make_settings(tmp_path))
+    yield s
     _close_db_connections()
+    vn_settings._current = None
+
+
+@pytest.fixture()
+def use_settings(settings):
+    """``use_settings(**changes)`` swaps the installed Settings for a copy with
+    ``changes`` (e.g. ``fake=False`` or another ``db_path``) and returns it."""
+
+    def swap(**changes):
+        _close_db_connections()
+        return vn_settings.use(dataclasses.replace(vn_settings.current(), **changes))
+
+    return swap
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    # Belt and braces for the autouse fixture: by the time any test body runs,
+    # its Settings are installed, so current() never falls back to the environment.
+    assert vn_settings._current is not None, f"{item.nodeid}: no Settings installed"
+    yield
 
 
 def _close_db_connections():
     """Close the connections db() keeps per thread (vibenative.db.close_all), so no
     test leaves a database file open for the next -- or locked for deletion."""
-    mod = sys.modules.get("vibenative.db")
-    if mod is not None and hasattr(mod, "close_all"):
-        mod.close_all()
+    from vibenative.db import close_all
+
+    close_all()
 
 
 def seed_track(h, payload):
@@ -59,19 +101,11 @@ def seed_track(h, payload):
 
     The three test modules that build a library each spelled out the same
     ``cache_put`` call; this is the one place that knows its argument order.
-    Imported lazily because ``client`` re-imports the package per test, so a
-    top-level import would bind to a module the app is no longer using.
     """
     from vibenative.db import cache_put
 
     cache_put(h, f"{h}.mp3", "", h, payload, None)
     return h
-
-
-# Every request needs the app's token (vibenative/auth.py) -- there is no
-# unauthenticated mode, tests included. Anything that builds its own app sets
-# GENRE_TOKEN to this before create_app() and talks to it through authed().
-TEST_TOKEN = "test-token"  # nosec B105  # a fixed token for the test apps, not a secret
 
 
 def authed(app):
@@ -85,22 +119,10 @@ def authed(app):
 
 
 @pytest.fixture()
-def client(monkeypatch):
-    os.environ["FAKE_ANALYZER"] = "1"
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    os.environ["GENRE_DB"] = tmp.name
-    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
-
-    for name in list(sys.modules):  # force a clean import per test
-        if name == "vibenative" or name.startswith("vibenative."):
-            del sys.modules[name]
+def client(settings):
     import vibenative
 
-    app = vibenative.create_app()
+    app = vibenative.create_app(settings)
     app.config.update(TESTING=True)
     with authed(app) as c:
         yield c
-
-    _close_db_connections()  # db() keeps one per thread; Windows won't delete an open file
-    os.unlink(tmp.name)

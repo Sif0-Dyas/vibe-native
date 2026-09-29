@@ -11,11 +11,11 @@ in FAKE mode / on CI without onnxruntime installed -- exactly as the old code
 deferred ``essentia``.
 """
 
-import os
 import threading
 from pathlib import Path
 
-from .config import FAKE, MODEL_DIR, log
+from .config import log
+from .settings import current
 
 # The embedder/classifier are shared inference sessions. ONNX Runtime sessions ARE
 # thread-safe for concurrent Session.run(), so this lock is not required for
@@ -44,36 +44,41 @@ def get_engine():
 
 
 # --- optional custom head (trained with train_head.py) ----------------------
-CUSTOM_HEAD_PATH = Path(os.environ.get("CUSTOM_HEAD", MODEL_DIR / "custom_head.npz"))
-_custom = {"checked": False, "head": None}
+# (path, head) for the last custom_head_path looked at; head is None when that file
+# is missing or unloadable. Keyed by path so a Settings with another model_dir
+# (a test's) doesn't get the head loaded for the previous one.
+_custom = (None, None)
 
 
 def get_custom_head():
-    """Load ~/essentia_models/custom_head.npz once, if it exists. Guarded so the
+    """Load the settings' custom_head.npz once, if it exists. Guarded so the
     concurrent /batch workers that call this (via custom_predict) load it once."""
-    if _custom["checked"]:
-        return _custom["head"]
+    global _custom
+    path = current().custom_head_path
+    if _custom[0] == path:
+        return _custom[1]
     with _engine_lock:
-        if _custom["checked"]:  # loaded while we waited on the lock
-            return _custom["head"]
-        if CUSTOM_HEAD_PATH.exists():
+        if _custom[0] == path:  # loaded while we waited on the lock
+            return _custom[1]
+        head = None
+        if path.exists():
             try:
                 import numpy as np
 
-                d = np.load(CUSTOM_HEAD_PATH, allow_pickle=False)
+                d = np.load(path, allow_pickle=False)
                 head = {k: d[k] for k in ("W1", "b1", "W2", "b2", "mu", "sigma")}
                 head["labels"] = [str(x) for x in d["labels"]]
                 acc = float(d["val_acc"]) if "val_acc" in d else None
-                _custom["head"] = head  # publish only once fully built
                 log.info(
                     "custom head loaded: %s%s",
                     head["labels"],
                     f"  (val acc {acc:.0%})" if acc else "",
                 )
             except Exception:
+                head = None
                 log.warning("could not load custom head", exc_info=True)
-        _custom["checked"] = True  # set last: don't try again either way
-        return _custom["head"]
+        _custom = (path, head)  # published whole: don't try this path again either way
+        return head
 
 
 def custom_predict(embeddings):
@@ -192,7 +197,7 @@ def load_samples_for_waveform(path):
     mode reads a WAV with the stdlib so tests need no models."""
     import numpy as np
 
-    if FAKE:
+    if current().fake:
         import wave as _wave
 
         with _wave.open(str(path), "rb") as wf:
@@ -394,7 +399,7 @@ def _assemble(labels, audio16, embeddings, preds, features) -> dict:
 
 def analyze(path: Path) -> dict:
     """Genre styles + BPM, key, duration, and a waveform envelope for one file."""
-    if FAKE:
+    if current().fake:
         import hashlib
         import math
         import random
