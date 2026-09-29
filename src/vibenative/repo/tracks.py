@@ -194,3 +194,29 @@ def cache_lookup(h, source, parsed):
             "VALUES(?,?,?,?)",
             (h, source, json.dumps(parsed), time.time()),
         )
+
+
+# --- embeddings --------------------------------------------------------------------
+def embeddings_for(hashes) -> dict:
+    """{hash: embedding blob} for each of ``hashes`` that has one; one query per 500."""
+    out = {}
+    with reading() as c:
+        for i in range(0, len(hashes), 500):
+            chunk = hashes[i : i + 500]
+            q = ",".join("?" * len(chunk))
+            for h, blob in c.execute(
+                f"SELECT hash, embedding FROM tracks WHERE hash IN ({q})",  # nosec B608
+                chunk,
+            ):
+                if blob is not None:
+                    out[h] = blob
+    return out
+
+
+def embedded_rows():
+    """(hash, title, filename, payload, embedding) for every track with an embedding."""
+    with reading() as c:
+        return c.execute(
+            "SELECT hash, title, filename, payload, embedding FROM tracks "
+            "WHERE embedding IS NOT NULL"
+        ).fetchall()
