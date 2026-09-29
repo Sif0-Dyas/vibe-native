@@ -33,14 +33,24 @@ def rows_for(hashes):
     return out
 
 
-def put(hash_, stars, grade, note):
+def update(hash_, merge):
+    """Read one track's rating, ``merge`` it, write the result -- one locked
+    transaction, so two partial updates at once (stars from the map, a note from
+    the library) both land instead of the later one writing back a stale copy of
+    the other's field.
+
+    ``merge((stars, grade, note) or None)`` returns the new (stars, grade, note);
+    it runs under the write lock, so keep it to in-memory work."""
     with writing() as c:
+        row = c.execute("SELECT stars, grade, note FROM ratings WHERE hash=?", (hash_,)).fetchone()
+        stars, grade, note = merge(row)
         c.execute(
             "INSERT INTO ratings(hash, stars, grade, note, updated) VALUES(?,?,?,?,?) "
             "ON CONFLICT(hash) DO UPDATE SET stars=excluded.stars, grade=excluded.grade, "
             "note=excluded.note, updated=excluded.updated",
             (hash_, stars, grade, note, time.time()),
         )
+    return stars, grade, note
 
 
 def artist_rows_for(keys):
@@ -59,8 +69,15 @@ def artist_rows_for(keys):
     return out
 
 
-def artist_put(key, display, stars, grade, note):
+def artist_update(key, merge):
+    """:func:`update` for an artist: ``merge((display, stars, grade, note) or
+    None)`` returns the new (display, stars, grade, note), read and written in
+    one locked transaction."""
     with writing() as c:
+        row = c.execute(
+            "SELECT display, stars, grade, note FROM artist_ratings WHERE artist_key=?", (key,)
+        ).fetchone()
+        display, stars, grade, note = merge(row)
         c.execute(
             "INSERT INTO artist_ratings(artist_key, display, stars, grade, note, updated) "
             "VALUES(?,?,?,?,?,?) "
@@ -69,6 +86,7 @@ def artist_put(key, display, stars, grade, note):
             "updated=excluded.updated",
             (key, display, stars, grade, note, time.time()),
         )
+    return display, stars, grade, note
 
 
 def artist_all_rows():

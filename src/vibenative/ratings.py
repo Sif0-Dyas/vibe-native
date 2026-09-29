@@ -76,13 +76,22 @@ def get_many(hashes):
 
 def put(hash_, stars=None, grade=None, note=None):
     """Create or update a rating. Only the fields passed are changed, so setting
-    stars from the map doesn't wipe a note written in the library view."""
-    cur = get(hash_)
-    stars = _clamp_stars(cur["stars"] if stars is None else stars)
-    grade = (cur["grade"] if grade is None else str(grade)).strip().upper()[:4]
-    note = (cur["note"] if note is None else str(note)).strip()[:MAX_NOTE]
-    ratings_repo.put(hash_, stars, grade, note)
-    return {"hash": hash_, "stars": stars, "grade": grade, "note": note}
+    stars from the map doesn't wipe a note written in the library view -- even
+    when both land at once: the current row is read and the new one written in
+    one locked transaction (repo.ratings.update)."""
+
+    def merge(row):
+        cur_stars, cur_grade, cur_note = (
+            (row[0] or 0, row[1] or "", row[2] or "") if row else (0, "", "")
+        )
+        return (
+            _clamp_stars(cur_stars if stars is None else stars),
+            (cur_grade if grade is None else str(grade)).strip().upper()[:4],
+            (cur_note if note is None else str(note)).strip()[:MAX_NOTE],
+        )
+
+    new_stars, new_grade, new_note = ratings_repo.update(hash_, merge)
+    return {"hash": hash_, "stars": new_stars, "grade": new_grade, "note": new_note}
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +164,24 @@ def artist_put(name, stars=None, grade=None, note=None):
     key = artist_key(name)
     if not key:
         raise ValueError("artist name required")
-    cur = artist_get(name)
-    stars = _clamp_stars(cur["stars"] if stars is None else stars)
-    grade = (cur["grade"] if grade is None else str(grade)).strip().upper()[:4]
-    note = (cur["note"] if note is None else str(note)).strip()[:MAX_NOTE]
-    display = str(name).strip() or cur["artist"]
-    ratings_repo.artist_put(key, display, stars, grade, note)
-    return {"artist": display, "key": key, "stars": stars, "grade": grade, "note": note}
+
+    def merge(row):
+        # The same current values artist_get() gives: an unrated artist reads as
+        # stars 0, and a blank stored display falls back to the name as given.
+        if row:
+            cur_display = row[0] or key
+            cur_stars, cur_grade, cur_note = row[1] or 0, row[2] or "", row[3] or ""
+        else:
+            cur_display, cur_stars, cur_grade, cur_note = str(name).strip(), 0, "", ""
+        return (
+            str(name).strip() or cur_display,
+            _clamp_stars(cur_stars if stars is None else stars),
+            (cur_grade if grade is None else str(grade)).strip().upper()[:4],
+            (cur_note if note is None else str(note)).strip()[:MAX_NOTE],
+        )
+
+    display, new_stars, new_grade, new_note = ratings_repo.artist_update(key, merge)
+    return {"artist": display, "key": key, "stars": new_stars, "grade": new_grade, "note": new_note}
 
 
 def artist_all():

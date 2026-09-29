@@ -238,3 +238,68 @@ def test_ids_stay_contiguous_after_skipping():
     ids = [t.get("TrackID") for t in root.findall("COLLECTION/TRACK")]
     keys = [t.get("Key") for t in root.findall("PLAYLISTS/NODE/NODE/TRACK")]
     assert ids == keys == ["1", "2"]
+
+
+# --- concurrent partial updates ----------------------------------------------------
+def _race(monkeypatch, reader, first, second):
+    """Run ``first`` and ``second`` in two threads, arranged so that if either
+    reads the current rating OUTSIDE its write -- through ``reader`` -- both
+    read before either writes (they meet at a barrier there). A put that reads
+    and writes in one locked transaction never calls ``reader`` and is simply
+    serialised."""
+    import threading
+
+    from vibenative.repo import ratings as ratings_repo
+
+    real = getattr(ratings_repo, reader)
+    meet = threading.Barrier(2, timeout=2)
+
+    def read_then_wait(*a, **k):
+        out = real(*a, **k)
+        try:
+            meet.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return out
+
+    monkeypatch.setattr(ratings_repo, reader, read_then_wait)
+    errors = []
+
+    def run(fn):
+        try:
+            fn()
+        except Exception as e:  # surfaced below
+            errors.append(e)
+
+    threads = [threading.Thread(target=run, args=(f,)) for f in (first, second)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert not errors, errors
+
+
+def test_concurrent_partial_updates_both_land(client, monkeypatch):
+    """Stars from the map and a note from the library, on the same track at the
+    same moment: each put changes only its own field, so both must survive."""
+    h = "r" * 40
+    ratings.put(h, grade="B")  # an existing row, so both threads merge into it
+    _race(
+        monkeypatch,
+        "get",
+        lambda: ratings.put(h, stars=4),
+        lambda: ratings.put(h, note="big room opener"),
+    )
+    assert ratings.get(h) == {"hash": h, "stars": 4, "grade": "B", "note": "big room opener"}
+
+
+def test_concurrent_partial_artist_updates_both_land(client, monkeypatch):
+    ratings.artist_put("Skrillex", grade="A")
+    _race(
+        monkeypatch,
+        "artist_rows_for",
+        lambda: ratings.artist_put("Skrillex", stars=5),
+        lambda: ratings.artist_put("skrillex ", note="bass"),
+    )
+    got = ratings.artist_get("SKRILLEX")
+    assert (got["stars"], got["grade"], got["note"]) == (5, "A", "bass")
