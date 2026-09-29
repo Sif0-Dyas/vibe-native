@@ -153,7 +153,7 @@ records of `genres_electronic.json` (#7).
   it from the existing `genres_electronic.json` (commit `960c078`); `smoke_dist.py`
   fails a build whose copy has any `everynoise` field. The Wikidata P9881 ID
   (`everynoise_id`, CC0) is kept.
-- Nothing in the running app reads the snapshot — `vibenative.enao` has no callers,
+- Nothing in the running app reads the snapshot — its reader, `vibenative.enao`, had no callers and has been deleted,
   and the map is laid out from track-embedding similarity — so excluding it costs
   no functionality.
 

@@ -212,6 +212,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] Retrain key profiles on owned `key_labels` (PROVENANCE #5)
 - [ ] Counsel confirms `frontend_mel.py` / `tempo.py` provenance (PROVENANCE §3–4); fix the README's AGPL claim accordingly
 - [ ] Settle `enao.json` (PROVENANCE #6): permission, replacement, or stop shipping
+  - The reader is gone (`vibenative.enao` and its test were deleted), so the only remaining question is the local data file's licence.
 - [ ] If no license: permissive embedder + tempo estimator; retrain the genre head on the 400-label taxonomy; retire `tools/convert_models.py`, `requirements-convert.txt`
 - [ ] `pip-licenses --fail-on` in CI
 

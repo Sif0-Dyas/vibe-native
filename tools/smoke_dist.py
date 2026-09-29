@@ -205,9 +205,16 @@ def main() -> int:
         sorted(p.name for p in models.glob("*.onnx")) if models.is_dir() else [],
         lambda got: len(got) >= 3,
     )
-    # enao.json is excluded in the spec (not ours to ship; nothing reads it at
-    # runtime) -- a stray copy anywhere in the bundle is a release blocker.
+    # enao.json is excluded in the spec (not ours to ship) and the module that read
+    # it no longer exists -- a stray copy of either anywhere in the bundle is a
+    # release blocker.
+    check(
+        "vibenative.enao no longer exists",
+        (ROOT / "src" / "vibenative" / "enao.py").exists(),
+        False,
+    )
     check("enao.json is not in the bundle", [str(p) for p in DIST.rglob("enao.json")], [])
+    check("no enao module in the bundle", [str(p) for p in DIST.rglob("enao.py*")], [])
     genres = next(DIST.rglob("genres_electronic.json"), None)
     check("genres_electronic.json is in the bundle", genres is not None, True)
     if genres is not None:

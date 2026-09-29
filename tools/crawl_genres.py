@@ -461,8 +461,8 @@ def cross_reference(records, mb_names):
     than guessed at: MusicBrainz's genre list is flat, with no parent genre, so
     there is no non-heuristic way to tell whether an unmatched name like
     ``acholitronix`` is electronic. Recording it as an open question beats
-    inventing a classification -- the same call ``vibenative.enao`` makes about
-    prefix-guessing unmapped styles.
+    inventing a classification -- the same call the (since removed)
+    ``vibenative.enao`` made about prefix-guessing unmapped styles.
     """
     known = set()
     for r in records:
