@@ -287,3 +287,66 @@ def test_lexicon_lookup_cannot_recurse_forever(monkeypatch):
         },
     )
     assert genrelex.resolve_keystone("a", lambda _n: None) is None
+
+
+# --- concurrent writes ----------------------------------------------------------
+def test_an_override_made_during_apply_survives(client, monkeypatch):
+    """apply() reads every payload, then spends a while on inference. An /override
+    (or /weights) landing in that window used to be overwritten when apply wrote
+    back the whole payload it had read. The inference is held on an event so the
+    override lands exactly there; afterwards both must be in the payload."""
+    import threading
+
+    from vibenative import analysis, db, relabel
+    from vibenative.style import dominant_style
+
+    hashes = [c * 40 for c in "abc"]
+    for i, h in enumerate(hashes):
+        payload = {"salience": [{"style": "House", "score": 0.9}], "bpm": 120 + i}
+        db.cache_put(h, f"{h[:4]}.mp3", "", h[:4], payload, np.full(1280, i + 1, np.float32))
+
+    inferring, release = threading.Event(), threading.Event()
+    engine = fake_engine("Dubstep")
+    classify = engine["classifier"]
+
+    def held_classifier(v):
+        inferring.set()
+        assert release.wait(10), "test never released the classifier"
+        return classify(v)
+
+    engine["classifier"] = held_classifier
+    monkeypatch.setattr(analysis, "get_engine", lambda: engine)
+
+    result = {}
+    worker = threading.Thread(target=lambda: result.update(relabel.apply()))
+    worker.start()
+    try:
+        assert inferring.wait(10), "apply never reached inference"
+        r = client.post(f"/override/{hashes[1]}", json={"genre": "Trance"})
+        assert r.status_code == 200, r.get_json()
+    finally:
+        release.set()
+        worker.join(10)
+    assert not worker.is_alive()
+    assert result["updated"] == 3
+
+    conn = sqlite3.connect(current_db())
+    try:
+        rows = dict(conn.execute("SELECT hash, payload FROM tracks"))
+        styles = dict(conn.execute("SELECT hash, style FROM tracks"))
+    finally:
+        conn.close()
+    p = json.loads(rows[hashes[1]])
+    assert p.get("override") == "Trance", "the override made during inference was lost"
+    assert p["relabel"]["styles"][0]["style"] == "Dubstep"  # and the relabel landed too
+    assert styles[hashes[1]] == "Trance" == dominant_style(p)
+    for h in (hashes[0], hashes[2]):
+        other = json.loads(rows[h])
+        assert other["relabel"]["styles"][0]["style"] == "Dubstep"
+        assert styles[h] == "Dubstep" == dominant_style(other)
+
+
+def current_db():
+    from vibenative.settings import current
+
+    return current().db_path

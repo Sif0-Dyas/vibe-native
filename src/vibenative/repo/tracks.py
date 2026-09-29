@@ -141,12 +141,12 @@ def update_payload(h, change):
 
 
 def similar_candidates(h):
-    """(hash, title, filename, filepath, payload, embedding) for every track with
-    an embedding except ``h``."""
+    """(hash, title, filename, filepath, tag_artist, style, bpm, camelot, embedding)
+    for every track with an embedding except ``h`` -- columns only, no payload."""
     with reading() as c:
         return c.execute(
-            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks "
-            "WHERE embedding IS NOT NULL AND hash != ?",
+            "SELECT hash, title, filename, filepath, tag_artist, style, bpm, camelot, embedding "
+            "FROM tracks WHERE embedding IS NOT NULL AND hash != ?",
             (h,),
         ).fetchall()
 

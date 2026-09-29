@@ -18,8 +18,7 @@ from ..db import (
 )
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
-from ..style import dominant_style
-from ._shared import _artist_from, _artist_of, bp
+from ._shared import _artist_from, bp
 
 
 @bp.post("/forget/<h>")
@@ -518,20 +517,20 @@ def similar_route(h):
     target = track_embedding(h)
     if target is None:
         return jsonify({"error": "track not in database"}), 404
+    # Every field is a column (tracks.style is style.dominant_style; the rest are
+    # migration 9's), so no payload is read or parsed.
     rows = tracks_repo.similar_candidates(h)
     out = []
-    for hh, title, filename, filepath, payload, blob in rows:
+    for hh, title, filename, filepath, tag_artist, style, bpm, camelot, blob in rows:
         emb = np.frombuffer(blob, dtype=np.float32)
-        p = json.loads(payload)
-        style = dominant_style(p)
         out.append(
             {
                 "hash": hh,
                 "title": title or (Path(filename).stem if filename else hh[:8]),
-                "artist": _artist_of(p, title, filename),
+                "artist": _artist_from(tag_artist, title, filename),
                 "style": style,
-                "bpm": p.get("bpm"),
-                "camelot": p.get("camelot"),
+                "bpm": bpm,
+                "camelot": camelot,
                 "sim": round(cosine(target, emb), 4),
                 "a": 1 if (filepath and str(filepath).strip()) else 0,
             }

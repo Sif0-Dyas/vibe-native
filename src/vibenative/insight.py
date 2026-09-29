@@ -78,19 +78,20 @@ def check(emb, top_style, top_conf, exclude_hash=None):
     Returns a flag/suggestion dict, or None if there isn't enough to judge."""
     if emb is None:
         return None
+    # tracks.style is style.dominant_style(payload), kept current on every write,
+    # so the neighbours' styles come from the column and no payload is parsed.
     with closing(db()) as conn, conn as c:
         rows = c.execute(
-            "SELECT hash, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
+            "SELECT hash, style, embedding FROM tracks WHERE embedding IS NOT NULL"
         ).fetchall()
     q = np.asarray(emb, dtype=np.float32)
     q = q / (np.linalg.norm(q) + 1e-9)
     sims = []
-    for h, payload, blob in rows:
+    for h, s, blob in rows:
         if exclude_hash and h == exclude_hash:
             continue
         e = np.frombuffer(blob, dtype=np.float32)
         e = e / (np.linalg.norm(e) + 1e-9)
-        s = dominant_style(json.loads(payload))
         sims.append((float(q @ e), s))
     if len(sims) < 3:  # cold start: not enough neighbours
         return None

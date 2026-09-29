@@ -31,8 +31,9 @@ from contextlib import closing
 import numpy as np
 
 from .config import log
-from .db import _db_lock, db
-from .style import dominant_style
+from .db import db
+from .repo import NotFound
+from .repo import tracks as tracks_repo
 
 # Marks a payload's re-labelled read. Consumers prefer this over `salience` when
 # present -- see style.dominant_style.
@@ -141,23 +142,54 @@ def preview(limit=None):
     }
 
 
+class _Unparseable(ValueError):
+    """A stored payload that isn't JSON: left exactly as it is."""
+
+
+def _parse(payload):
+    try:
+        return json.loads(payload) if isinstance(payload, str) else (payload or {})
+    except (TypeError, ValueError) as e:
+        raise _Unparseable from e
+
+
+def _set_relabel(entry):
+    """A change for repo.tracks.update_payload: put ``entry`` under KEY in the
+    payload as it is NOW, touching nothing else."""
+
+    def change(stored):
+        p = _parse(stored)
+        p[KEY] = entry
+        return p
+
+    return change
+
+
 def apply(limit=None):
     """Write the re-labelled read into every track's payload.
 
     Skips tracks with a manual override -- you told the app what those are.
     Original ``styles``/``salience`` are left untouched; only the ``relabel`` key
     is added or replaced, so this is safe to re-run and undo.
+
+    The payloads are read once, unlocked, to decide what to infer; inference is
+    the slow part and holds no lock. Each result is then written on its own
+    through repo.tracks.update_payload, which re-reads that track's payload
+    under the write lock and sets only the ``relabel`` key on it -- so an
+    /override or /weights that lands while inference runs is kept, not
+    overwritten with the copy read at the start. (The style column is
+    recomputed by the same write.) A track forgotten meanwhile is skipped.
     """
     from .analysis import get_engine
 
     eng = get_engine()
     labels = [x.split("---", 1)[1] for x in eng["labels"]]
     head, stamp = _head_id(), time.time()
-    updates, skipped = [], 0
+    results, skipped = [], 0
     for h, _title, _filename, payload, blob in _rows(limit):
         try:
-            p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-        except (TypeError, ValueError):
+            p = _parse(payload)
+        except _Unparseable:
             continue
         if p.get("override"):
             skipped += 1
@@ -165,41 +197,68 @@ def apply(limit=None):
         entries = _read(_predict(eng, blob), labels)
         if not entries:
             continue
-        p[KEY] = {
-            "styles": entries,
-            "head": head,
-            "at": stamp,
-            # Recorded so a reader can tell how this was produced -- and so a
-            # future full-audio re-analysis can be distinguished from this.
-            "method": "mean-embedding",
-        }
-        updates.append((json.dumps(p), dominant_style(p), h))
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.executemany("UPDATE tracks SET payload=?, style=? WHERE hash=?", updates)
+        results.append(
+            (
+                h,
+                {
+                    "styles": entries,
+                    "head": head,
+                    "at": stamp,
+                    # Recorded so a reader can tell how this was produced -- and so
+                    # a future full-audio re-analysis can be distinguished from this.
+                    "method": "mean-embedding",
+                },
+            )
+        )
+    updated = 0
+    for h, entry in results:
+        try:
+            tracks_repo.update_payload(h, _set_relabel(entry))
+        except (NotFound, _Unparseable):
+            continue
+        updated += 1
     log.info(
         "relabel: %d tracks updated, %d skipped (manual override), head=%s",
-        len(updates),
+        updated,
         skipped,
         head,
     )
-    return {"updated": len(updates), "skipped_override": skipped, "head": head}
+    return {"updated": updated, "skipped_override": skipped, "head": head}
 
 
 def revert():
-    """Remove every re-label, restoring the originally analysed reads."""
-    cleared = []
-    with _db_lock, closing(db()) as conn, conn as c:
-        for h, payload in c.execute("SELECT hash, payload FROM tracks").fetchall():
-            try:
-                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-            except (TypeError, ValueError):
+    """Remove every re-label, restoring the originally analysed reads.
+
+    Finds the re-labelled tracks with one unlocked read, then removes the key
+    from each through repo.tracks.update_payload -- the same per-track write
+    apply() uses, so nothing but the ``relabel`` key changes and the style
+    column follows. (Unlike apply, revert never raced: it always read and
+    wrote under one lock. This is for one write path, not a fix.)"""
+    with closing(db()) as conn, conn as c:
+        rows = c.execute("SELECT hash, payload FROM tracks").fetchall()
+    cleared = 0
+    for h, payload in rows:
+        try:
+            if KEY not in _parse(payload):
                 continue
+        except _Unparseable:
+            continue
+        removed = []
+
+        def drop(stored, removed=removed):
+            p = _parse(stored)
             if KEY in p:
-                p.pop(KEY, None)
-                cleared.append((json.dumps(p), dominant_style(p), h))
-        c.executemany("UPDATE tracks SET payload=?, style=? WHERE hash=?", cleared)
-    log.info("relabel: reverted %d tracks", len(cleared))
-    return {"reverted": len(cleared)}
+                p.pop(KEY)
+                removed.append(True)
+            return p
+
+        try:
+            tracks_repo.update_payload(h, drop)
+        except (NotFound, _Unparseable):
+            continue
+        cleared += bool(removed)
+    log.info("relabel: reverted %d tracks", cleared)
+    return {"reverted": cleared}
 
 
 def status():
