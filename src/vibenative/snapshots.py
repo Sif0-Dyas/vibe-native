@@ -25,6 +25,7 @@ import shutil
 import time
 
 from .config import log
+from .names import safe_name
 from .repo import snapshots as snapshots_repo
 from .settings import current
 
@@ -40,7 +41,7 @@ class ConfirmationRequired(ValueError):
 
 
 def _safe(label):
-    keep = "".join(c if c.isalnum() or c in " _-" else "_" for c in (label or "")).strip()
+    keep = safe_name(label)
     return keep.replace(" ", "-")[:40] or "snapshot"
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from flask import jsonify, request
 
 from .. import lookup
+from ..names import safe_name
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo.keys import key_label_delete, key_label_put, key_labels_map
@@ -241,7 +242,7 @@ def override_route(h):
     # not move into the update (never hold the DB lock across disk I/O).
     trained = False
     if filepath:
-        safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+        safe = safe_name(genre)
         src = Path(filepath)
         if safe and src.is_file():
             dest_dir = Path.home() / "genre_training" / safe
@@ -310,7 +311,7 @@ def _remove_segment_clip(h, genre, start, end):
     ext from the track's source file). Returns True if a file was removed."""
     row = tracks_repo.file_info(h)
     filepath = row[0] if row else None
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    safe = safe_name(genre)
     if not safe:
         return False
     ext = (Path(filepath).suffix.lower() if filepath else "") or ".wav"
@@ -415,7 +416,7 @@ def override_segment_route():
 
     new_id = tracks_repo.add_segment(h, start, end, genre)
     # ffmpeg extraction stays OUTSIDE the DB lock (subprocess + disk I/O)
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    safe = safe_name(genre)
     clip, err = _extract_segment(src, safe, h, start, end) if safe else (None, "invalid genre name")
     return jsonify(
         {

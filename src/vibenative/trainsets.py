@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 from .config import log
+from .names import safe_name
 from .repo import tracks as tracks_repo
 from .repo import training as training_repo
 from .style import dominant_read
@@ -50,7 +51,7 @@ def _safe(genre):
     raw = genre or ""
     if not any(c.isalnum() for c in raw):
         return None
-    keep = "".join(c if c.isalnum() or c in " _-" else "_" for c in raw).strip()
+    keep = safe_name(raw)
     return keep or None
 
 

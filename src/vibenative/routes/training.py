@@ -6,6 +6,7 @@ from pathlib import Path
 
 from flask import jsonify, request
 
+from ..names import safe_name
 from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo import training as training_repo
@@ -26,7 +27,7 @@ def save_training_route():
         return jsonify({"error": "genre required"}), 400
 
     # sanitize the genre name for use as a folder name
-    safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in genre_raw).strip()
+    safe = safe_name(genre_raw)
     if not safe:
         return jsonify({"error": "invalid genre name"}), 400
 
@@ -91,7 +92,7 @@ def _copy_into_training(filepath, genre):
 
     if not filepath:
         return False
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    safe = safe_name(genre)
     src = Path(filepath)
     if not safe or not src.is_file():
         return False
@@ -293,7 +294,7 @@ def trainset_export(genre):
     from .. import trainsets
 
     data = trainsets.export(genre)
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    safe = safe_name(genre)
     return Response(
         json.dumps(data, indent=1),
         mimetype="application/json",

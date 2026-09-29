@@ -6,6 +6,7 @@ import json
 from flask import jsonify, request
 
 from ..config import log
+from ..names import safe_name
 from ..repo import playlists as playlists_repo
 from ..repo import tracks as tracks_repo
 from ._shared import bp
@@ -186,7 +187,7 @@ def playlist_rekordbox(pid):
             skipped,
             len(tracks),
         )
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in (name or "playlist"))
+    safe = safe_name(name or "playlist")
     return Response(
         xml,
         mimetype="application/xml",
