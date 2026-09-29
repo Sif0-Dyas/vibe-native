@@ -46,7 +46,7 @@ def _clamp_stars(v):
 
 def get(hash_):
     """One track's rating, or the empty rating if it has none."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT stars, grade, note FROM ratings WHERE hash=?", (hash_,)).fetchone()
     if not row:
         return {"hash": hash_, "stars": 0, "grade": "", "note": ""}
@@ -61,7 +61,7 @@ def all_tracks():
     stars by rating and needs the whole set before it draws a single frame;
     fetching per-track there would be one request per point.
     """
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute("SELECT hash, stars, grade, note FROM ratings").fetchall()
     return {h: {"stars": st or 0, "grade": g or "", "note": n or ""} for h, st, g, n in rows}
 
@@ -73,7 +73,7 @@ def get_many(hashes):
     if not hashes:
         return {}
     out = {}
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         # chunked so a huge library can't blow SQLite's variable limit (999)
         for i in range(0, len(hashes), 500):
             chunk = hashes[i : i + 500]
@@ -165,7 +165,7 @@ def artist_get_many(names):
     if not keys:
         return {}
     out = {}
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         for i in range(0, len(keys), 500):
             chunk = keys[i : i + 500]
             q = ",".join("?" * len(chunk))
@@ -204,7 +204,7 @@ def artist_put(name, stars=None, grade=None, note=None):
 def artist_all():
     """Every rated artist, best first. Backs the map's artist-rating overlay in
     one request rather than one per visible star."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT artist_key, display, stars, grade, note FROM artist_ratings "
             "ORDER BY stars DESC, display COLLATE NOCASE"

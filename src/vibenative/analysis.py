@@ -284,22 +284,20 @@ def salience_read(preds, audio16, labels, topk=8):
 def _decode_and_infer(path: Path):
     """Decode the file and run the (locked) genre inference.
 
-    Returns ``(audio16, audio44, embeddings, preds)``. Only the shared inference
-    pass is serialized under ``_lock`` (exactly as before); both decodes stay
-    outside it so they parallelize across workers."""
+    Returns ``(audio16, audio44, embeddings, preds)``. One decode serves both rates
+    (``decode.decode_both``: one ffprobe + one ffmpeg per track, was two of each);
+    only the shared inference pass is serialized under ``_lock``, so the decode
+    stays parallel across workers."""
     from . import decode
 
     eng = get_engine()
 
-    # --- genre (model wants 16 kHz) --- native ffmpeg decode + mel frontend
-    audio16 = decode.decode_16k_mono(path)
-    # serialize the one shared inference pass; decode/BPM/key below stay parallel.
+    # 16 kHz for the genre model, 44.1 kHz for BPM/key -- from one native-rate decode
+    audio16, audio44 = decode.decode_both(path)
+    # serialize the one shared inference pass; decode/BPM/key stay parallel.
     with _lock:
         embeddings = eng["embedder"](audio16)
         preds = eng["classifier"](embeddings)
-
-    # --- musical details (44.1 kHz for accuracy) ---
-    audio44 = decode.decode_mono(path, 44100)
     return audio16, audio44, embeddings, preds
 
 

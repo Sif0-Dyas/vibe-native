@@ -231,3 +231,145 @@ def test_cache_put_round_trips(tmp_path, monkeypatch):
     conn.close()
     assert row[:4] == ("h" * 40, "song.mp3", "", "Song")  # None filepath is stored as ""
     assert isinstance(row[4], float) and row[4] > 0
+    # the listing columns (migration 9) are written alongside
+    conn = sqlite3.connect(db.DB_PATH)
+    names = ", ".join(n for n, _ in db.TRACK_COLUMNS)
+    cols = conn.execute(f"SELECT {names} FROM tracks WHERE hash=?", ("h" * 40,)).fetchone()  # nosec B608
+    conn.close()
+    assert cols == db._track_columns(payload) == ("House", 124.0, None, None, None, None, "")
+
+
+def test_migration_9_backfills_the_listing_columns(tmp_path, monkeypatch):
+    # An existing (v8) library: rows written before the columns existed. The one
+    # UPDATE must give exactly what cache_put now writes for the same payload.
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "v8.db")
+    conn = sqlite3.connect(db.DB_PATH)
+    for version, migrate in db.MIGRATIONS:
+        if version <= 8:
+            migrate(conn)
+    conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
+    conn.execute("INSERT INTO schema_version(version) VALUES(8)")
+    payloads = {
+        "a" * 40: {
+            "styles": [{"style": "House", "score": 0.4}],
+            "bpm": 124.5,
+            "key": "A",
+            "scale": "minor",
+            "camelot": "8A",
+            "duration": 301.2,
+            "tags": {"tag": {"artist": " Floating Points ", "albumartist": "X"}},
+        },
+        "b" * 40: {"styles": [], "bpm": 128, "tags": {"tag": {"artist": "", "albumartist": "VA "}}},
+        "c" * 40: {"styles": [{"style": "Techno"}], "tags": {"tag": {"artist": "   "}}},
+        "d" * 40: {},
+    }
+    for h, p in payloads.items():
+        conn.execute(
+            "INSERT INTO tracks(hash, filename, filepath, title, payload, embedding, created) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (h, f"{h[:4]}.mp3", "", "t", json.dumps(p), None, 0.0),
+        )
+    conn.commit()
+    conn.close()
+
+    db.init_db()  # runs migration 9
+
+    conn = sqlite3.connect(db.DB_PATH)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] >= 9
+    names = ", ".join(n for n, _ in db.TRACK_COLUMNS)
+    for h, p in payloads.items():
+        row = conn.execute(f"SELECT {names} FROM tracks WHERE hash=?", (h,)).fetchone()  # nosec B608
+        assert row == db._track_columns(p), h
+    # a JSON integer stays an integer (no REAL affinity), so /library's JSON is unchanged
+    assert conn.execute("SELECT typeof(bpm) FROM tracks WHERE hash=?", ("b" * 40,)).fetchone() == (
+        "integer",
+    )
+    assert conn.execute("SELECT tag_artist FROM tracks WHERE hash=?", ("b" * 40,)).fetchone() == (
+        "VA",
+    )
+    conn.close()
+    db.init_db()  # idempotent: re-running leaves everything as it is
+
+
+def test_migration_10_indexes_serve_the_per_track_lookups(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "idx.db")
+    db.init_db()
+    conn = sqlite3.connect(db.DB_PATH)
+
+    def plan(q, *args):
+        return " | ".join(r[3] for r in conn.execute("EXPLAIN QUERY PLAN " + q, args))
+
+    p = plan("SELECT rowid FROM segment_overrides WHERE hash=? ORDER BY start_s", "x")
+    assert "idx_segment_overrides_hash" in p and "TEMP B-TREE" not in p  # no sort either
+    assert "idx_track_tags_hash" in plan(
+        "SELECT tag_id FROM track_tags WHERE hash IN (?,?)", "a", "b"
+    )
+    assert "idx_vibe_tracks_hash" in plan("DELETE FROM vibe_tracks WHERE hash=?", "x")
+    assert "idx_tracks_style" in plan("SELECT hash FROM tracks WHERE style=?", "House")
+    # the two not added were already indexed: no duplicate index was created
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert not any(
+        n.startswith("idx_key_labels") or n.startswith("idx_training_labels") for n in names
+    )
+    conn.close()
+
+
+def test_readers_and_writers_share_the_db_concurrently(tmp_path, monkeypatch):
+    # Reads no longer take _db_lock and every thread has its own connection (WAL):
+    # 4 readers and 2 writers for a few seconds, no "database is locked", no errors.
+    import threading
+    import time
+
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "conc.db")
+    db.init_db()
+    for i in range(50):
+        db.cache_put(
+            f"seed{i:036d}", "s.mp3", "", "s", {"styles": [{"style": "House"}]}, np.ones(8)
+        )
+
+    stop, errors, counts = threading.Event(), [], {"reads": 0, "writes": 0}
+    written = [[], []]
+
+    def reader():
+        try:
+            while not stop.is_set():
+                assert db.cache_get(f"seed{7:036d}")["styles"][0]["style"] == "House"
+                db.key_labels_map()
+                assert db.track_embedding(f"seed{3:036d}") is not None
+                with db.closing(db.db()) as conn, conn as c:
+                    c.execute("SELECT COUNT(*), MAX(created) FROM tracks").fetchone()
+                counts["reads"] += 1
+        except Exception as e:  # surfaced below
+            errors.append(e)
+
+    def writer(w):
+        try:
+            i = 0
+            while not stop.is_set():
+                h = f"w{w}-{i:035d}"
+                db.cache_put(
+                    h, "w.mp3", "", "w", {"styles": [{"style": "Techno"}], "bpm": 128}, np.ones(8)
+                )
+                db.key_label_put(h, "A", "minor")
+                written[w].append(h)
+                counts["writes"] += 1
+                i += 1
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=reader) for _ in range(4)]
+    threads += [threading.Thread(target=writer, args=(w,)) for w in range(2)]
+    for t in threads:
+        t.start()
+    time.sleep(3)
+    stop.set()
+    for t in threads:
+        t.join(timeout=30)
+    assert not any(t.is_alive() for t in threads)
+    assert errors == []
+    assert counts["reads"] > 50 and counts["writes"] > 20
+    everything = written[0] + written[1]
+    assert all(db.cache_get(h) is not None for h in everything)  # every write committed
+    assert set(db.key_labels_map()) >= set(everything)
+    db.close_all()

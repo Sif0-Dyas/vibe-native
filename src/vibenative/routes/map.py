@@ -11,7 +11,6 @@ from flask import Response, jsonify, render_template, request
 from .. import insight, taxonomy
 from ..config import log
 from ..db import (
-    _db_lock,
     db,
 )
 from ._shared import _artist_of, _dominant_style, _ranked_read, _second_style, bp
@@ -229,7 +228,7 @@ def _map_stamp(mode):
     """The fingerprint the map would be built from right now."""
     from ..db import library_rev
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rev = library_rev(c)
     return _map_fingerprint(rev, mode)
 
@@ -284,7 +283,7 @@ def map_route():
         resp = Response(hit, mimetype="application/json")
         resp.headers["X-Map-Cache"] = "hit"
         return resp
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
         ).fetchall()

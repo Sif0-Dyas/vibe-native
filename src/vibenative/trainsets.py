@@ -79,7 +79,7 @@ def detail(genre, top_n=10):
     want = (genre or "").strip().lower()
 
     tracks = []
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute("SELECT hash, title, filename, filepath, payload FROM tracks").fetchall()
         labelled = {
             r[0]
@@ -188,7 +188,7 @@ def export(genre):
         seen.add(h)
         entries.append({"hash": h, "source": "folder", "name": f.name})
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         for h, src in c.execute(
             "SELECT hash, source FROM training_labels WHERE LOWER(genre)=?", (want,)
         ):

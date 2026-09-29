@@ -105,20 +105,33 @@ _HANN = _hann(FRAME)
 _MEL_FB = _slaney_mel_filterbank()  # (96, 257)
 
 
+# Frames per block in ``melspectrogram``. Every step is per-frame; done over a whole
+# track at once, the float64 copies, index grid, frame matrix and complex128 FFT
+# peaked at ~570 MB on a 9-minute track. A block is ~4 MB.
+BLOCK_FRAMES = 1024
+
+
 def melspectrogram(audio16: np.ndarray) -> np.ndarray:
-    """16 kHz mono float32 -> (n_frames, 96) log-mel, matching Essentia's frontend."""
-    x = np.asarray(audio16, dtype=np.float64).ravel()
+    """16 kHz mono float32 -> (n_frames, 96) log-mel, matching Essentia's frontend.
+
+    Framed through a strided view and computed BLOCK_FRAMES frames at a time. Each
+    block runs the same float64 arithmetic the whole-track version did (the float32
+    signal widens to float64 exactly), writing float32 rows into the output."""
+    x = np.asarray(audio16, dtype=np.float32).ravel()
     n_frames = 1 + len(x) // HOP  # FrameCutter startFromZero=false / librosa center=True
     pad = FRAME // 2
     need = pad + (n_frames - 1) * HOP + FRAME
-    xp = np.zeros(need, dtype=np.float64)
+    xp = np.zeros(need, dtype=np.float32)
     xp[pad : pad + len(x)] = x  # left-pad frame/2; right auto zero-padded
 
-    starts = HOP * np.arange(n_frames)
-    frames = xp[starts[:, None] + np.arange(FRAME)[None, :]]  # (n_frames, 512)
-    spec = np.abs(np.fft.rfft(frames * _HANN, axis=1))  # magnitude (n_frames, 257)
-    mel_power = (spec * spec) @ _MEL_FB.T  # type='power' -> square, then filterbank
-    return np.log10(1.0 + 10000.0 * mel_power).astype(np.float32)
+    frames = np.lib.stride_tricks.sliding_window_view(xp, FRAME)[::HOP][:n_frames]
+    out = np.empty((n_frames, N_MELS), dtype=np.float32)
+    for s in range(0, n_frames, BLOCK_FRAMES):
+        fr = frames[s : s + BLOCK_FRAMES].astype(np.float64)
+        spec = np.abs(np.fft.rfft(fr * _HANN, axis=1))  # magnitude (block, 257)
+        mel_power = (spec * spec) @ _MEL_FB.T  # type='power' -> square, then filterbank
+        out[s : s + BLOCK_FRAMES] = np.log10(1.0 + 10000.0 * mel_power)
+    return out
 
 
 def patches(mel: np.ndarray, hop_frames: int = PATCH_HOP_COARSE) -> np.ndarray:

@@ -80,7 +80,7 @@ def _rows(limit=None):
     q = "SELECT hash, title, filename, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
     if limit:
         q += f" LIMIT {int(limit)}"
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         return c.execute(q).fetchall()
 
 
@@ -205,7 +205,7 @@ def status():
     """How much of the library currently carries a re-label, and from which head."""
     total = relabelled = 0
     heads = {}
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         for (payload,) in c.execute("SELECT payload FROM tracks"):
             try:
                 p = json.loads(payload) if isinstance(payload, str) else (payload or {})

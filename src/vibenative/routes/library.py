@@ -20,7 +20,7 @@ from ..db import (
     key_labels_map,
     track_embedding,
 )
-from ._shared import _artist_of, _dominant_style, bp
+from ._shared import _artist_from, _artist_of, _dominant_style, bp
 
 
 @bp.post("/forget/<h>")
@@ -47,32 +47,32 @@ def _key_of(payload: dict, correction):
 @bp.get("/library")
 def library_list():
     """A lean listing of EVERY cached track for the Library tab: hash, title, top
-    style, BPM, key/scale/camelot, and whether a server-side file exists. Parses each
-    stored payload for just those fields (the big segments/waveform arrays are dropped)."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    style, BPM, key/scale/camelot, and whether a server-side file exists. Reads the
+    denormalized columns (migration 9) -- no payload is parsed."""
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
-            "SELECT hash, filename, title, payload, filepath, created FROM tracks "
-            "ORDER BY created DESC"
+            "SELECT hash, filename, title, filepath, created, style, bpm, key, scale, "
+            "camelot, duration, tag_artist FROM tracks ORDER BY created DESC"
         ).fetchall()
     out = []
     corrections = key_labels_map()
-    for h, fn, title, payload, filepath, created in rows:
-        p = json.loads(payload) if payload else {}
-        styles = p.get("styles") or []
-        key, scale, camelot, source = _key_of(p, corrections.get(h))
+    for h, fn, title, filepath, created, style, bpm, k, s, cam, dur, tag_artist in rows:
+        key, scale, camelot, source = _key_of(
+            {"key": k, "scale": s, "camelot": cam}, corrections.get(h)
+        )
         out.append(
             {
                 "hash": h,
                 "title": title or fn or h[:10],
                 "filename": fn,
-                "artist": _artist_of(p, title, fn),
-                "style": styles[0].get("style") if styles else None,
-                "bpm": p.get("bpm"),
+                "artist": _artist_from(tag_artist, title, fn),
+                "style": style,
+                "bpm": bpm,
                 "key": key,
                 "scale": scale,
                 "camelot": camelot,
                 "key_source": source,
-                "duration": p.get("duration"),
+                "duration": dur,
                 "has_file": bool(filepath),
                 "created": created,
             }
@@ -103,7 +103,7 @@ def status_route():
     from ..db import DB_PATH
     from ..decode import find_tool
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         n = c.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     ffmpeg, ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
 
@@ -281,7 +281,7 @@ def key_override_route(h):
 
     data = request.get_json(silent=True) or {}
     raw = data.get("key")
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row:
         return jsonify({"error": "track not in database"}), 404
@@ -321,7 +321,7 @@ def _remove_segment_clip(h, genre, start, end):
     """Best-effort delete of the training clip an override produced. Reconstructs
     the exact path _extract_segment wrote (same genre folder + <hash>_<s>-<e><ext>,
     ext from the track's source file). Returns True if a file was removed."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     filepath = row[0] if row else None
     safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
@@ -400,7 +400,7 @@ def override_segment_route():
     except (TypeError, ValueError):
         return jsonify({"error": "start and end must be numbers"}), 400
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath, payload FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row:
         return jsonify({"error": "track not in database"}), 404
@@ -484,7 +484,7 @@ def lookup_route(h):
     queried (MusicBrainz needs none); each source degrades independently (a timeout
     or failure is reported for that source, never fatal). Successful responses are
     cached PERMANENTLY per (hash, source) so a repeat click never re-queries."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT title, filename, payload FROM tracks WHERE hash=?", (h,)).fetchone()
         if not row:
             return jsonify({"error": "track not in database"}), 404
@@ -544,7 +544,7 @@ def similar_route(h):
     target = track_embedding(h)
     if target is None:
         return jsonify({"error": "track not in database"}), 404
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, title, filename, filepath, payload, embedding FROM tracks "
             "WHERE embedding IS NOT NULL AND hash != ?",
@@ -628,7 +628,7 @@ def weights_get(h):
     """A track's manual weight adjustments and the blend they produce."""
     from .. import weights as W
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row:
         return jsonify({"error": "track not found"}), 404

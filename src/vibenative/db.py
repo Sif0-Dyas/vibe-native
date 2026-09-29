@@ -44,14 +44,79 @@ def _resolve_db_path() -> Path:
 
 
 DB_PATH = _resolve_db_path()
+
+# Serialises WRITES only. Many write blocks read, change and write back (a payload,
+# a rating); holding this across the block keeps two threads from losing each
+# other's update. Reads no longer take it: in WAL mode they run alongside a writer
+# and see the last committed state, so a batch writing tracks no longer stalls the
+# Library or Map tabs.
 _db_lock = threading.Lock()
+
+# One connection per thread, opened on first use and kept (a new connection per
+# call cost an open + two PRAGMAs every time). Registered so close_all() can close
+# every one -- on Windows an open connection keeps the database file from being
+# deleted or replaced.
+_local = threading.local()
+_open: list = []
+_open_lock = threading.Lock()
+_generation = 0
+
+
+class _ThreadConnection:
+    """What db() returns: this thread's connection, unchanged, except that close()
+    does nothing -- every call site is ``with _db_lock, closing(db()) as conn, conn
+    as c:`` and the connection must outlive the block. ``conn as c`` is still the
+    sqlite3 Connection's own transaction context: commit on success, rollback on
+    an exception, exactly as when each call had its own connection."""
+
+    __slots__ = ("_conn",)
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self._conn.__enter__()
+
+    def __exit__(self, *exc):
+        return self._conn.__exit__(*exc)
+
+    def close(self):
+        pass  # kept for the thread's next call; close_all() really closes
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH, timeout=5)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
+    """This thread's connection to DB_PATH (WAL, busy_timeout 5 s), opened once.
+    A new one is opened if DB_PATH has changed since (tests repoint it) or after
+    close_all()."""
+    key = (DB_PATH, _generation)
+    conn = getattr(_local, "conn", None)
+    if conn is None or _local.key != key:
+        # check_same_thread=False only so close_all() may close it from another
+        # thread; in use, each connection stays with the thread that opened it.
+        conn = sqlite3.connect(DB_PATH, timeout=5, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        with _open_lock:
+            _open.append(conn)
+        _local.conn, _local.key = conn, key
+    return _ThreadConnection(conn)
+
+
+def close_all():
+    """Close every connection db() has opened, in any thread; later calls reopen.
+    For shutdown and tests (which delete their database files afterwards)."""
+    global _generation
+    with _open_lock:
+        conns, _open[:] = list(_open), []
+        _generation += 1
+    for conn in conns:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass  # already closed, or mid-use elsewhere: nothing more to do
 
 
 # --- schema migrations -------------------------------------------------------
@@ -247,6 +312,96 @@ def _migration_8(c):
         source TEXT, created REAL)""")
 
 
+def artist_tag(payload) -> str:
+    """The artist a track's own tags name -- ``artist``, else ``albumartist`` --
+    stripped; '' if neither. The first half of ``_artist_of`` (its fallback parses
+    the title/filename), kept here so the ``tracks.tag_artist`` column, cache_put
+    and the routes all apply exactly one rule."""
+    tag = ((payload or {}).get("tags") or {}).get("tag") or {}
+    return (tag.get("artist") or tag.get("albumartist") or "").strip()
+
+
+# Denormalized from the payload so listings needn't parse it: (column, declared type).
+# bpm and duration have NO declared type on purpose: REAL affinity would turn a
+# JSON integer (bpm 128) into 128.0 and change what /library returns.
+TRACK_COLUMNS = (
+    ("style", "TEXT"),
+    ("bpm", ""),
+    ("key", "TEXT"),
+    ("scale", "TEXT"),
+    ("camelot", "TEXT"),
+    ("duration", ""),
+    ("tag_artist", "TEXT"),
+)
+
+
+def _track_columns(payload: dict) -> tuple:
+    """TRACK_COLUMNS' values for one payload -- what _migration_9's UPDATE computes."""
+    styles = payload.get("styles") or []
+    return (
+        styles[0].get("style") if styles else None,
+        payload.get("bpm"),
+        payload.get("key"),
+        payload.get("scale"),
+        payload.get("camelot"),
+        payload.get("duration"),
+        artist_tag(payload),
+    )
+
+
+def _migration_9(c):
+    """v9 -- the fields listings show, as columns: top style (``styles[0]``, the raw
+    analysis read -- the override/weights merge is Phase 3's), bpm, key, scale,
+    camelot, duration, and the artist the track's tags name. /library read and
+    json-parsed every payload -- megabytes of segments and frames -- for these.
+
+    Guarded ALTERs, then one UPDATE with json_extract. ``tag_artist`` uses
+    Python's str.strip (SQLite's trim() strips only spaces), so the column is
+    byte-for-byte what artist_tag() gives."""
+    have = {r[1] for r in c.execute("PRAGMA table_info(tracks)")}
+    for name, decl in TRACK_COLUMNS:
+        if name not in have:
+            c.execute(f"ALTER TABLE tracks ADD COLUMN {name} {decl}".rstrip())
+    conn = getattr(c, "connection", c)  # a Cursor or the Connection itself
+    conn.create_function(
+        "py_strip", 1, lambda s: s.strip() if isinstance(s, str) else s, deterministic=True
+    )
+    c.execute(
+        """UPDATE tracks SET
+            style      = json_extract(payload, '$.styles[0].style'),
+            bpm        = json_extract(payload, '$.bpm'),
+            key        = json_extract(payload, '$.key'),
+            scale      = json_extract(payload, '$.scale'),
+            camelot    = json_extract(payload, '$.camelot'),
+            duration   = json_extract(payload, '$.duration'),
+            tag_artist = py_strip(COALESCE(
+                NULLIF(json_extract(payload, '$.tags.tag.artist'), ''),
+                NULLIF(json_extract(payload, '$.tags.tag.albumartist'), ''),
+                ''))
+           WHERE json_valid(payload)"""
+    )
+
+
+def _migration_10(c):
+    """v10 -- indexes for the per-track lookups that scanned their table.
+
+    * segment_overrides(hash, start_s): read for EVERY cached response (a batch
+      re-scan, a cache hit) as ``WHERE hash=? ORDER BY start_s`` -- the second
+      column also returns the rows already in order.
+    * track_tags(hash), vibe_tracks(hash): the tags route's ``WHERE hash IN (...)``
+      and forget_track's deletes; their UNIQUE indexes lead with tag_id / vibe_id.
+    * tracks(style): for Phase 3 queries by genre on the v9 column.
+    Not added: key_labels(hash) is already its PRIMARY KEY, and training_labels
+    already has UNIQUE(hash, genre) -- duplicates would only slow writes."""
+    for name, table, cols in (
+        ("idx_segment_overrides_hash", "segment_overrides", "hash, start_s"),
+        ("idx_track_tags_hash", "track_tags", "hash"),
+        ("idx_vibe_tracks_hash", "vibe_tracks", "hash"),
+        ("idx_tracks_style", "tracks", "style"),
+    ):
+        c.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {table}({cols})")  # nosec B608
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -257,6 +412,8 @@ MIGRATIONS = [
     (6, _migration_6),
     (7, _migration_7),
     (8, _migration_8),
+    (9, _migration_9),
+    (10, _migration_10),
 ]
 
 
@@ -296,7 +453,7 @@ def file_hash(path) -> str:
 
 
 def cache_get(h: str):
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
     return json.loads(row[0]) if row else None
 
@@ -307,15 +464,17 @@ def cache_put(h: str, filename, filepath, title, payload: dict, emb):
     blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute(
-            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, created) "
-            "VALUES(?,?,?,?,?,?,?)",
-            (h, filename, filepath or "", title, json.dumps(payload), blob, time.time()),
+            "INSERT OR REPLACE INTO tracks(hash, filename, filepath, title, payload, embedding, "
+            "created, style, bpm, key, scale, camelot, duration, tag_artist) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (h, filename, filepath or "", title, json.dumps(payload), blob, time.time())
+            + _track_columns(payload),
         )
 
 
 def key_label_get(h: str):
     """The corrected (key, scale) for a track, or None."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT key, scale FROM key_labels WHERE hash=?", (h,)).fetchone()
     return (row[0], row[1]) if row else None
 
@@ -364,14 +523,14 @@ def forget_track(h: str) -> int:
 
 def key_labels_map():
     """{hash: (key, scale)} for every correction -- one query for a whole listing."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         return {r[0]: (r[1], r[2]) for r in c.execute("SELECT hash, key, scale FROM key_labels")}
 
 
 def key_labels_all():
     """[(hash, filepath, key, scale)] for every corrected track that still has a
     file on disk recorded -- the training set tools/eval_key.py reads."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         return c.execute(
             "SELECT l.hash, t.filepath, l.key, l.scale FROM key_labels l "
             "JOIN tracks t ON t.hash = l.hash WHERE t.filepath != ''"
@@ -379,7 +538,7 @@ def key_labels_all():
 
 
 def waveform_cache_get(h: str):
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT data_json FROM waveform_cache WHERE hash=?", (h,)).fetchone()
     return json.loads(row[0]) if row else None
 
@@ -397,7 +556,7 @@ def is_library_filepath(path: str) -> bool:
 
     Routes that act on a caller-named server file (/save_training's copy) accept
     only these, so the request can't name an arbitrary file on disk."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT 1 FROM tracks WHERE filepath=? LIMIT 1", (path,)).fetchone()
     return row is not None
 
@@ -405,7 +564,7 @@ def is_library_filepath(path: str) -> bool:
 def track_embedding(h: str):
     import numpy as np
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT embedding FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row or row[0] is None:
         return None
@@ -432,7 +591,7 @@ def vibe_centroid(vibe_id: int):
     to the old plain mean. Returns None if the vibe has no usable members."""
     import numpy as np
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT t.embedding, v.weight FROM vibe_tracks v JOIN tracks t "
             "ON t.hash=v.hash WHERE v.vibe_id=? AND t.embedding IS NOT NULL",

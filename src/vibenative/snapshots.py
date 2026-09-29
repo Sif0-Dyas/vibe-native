@@ -57,7 +57,7 @@ def _capture():
     payload without disturbing the analysis stored alongside.
     """
     state = {"tables": {}, "overrides": {}}
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         for t in _TABLES:
             cur = c.execute(f"SELECT * FROM {t}")  # nosec B608  # fixed table allow-list
             cols = [d[0] for d in cur.description]

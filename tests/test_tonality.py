@@ -152,3 +152,38 @@ def test_a_malformed_model_file_falls_back_instead_of_loading(tmp_path, monkeypa
     tonality._load_fitted()
     assert tonality.MODEL is None, "a mismatched model must be refused"
     assert "edm" in tonality.PROFILES, "the fallback profiles should still load"
+
+
+def _whole_track_magnitudes(audio, sr=SR, frame=tonality.FRAME):
+    """The pre-chunking implementation, kept as the reference: every frame of the
+    track at once."""
+    x = np.asarray(audio, dtype=np.float32).ravel()
+    if x.size < frame:
+        x = np.pad(x, (0, frame - x.size))
+    hop = frame // 2
+    n = 1 + (x.size - frame) // hop
+    fr = x[np.arange(frame)[None, :] + hop * np.arange(n)[:, None]]
+    rms = np.sqrt(np.mean(fr.astype(np.float64) ** 2, axis=1))
+    fr = fr[rms > tonality.SILENCE_RMS]
+    win = np.hanning(frame + 1)[:-1].astype(np.float32)
+    mag = np.abs(np.fft.rfft(fr * win, axis=1))
+    freqs = np.fft.rfftfreq(frame, 1.0 / sr)
+    keep = (freqs >= tonality.F_MIN) & (freqs <= tonality.F_HI)
+    mag = mag[:, keep]
+    top = mag.max(axis=1, keepdims=True)
+    top[top == 0] = 1.0
+    return (mag / top).astype(np.float32), freqs[keep]
+
+
+@pytest.mark.parametrize("seconds", [0.1, 70.0])  # under one frame; several blocks
+def test_chunked_magnitudes_equal_the_whole_track_version(seconds):
+    rng = np.random.default_rng(7)
+    x = (0.1 * rng.standard_normal(int(SR * seconds))).astype(np.float32)
+    if seconds > 1:  # silent stretches, so the RMS gate drops frames inside blocks
+        x[SR * 10 : SR * 25] = 0.0
+        x[SR * 50 : SR * 51] = 0.0
+    new_m, new_f = tonality.magnitudes(x, SR)
+    old_m, old_f = _whole_track_magnitudes(x, SR)
+    assert new_m.shape == old_m.shape and new_m.shape[0] > 0
+    assert np.array_equal(new_f, old_f)
+    assert np.array_equal(new_m, old_m)  # bit-identical, not just close

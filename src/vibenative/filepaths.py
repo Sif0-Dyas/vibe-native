@@ -40,7 +40,7 @@ def audit(check_exists=True):
     files live on a slow or disconnected network/USB volume: without it an audit
     of a detached drive would report every track as broken after a long stall.
     """
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute("SELECT hash, title, filename, filepath FROM tracks").fetchall()
     ok, broken, missing = [], [], []
     for h, title, filename, fp in rows:
@@ -134,7 +134,7 @@ def repair(folder, dry_run=True, overwrite_broken=True):
     """
     scan = scan_folder(folder)
     found = scan["found"]
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute("SELECT hash, filepath FROM tracks").fetchall()
 
     fills, fixes, already = [], [], 0

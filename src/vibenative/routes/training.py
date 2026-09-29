@@ -129,7 +129,7 @@ def training_candidates(genre):
         limit = 25
     limit = max(1, min(200, limit))
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute("SELECT hash, title, filename, payload, embedding FROM tracks").fetchall()
         labeled = {
             r[0] for r in c.execute("SELECT hash FROM training_labels WHERE genre=?", (genre,))

@@ -222,7 +222,7 @@ def _backfill_filepath(h, path):
 def _segment_overrides(h):
     """The persisted segment overrides for a track, oldest span first. Each carries
     its rowid as ``id`` so the client can target it for removal."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT rowid, start_s, end_s, genre FROM segment_overrides WHERE hash=? "
             "ORDER BY start_s",
@@ -244,7 +244,7 @@ def _backfill_waveform(h, upload):
     """
     if waveform_cache_get(h) is not None:
         return
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     if row and row[0] and Path(row[0]).is_file():
         return  # GET /waveform can decode that itself
@@ -308,7 +308,7 @@ def audio_route(h):
     not an arbitrary-file endpoint). Supports HTTP Range so the browser can seek.
     Browser-dropped files have no server path -- those play client-side via a
     blob URL instead, so a 404 here is expected for them."""
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath, filename FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row or not row[0]:
         return jsonify({"error": "no server-side file for this track"}), 404
@@ -330,7 +330,7 @@ def waveform_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row:
         return jsonify({"error": "track not in database"}), 404
@@ -365,7 +365,7 @@ def waveform_upload_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)  # raced another tab; nothing to do
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
     # Only for tracks already in the library: this must not become a way to have
     # the server decode arbitrary uploads under an arbitrary key.
@@ -387,46 +387,6 @@ def waveform_upload_route(h):
     data = waveform_minmax(samples)
     waveform_cache_put(h, data)
     return jsonify(data)
-
-
-def _rss_mb():
-    """Current process resident-set size in MB (Windows, via ctypes); None if it
-    can't be read. Used to trace memory growth during a batch so an OOM crash can
-    be pinned to the file that pushed it over."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        class _PMC(ctypes.Structure):
-            _fields_ = [
-                ("cb", wintypes.DWORD),
-                ("PageFaultCount", wintypes.DWORD),
-                ("PeakWorkingSetSize", ctypes.c_size_t),
-                ("WorkingSetSize", ctypes.c_size_t),
-                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                ("PagefileUsage", ctypes.c_size_t),
-                ("PeakPagefileUsage", ctypes.c_size_t),
-            ]
-
-        k = ctypes.windll.kernel32
-        k.GetCurrentProcess.restype = ctypes.c_void_p  # HANDLE is pointer-sized
-        psapi = ctypes.WinDLL("psapi")
-        psapi.GetProcessMemoryInfo.argtypes = [
-            ctypes.c_void_p,
-            ctypes.POINTER(_PMC),
-            wintypes.DWORD,
-        ]
-        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-        c = _PMC()
-        c.cb = ctypes.sizeof(_PMC)
-        if psapi.GetProcessMemoryInfo(k.GetCurrentProcess(), ctypes.byref(c), c.cb):
-            return round(c.WorkingSetSize / 1e6)
-    except Exception:  # nosec B110  # diagnostics only — never break a scan over this
-        pass
-    return None
 
 
 @bp.post("/clientlog")
@@ -482,14 +442,14 @@ def batch_route():
         return jsonify({"error": refusal}), 400
 
     def analyze_one(path: Path):
-        # Log BEFORE the heavy work (with the file size + current RSS) and FLUSH via
+        # Log BEFORE the heavy work (with the file size) and FLUSH via
         # the logging handler, so if this file OOM-kills the process the last START
         # line on disk names the culprit. Kept concise; one pair of lines per file.
         try:
             size_mb = round(path.stat().st_size / 1e6, 1)
         except OSError:
             size_mb = "?"
-        log.info("  · START %s (%s MB, rss=%sMB)", path.name, size_mb, _rss_mb())
+        log.info("  · START %s (%s MB)", path.name, size_mb)
         t0 = _time.time()
         try:
             h = file_hash(path)
@@ -513,7 +473,7 @@ def batch_route():
             if wave is not None:
                 waveform_cache_put(h, wave)
             payload.update({"ok": True, "hash": h, "cached": False})
-            log.info("  · OK %s (%.1fs, rss=%sMB)", path.name, _time.time() - t0, _rss_mb())
+            log.info("  · OK %s (%.1fs)", path.name, _time.time() - t0)
             return payload
         except UnreadableAudio as e:
             # A stray non-audio file: one line, no traceback -- the trace says nothing.
@@ -585,13 +545,7 @@ def batch_route():
                 if cancel.is_set():
                     yield final(0, total, True)  # cancelled at the prompt
                     return
-            log.info(
-                "batch START: %s  (%d files, %d workers, rss=%sMB)",
-                folder,
-                total,
-                workers,
-                _rss_mb(),
-            )
+            log.info("batch START: %s  (%d files, %d workers)", folder, total, workers)
             # Lazy submission: at most `workers` files in flight, the next one
             # submitted only as one finishes -- nothing queued behind them, so a
             # cancel (or a disconnect) has only those few left to wait for.
@@ -625,7 +579,7 @@ def batch_route():
             ex.shutdown(wait=True, cancel_futures=True)
             with _BATCH_JOBS_LOCK:
                 _BATCH_JOBS.pop(job, None)
-            log.info("batch END: %d/%s processed, rss=%sMB", done, total, _rss_mb())
+            log.info("batch END: %d/%s processed", done, total)
 
     return Response(generate(), mimetype="application/x-ndjson")
 

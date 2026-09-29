@@ -14,7 +14,7 @@ from contextlib import closing
 import numpy as np
 
 from .config import log
-from .db import _db_lock, db
+from .db import db
 
 # Thresholds (tuned on the reference library -> ~5% flag rate).
 CONF_MAX = 0.55  # only second-guess a shaky top read
@@ -90,7 +90,7 @@ def check(emb, top_style, top_conf, exclude_hash=None):
     Returns a flag/suggestion dict, or None if there isn't enough to judge."""
     if emb is None:
         return None
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
         ).fetchall()
@@ -134,7 +134,7 @@ def audit(prepared=None):
         embs = [r[3] for r in rows]
         return _audit_core(hashes, titles, payloads, embs)
 
-    with _db_lock, closing(db()) as conn, conn as c:
+    with closing(db()) as conn, conn as c:
         rows = c.execute(
             "SELECT hash, title, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
         ).fetchall()
