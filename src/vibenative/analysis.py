@@ -5,16 +5,18 @@ Phase 4 engine swap: the genre / tempo / key internals now run on the native
 ONNX engine (``onnx_engine`` + ``frontend_mel`` + ``decode`` + ``tempo`` +
 ``tonality``) instead of Essentia, BEHIND the same function signatures and the same
 payload shape -- everything downstream (routes, DB, frontend) is unable to tell.
-FAKE_ANALYZER mode is untouched. The heavy engine modules (onnxruntime-backed)
-are imported lazily inside the functions that use them, so the app still imports
-in FAKE mode / on CI without onnxruntime installed -- exactly as the old code
-deferred ``essentia``.
+Every engine -- decode, the genre models, tempo, key -- comes from
+``fake_engine.engines()``: the real ones, or stand-ins with no ffmpeg or
+models, so the pipeline below has one path. The onnxruntime-backed modules are
+imported only when a real engine is asked for, so the app still imports on CI
+without onnxruntime installed -- exactly as the old code deferred ``essentia``.
 """
 
 import threading
 from pathlib import Path
 
 from .config import log
+from .fake_engine import engines
 from .settings import current
 
 # The embedder/classifier are shared inference sessions. ONNX Runtime sessions ARE
@@ -28,9 +30,10 @@ _engine_lock = threading.Lock()  # guards the one-time custom-head load
 
 
 def get_engine():
-    """Return ``{labels, embedder, classifier}`` for the native ONNX genre engine.
+    """Return ``{labels, embedder, classifier}`` for the genre engine.
 
-    Delegates to ``onnx_engine.get_engine()`` (built + cached once there). Mirrors
+    Delegates to the active engines (``fake_engine.engines().genre``: normally
+    ``onnx_engine.get_engine()``, built + cached once there). Mirrors
     the old Essentia ``get_engine()`` contract exactly, so every caller is a
     drop-in::
 
@@ -38,9 +41,7 @@ def get_engine():
         eng["classifier"](embeddings)  -> (n_patches, 400)  float32 probabilities
         eng["labels"]                  -> the 400 Discogs-400 style labels
     """
-    from . import onnx_engine
-
-    return onnx_engine.get_engine()
+    return engines().genre()
 
 
 # --- optional custom head (trained with train_head.py) ----------------------
@@ -192,27 +193,9 @@ def waveform_minmax(audio, bins=WAVE_MM_BINS):
 
 
 def load_samples_for_waveform(path):
-    """Decode an audio file to a mono float array for waveform rendering. Real mode
-    uses Essentia at a low sample rate (fast; an envelope needs no fidelity); FAKE
-    mode reads a WAV with the stdlib so tests need no models."""
-    import numpy as np
-
-    if current().fake:
-        import wave as _wave
-
-        with _wave.open(str(path), "rb") as wf:
-            ch, sw, n = wf.getnchannels(), wf.getsampwidth(), wf.getnframes()
-            raw = wf.readframes(n)
-        dt = {1: np.int8, 2: np.int16, 4: np.int32}.get(sw, np.int16)
-        a = np.frombuffer(raw, dtype=dt).astype(np.float32)
-        if ch > 1:
-            a = a.reshape(-1, ch).mean(axis=1)
-        m = float(np.abs(a).max()) or 1.0
-        return a / m
-
-    from . import decode
-
-    return decode.decode_mono(path, 11025)
+    """Decode an audio file to a mono float array for waveform rendering, at a low
+    sample rate (fast; an envelope needs no fidelity)."""
+    return engines().decode_mono(path, 11025)
 
 
 def frame_topk(preds, labels, k=6):
@@ -293,12 +276,10 @@ def _decode_and_infer(path: Path):
     (``decode.decode_both``: one ffprobe + one ffmpeg per track, was two of each);
     only the shared inference pass is serialized under ``_lock``, so the decode
     stays parallel across workers."""
-    from . import decode
-
     eng = get_engine()
 
     # 16 kHz for the genre model, 44.1 kHz for BPM/key -- from one native-rate decode
-    audio16, audio44 = decode.decode_both(path)
+    audio16, audio44 = engines().decode_both(path)
     # serialize the one shared inference pass; decode/BPM/key stay parallel.
     with _lock:
         embeddings = eng["embedder"](audio16)
@@ -317,13 +298,12 @@ def _musical_features(audio44) -> dict:
     stays a plain float and ``bpm_confidence`` a plain float; the confidence is now
     the TempoCNN mean peak softmax (0..1) rather than RhythmExtractor2013's (~0..5)
     -- a value-scale change, not a shape change."""
-    from . import tempo, tonality
-
+    eng = engines()
     duration = float(len(audio44)) / 44100.0
 
     bpm = bpm_conf = None
     try:
-        bpm_val, conf = tempo.estimate(audio44, 44100)
+        bpm_val, conf = eng.tempo(audio44, 44100)
         if bpm_val:  # 0.0 == "too short / no estimate" -> leave as None
             bpm, bpm_conf = float(bpm_val), float(conf)
     except Exception:  # nosec B110  # BPM extraction is best-effort; None on failure is fine
@@ -332,7 +312,7 @@ def _musical_features(audio44) -> dict:
     key = scale = camelot = None
     key_strength = None
     try:
-        k, s, strength = tonality.estimate(audio44, 44100)
+        k, s, strength = eng.key(audio44, 44100)
         key, scale, key_strength = str(k), str(s), float(strength)
         camelot = CAMELOT.get((key, scale))
     except Exception:  # nosec B110  # key extraction is best-effort; None on failure is fine
@@ -399,88 +379,9 @@ def _assemble(labels, audio16, embeddings, preds, features) -> dict:
 
 def analyze(path: Path) -> dict:
     """Genre styles + BPM, key, duration, and a waveform envelope for one file."""
-    if current().fake:
-        import hashlib
-        import math
-        import random
-
-        seed = hashlib.md5(path.name.encode()).hexdigest()  # nosec B324  # deterministic seed for FAKE-mode data, not security
-        rng = random.Random(seed)  # nosec B311  # deterministic FAKE-mode PRNG, not security
-        pool = [
-            "Drum n Bass",
-            "Trance",
-            "Dubstep",
-            "Hard Techno",
-            "Hardstyle",
-            "House",
-            "Techno",
-            "Jungle",
-            "Breakcore",
-            "Psy-Trance",
-        ]
-        rng.shuffle(pool)
-        scores = sorted((rng.uniform(0.04, 0.55) for _ in range(4)), reverse=True)
-        key, scale = rng.choice(list(CAMELOT.keys()))
-        wave = [round(abs(math.sin(i / 9) * rng.uniform(0.4, 1.0)), 3) for i in range(WAVE_BINS)]
-        # fake DAW-style min/max/rms envelope (matches the real analyzer's shape)
-        _mx = [round(abs(math.sin(i / 23)) * rng.uniform(0.3, 1.0), 3) for i in range(WAVE_MM_BINS)]
-        wave_mm = {
-            "bins": WAVE_MM_BINS,
-            "max": _mx,
-            "min": [round(-v, 3) for v in _mx],
-            "rms": [round(v * 0.6, 3) for v in _mx],
-        }
-        segments = []
-        seg_styles = [pool[0]] * 3 + pool[1:3]  # mostly primary, some switches
-        for _ in range(rng.randint(5, 9)):
-            segments += [rng.choice(seg_styles)] * rng.randint(8, 30)
-        # fake salience: weight the primary genre up, as energy-weighting would
-        from collections import Counter as _C
-
-        _c = _C(segments)
-        _tot = sum(_c.values())
-        _sal = sorted(((g, n / _tot) for g, n in _c.items()), key=lambda kv: -kv[1])
-        _sal = [(_sal[0][0], min(0.92, _sal[0][1] + 0.15))] + _sal[1:]
-        _s = sum(p for _, p in _sal)
-        salience = [{"style": g, "score": round(p / _s, 4)} for g, p in _sal]
-        # fake per-frame top-k: winner + near-misses (House/Tribal House flicker-like)
-        frames = []
-        for s in segments:
-            others = rng.sample([p for p in pool if p != s], 3)
-            top = round(rng.uniform(0.26, 0.55), 3)
-            rest = sorted(
-                (round(rng.uniform(0.02, max(0.03, top - 0.02)), 3) for _ in range(3)), reverse=True
-            )
-            frames.append([[s, top]] + [[others[j], rest[j]] for j in range(3)])
-        return {
-            "styles": [
-                {"parent": "Electronic", "style": s, "score": v} for s, v in zip(pool, scores)
-            ],
-            "segments": segments,
-            "salience": salience,
-            "frames": frames,
-            "custom": [
-                {"style": s, "score": round(v, 4)}
-                for s, v in zip(
-                    ["Riddim", "Tearout", "Liquid DnB", "Other"],
-                    sorted((rng.uniform(0.02, 0.7) for _ in range(4)), reverse=True),
-                )
-            ],
-            "bpm": round(rng.uniform(120, 178), 1),
-            "bpm_confidence": rng.uniform(0.5, 5.0),
-            "key": key,
-            "scale": scale,
-            "camelot": CAMELOT[(key, scale)],
-            "key_strength": rng.uniform(0.5, 0.95),
-            "duration": rng.uniform(150, 420),
-            "waveform": wave,
-            "wave": wave_mm,
-            "emb_mean": [rng.uniform(-1, 1) for _ in range(1280)],
-        }
-
-    # Real pipeline: decode + locked inference, then musical features, then the
-    # payload assembly. Split into three helpers; behaviour and the returned dict
-    # are unchanged (see _decode_and_infer / _musical_features / _assemble).
+    # Decode + locked inference, then musical features, then the payload assembly
+    # (see _decode_and_infer / _musical_features / _assemble). The same pipeline
+    # in every mode: only the engines under it differ (fake_engine.engines).
     audio16, audio44, embeddings, preds = _decode_and_infer(path)
     features = _musical_features(audio44)
     labels = get_engine()["labels"]
@@ -500,10 +401,8 @@ def refine_segments(path: Path):
     """Re-run one track with overlapping patches -> (dense segments, dense frames)."""
     import numpy as np
 
-    from . import decode
-
     eng = get_engine()
-    audio16 = decode.decode_16k_mono(path)
+    audio16 = engines().decode_16k_mono(path)
     # serialize the one shared inference pass; the fine hop is a frontend parameter.
     with _lock:
         emb = eng["embedder"](audio16, hop_frames=FINE_HOP)

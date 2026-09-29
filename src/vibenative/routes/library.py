@@ -103,7 +103,7 @@ def status_route():
 
         if onnx_engine._engine:  # only if already built (don't trigger a build here)
             provider = onnx_engine._engine.get("_provider")
-    except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (FAKE/CI) is fine
+    except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (stand-in engines / CI) is fine
         pass
 
     settings = current()

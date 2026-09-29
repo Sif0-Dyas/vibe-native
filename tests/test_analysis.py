@@ -16,7 +16,8 @@ from vibenative import analysis, tempo
 from vibenative import tonality as keymod
 
 
-def test_musical_features_happy(monkeypatch):
+def test_musical_features_happy(monkeypatch, use_settings):
+    use_settings(fake=False)  # the real tempo/key engines, patched below
     monkeypatch.setattr(tempo, "estimate", lambda audio, sr: (128.0, 3.0))
     monkeypatch.setattr(keymod, "estimate", lambda audio, sr: ("C", "major", 0.9))
     out = analysis._musical_features(np.ones(44100, dtype=np.float32))
@@ -32,7 +33,9 @@ def test_musical_features_happy(monkeypatch):
     assert out["wave"]["bins"] == analysis.WAVE_MM_BINS
 
 
-def test_musical_features_degrades_on_extractor_error(monkeypatch):
+def test_musical_features_degrades_on_extractor_error(monkeypatch, use_settings):
+    use_settings(fake=False)  # the real tempo/key engines, patched below
+
     def boom(audio, sr):
         raise RuntimeError("extractor unavailable")
 

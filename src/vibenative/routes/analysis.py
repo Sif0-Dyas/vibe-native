@@ -29,7 +29,6 @@ from ..hashing import file_hash
 from ..repo import tracks as tracks_repo
 from ..repo.tracks import cache_get, cache_put, waveform_cache_get, waveform_cache_put
 from ..serve import MAX_BATCH_WORKERS
-from ..settings import current
 from ..style import dominant_read
 from ._shared import UploadError, bp
 
@@ -134,36 +133,6 @@ def refine_route():
     """Re-analyze one track at fine resolution; returns a denser segment list."""
     f = request.files.get("file")
     _check_upload(f)
-    if current().fake:
-        import hashlib
-        import random
-
-        seed = hashlib.md5(("fine" + f.filename).encode()).hexdigest()  # nosec B324  # deterministic seed for FAKE-mode data, not security
-        rng = random.Random(seed)  # nosec B311  # deterministic FAKE-mode PRNG, not security
-        pool = [
-            "Drum n Bass",
-            "Trance",
-            "Dubstep",
-            "Hard Techno",
-            "Hardstyle",
-            "House",
-            "Techno",
-            "Jungle",
-            "Breakcore",
-            "Psy-Trance",
-        ]
-        rng.shuffle(pool)
-        seg_styles = [pool[0]] * 4 + pool[1:3]
-        segments = []
-        for _ in range(rng.randint(30, 60)):
-            segments += [rng.choice(seg_styles)] * rng.randint(3, 12)
-        frames = []
-        for s in segments:
-            others = rng.sample([p for p in pool if p != s], 3)
-            top = round(rng.uniform(0.25, 0.6), 3)
-            rest = sorted((round(rng.uniform(0.02, top - 0.02), 3) for _ in range(3)), reverse=True)
-            frames.append([[s, top]] + [[others[j], rest[j]] for j in range(3)])
-        return jsonify({"segments": segments, "frames": frames, "hop_seconds": FINE_HOP_SECONDS})
 
     with saved_upload(f) as p:
         segments, frames = refine_segments(p)  # locks its own inference

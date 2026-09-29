@@ -80,7 +80,7 @@ _lock = threading.Lock()
 def _session():  # -> onnxruntime.InferenceSession (imported lazily below, so not annotated)
     # Import onnxruntime lazily, NOT at module top: importing this module must not
     # require the Windows-only onnxruntime-directml wheel. pytest collects
-    # tests/test_analysis.py (which imports `tempo`) in FAKE mode / on CI where that
+    # tests/test_analysis.py (which imports `tempo`) with the stand-in engines / on CI where that
     # wheel is absent — a top-level import here ImportErrored and aborted the whole
     # suite at collection (see tests/test_import_safety.py, the guard for this).
     import onnxruntime as ort

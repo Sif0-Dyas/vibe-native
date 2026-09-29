@@ -276,6 +276,7 @@ def _race(monkeypatch, reader, first, second):
         t.start()
     for t in threads:
         t.join(10)
+    monkeypatch.setattr(ratings_repo, reader, real)  # the checks after this read normally
     assert not errors, errors
 
 

@@ -190,7 +190,9 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
   - `tests/test_no_sql_outside_repo.py` now covers every module under `src/vibenative` except `db.py` and `repo/`.
 - [x] `ratings.put` / `artist_put` read the current rating unlocked (to keep the fields not passed) and then upsert under the lock — two partial updates at once (stars from the map, a note from the library) can lose one. Same shape as the relabel fix: do the read and the upsert in one `repo.writing()` block.
   - `repo.ratings.update(hash, merge)` / `artist_update(key, merge)`: read the row, merge the passed fields, write — one locked transaction, the same shape as `tracks.update_payload`. The clamp / grade / note-cap rules stay in `ratings.py`, inside `merge`.
-- [ ] `fake_engine.py`; FAKE branches out of routes and `analysis.py`
+- [x] `fake_engine.py`; FAKE branches out of routes and `analysis.py`
+  - The real pipeline runs in fake mode on stand-in engines (decode, the genre engine with the real 400 labels, tempo, key); `fake_engine.engines()` is the one place that chooses. Removed: the branches in `analysis.analyze` (the whole hand-built payload), `analysis.load_samples_for_waveform`, `routes/analysis` `/refine`, and `__main__` (its ffmpeg check is now the real engines' `startup_check`, `decode.warn_if_tools_missing`). By this point the review's "8 + 6 sites" were these 4 branches; the rest were lines inside them.
+  - Changes from the old fake payload: `bpm_confidence` is 0..1 (tempo.estimate's scale; was 0.5-5.0); `styles` has the real top 8 (was 4); `custom` is None without a custom head, as in a real run (was a made-up list); the seed is the file's content hash (was its name). `tests/test_fake_engine.py` pins key set, types against `oracle/index.json`, ranges, determinism, and that nothing outside `fake_engine.py` / `settings.py` branches on the setting.
 - [ ] Dedupe sanitizer / training root / mel filterbank; drop the 21 lazy numpy imports
 - [ ] `taxonomy/` package
 - [ ] Frontend to ES modules

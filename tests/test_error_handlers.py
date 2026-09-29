@@ -52,7 +52,6 @@ def test_an_unexpected_failure_is_500_internal_error_and_logged(client, monkeypa
         raise RuntimeError("kaboom")
 
     monkeypatch.setattr(A, "saved_upload", boom)
-    monkeypatch.setattr(A, "current", lambda: type("S", (), {"fake": False})())
     with caplog.at_level(logging.ERROR, logger="vibenative"):
         r = client.post(route, data=_upload("a.wav"), content_type="multipart/form-data")
     assert r.status_code == 500
