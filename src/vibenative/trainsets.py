@@ -29,12 +29,19 @@ from .config import log
 from .names import safe_name
 from .repo import tracks as tracks_repo
 from .repo import training as training_repo
+from .settings import current
 from .style import dominant_read
 
-# Mirrors routes.training: the folder /override and /save_training file into,
-# and the one training/train_head.py consumes.
-ROOT = Path.home() / "genre_training"
-ARCHIVE = ROOT / "_archive"
+
+def _root():
+    """Settings.training_root: the folder /override and /save_training file
+    into, and the one training/train_head.py consumes."""
+    return current().training_root
+
+
+def _archive():
+    return _root() / "_archive"
+
 
 MANIFEST_VERSION = 1
 
@@ -57,7 +64,7 @@ def _safe(genre):
 
 def folder(genre):
     s = _safe(genre)
-    return (ROOT / s) if s else None
+    return (_root() / s) if s else None
 
 
 def _audio_files(d):
@@ -131,8 +138,9 @@ def reset(genre):
         raise ValueError("invalid genre name")
     moved = None
     if d.is_dir() and _audio_files(d):
-        ARCHIVE.mkdir(parents=True, exist_ok=True)
-        dest = ARCHIVE / f"{d.name}-{time.strftime('%Y%m%d-%H%M%S')}"
+        archive = _archive()
+        archive.mkdir(parents=True, exist_ok=True)
+        dest = archive / f"{d.name}-{time.strftime('%Y%m%d-%H%M%S')}"
         shutil.move(str(d), str(dest))
         moved = str(dest)
 
@@ -215,7 +223,7 @@ def import_(manifest, genre=None, copy_audio=True):
     rejects = [h for h in (manifest.get("rejects") or []) if h]
 
     copied = 0
-    dest = ROOT / safe
+    dest = _root() / safe
     found, missing = training_repo.import_labels(target, wanted, rejects)
 
     no_path = sum(1 for _h, fp in found if not fp)

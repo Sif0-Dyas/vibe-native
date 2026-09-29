@@ -198,11 +198,13 @@ def confusion(head: dict, val_tracks: list, labels: list[str]):
 
 
 def main() -> int:
+    from vibenative.settings import current
+
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
         "data_dir",
         nargs="?",
-        default=str(Path.home() / "genre_training"),
+        default=str(current().training_root),
         help="root containing manifest.json + _cache/ (default: ~/genre_training)",
     )
     ap.add_argument("--hidden", type=int, default=256)

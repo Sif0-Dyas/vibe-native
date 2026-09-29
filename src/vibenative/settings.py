@@ -44,6 +44,8 @@ class Settings:
     config_dir: Path | None = None
     # VIBE_TAXONOMY; None -> <config_dir>/taxonomy.json.
     taxonomy: Path | None = None
+    # VIBE_TRAINING_ROOT; None -> ~/genre_training (see training_root).
+    training: Path | None = None
     # GENRE_TOKEN; "" -> auth picks one (a dev token, or a fresh one when frozen).
     token: str = ""
     # VIBE_PROVIDER: "gpu"/"dml"/... opts into DirectML; anything else is CPU.
@@ -66,6 +68,14 @@ class Settings:
     @property
     def custom_head_path(self) -> Path:
         return self.custom_head or self.model_dir / "custom_head.npz"
+
+    @property
+    def training_root(self) -> Path:
+        """The <genre>/ folders of training audio: what /override, /save_training
+        and the training-set tools file into and training/train_head.py reads.
+        The installer's uninstaller removes %USERPROFILE%\\genre_training, the
+        default."""
+        return self.training or Path.home() / "genre_training"
 
     @property
     def snapshots_dir(self) -> Path:
@@ -97,6 +107,7 @@ class Settings:
             snapshots=path("VIBE_SNAPSHOTS"),
             config_dir=config_dir,
             taxonomy=path("VIBE_TAXONOMY"),
+            training=path("VIBE_TRAINING_ROOT"),
             token=text("GENRE_TOKEN"),
             provider=text("VIBE_PROVIDER"),
             max_upload_mb=int(environ.get("MAX_UPLOAD_MB", "512")),

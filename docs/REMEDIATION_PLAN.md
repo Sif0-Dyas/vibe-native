@@ -219,6 +219,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
   - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.
   - Uninstall's data removal finds the DB through `{app}\settings.ini`, so it misses a database moved in Options.
+  - Likewise it removes `%USERPROFILE%\genre_training`, `Settings.training_root`'s default; a root moved with `VIBE_TRAINING_ROOT` is left behind.
   - `db_path=%USERPROFILE%\genre_v2.db` is stored unexpanded. The app expands it on read with `os.path.expandvars` (`settings._db_path`: any `%VAR%`, from the logged-in user's environment). The uninstaller's `ExistingDbPath()` only replaces the literal `%USERPROFILE%`, with `{%USERPROFILE}` from the *elevated* uninstaller process; likewise its fallback `{%USERPROFILE}\genre_v2.db` and the `genre_training` DelTree. Same answer when the user approves their own UAC prompt; the admin's profile, not the user's, when elevated as a different account. (By reasoning, not tested with a second account. `test_userprofile_db_path_resolves_to_the_file_the_app_opens` pins the app side.)
 
 **Post-release**

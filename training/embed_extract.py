@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vibenative.config import AUDIO_EXTS, log  # noqa: E402
 from vibenative.hashing import file_hash  # noqa: E402
+from vibenative.settings import current  # noqa: E402
 
 
 def iter_labeled_files(data_dir: Path):
@@ -58,7 +59,7 @@ def main() -> int:
     ap.add_argument(
         "data_dir",
         nargs="?",
-        default=str(Path.home() / "genre_training"),
+        default=str(current().training_root),
         help="root of <genre>/ folders (default: ~/genre_training)",
     )
     args = ap.parse_args()

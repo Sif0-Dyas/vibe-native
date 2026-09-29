@@ -13,6 +13,7 @@ from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo.keys import key_label_delete, key_label_put, key_labels_map
 from ..repo.tracks import cosine, forget_track, track_embedding
+from ..settings import current
 from ._shared import _artist_from, bp
 
 
@@ -90,7 +91,6 @@ def status_route():
     import vibenative
 
     from ..decode import find_tool
-    from ..settings import current
 
     n = tracks_repo.count()
     ffmpeg, ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
@@ -137,7 +137,6 @@ def reveal_route():
     import subprocess  # nosec B404  # fixed arg list, no shell
 
     from ..decode import find_tool
-    from ..settings import current
 
     what = ((request.get_json(silent=True) or {}).get("what") or "").strip()
     targets = {
@@ -245,7 +244,7 @@ def override_route(h):
         safe = safe_name(genre)
         src = Path(filepath)
         if safe and src.is_file():
-            dest_dir = Path.home() / "genre_training" / safe
+            dest_dir = current().training_root / safe
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / src.name
             if not dest.exists():
@@ -315,7 +314,7 @@ def _remove_segment_clip(h, genre, start, end):
     if not safe:
         return False
     ext = (Path(filepath).suffix.lower() if filepath else "") or ".wav"
-    dest = Path.home() / "genre_training" / safe / f"{h}_{int(round(start))}-{int(round(end))}{ext}"
+    dest = current().training_root / safe / f"{h}_{int(round(start))}-{int(round(end))}{ext}"
     try:
         if dest.is_file():
             dest.unlink()
@@ -337,7 +336,7 @@ def _extract_segment(src, safe_genre, h, start, end):
     ffmpeg = find_tool("ffmpeg")  # PATH or the WinGet Links dir (Windows winget install)
     if not ffmpeg:
         return None, "ffmpeg not found on PATH -- override recorded, clip not extracted"
-    dest_dir = Path.home() / "genre_training" / safe_genre
+    dest_dir = current().training_root / safe_genre
     dest_dir.mkdir(parents=True, exist_ok=True)
     ext = src.suffix.lower() or ".wav"
     dest = dest_dir / f"{h}_{int(round(start))}-{int(round(end))}{ext}"

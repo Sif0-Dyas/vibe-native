@@ -11,6 +11,7 @@ from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo import training as training_repo
 from ..repo.tracks import cosine, is_library_filepath
+from ..settings import current
 from ._shared import bp
 from .analysis import _check_upload
 
@@ -31,7 +32,7 @@ def save_training_route():
     if not safe:
         return jsonify({"error": "invalid genre name"}), 400
 
-    dest_dir = Path.home() / "genre_training" / safe
+    dest_dir = current().training_root / safe
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # server-side path (batch mode) -- only a track already in the library. Checked
@@ -96,7 +97,7 @@ def _copy_into_training(filepath, genre):
     src = Path(filepath)
     if not safe or not src.is_file():
         return False
-    dest_dir = Path.home() / "genre_training" / safe
+    dest_dir = current().training_root / safe
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src.name
     if not dest.exists():
@@ -224,7 +225,7 @@ def training_status_route():
     ``/save_training`` file audio into -- the same folders ``training/train_head.py``
     consumes -- so this reports the real training set rather than an intention.
     """
-    root = Path.home() / "genre_training"
+    root = current().training_root
     genres = []
     if root.is_dir():
         for d in sorted(root.iterdir()):
@@ -244,8 +245,6 @@ def training_status_route():
                     "needs": max(0, TRAIN_READY - n),
                 }
             )
-    from ..settings import current
-
     return jsonify(
         {
             "folder": str(root),

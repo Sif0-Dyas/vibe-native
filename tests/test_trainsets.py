@@ -34,11 +34,9 @@ def ts(tmp_path, monkeypatch, use_settings):
     con.executescript(SCHEMA)
     con.commit()
     con.close()
-    use_settings(db_path=dbfile)
+    use_settings(db_path=dbfile, training=tmp_path / "genre_training")
     from vibenative import trainsets
 
-    monkeypatch.setattr(trainsets, "ROOT", tmp_path / "genre_training")
-    monkeypatch.setattr(trainsets, "ARCHIVE", tmp_path / "genre_training" / "_archive")
     trainsets._DB = dbfile
     return trainsets
 

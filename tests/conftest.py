@@ -35,6 +35,7 @@ os.environ["GENRE_DB"] = os.path.join(SESSION_DIR, "genre_v2.db")
 os.environ["VIBE_CONFIG_DIR"] = os.path.join(SESSION_DIR, "config")
 os.environ["VIBE_TAXONOMY"] = os.path.join(SESSION_DIR, "taxonomy.json")
 os.environ["MODEL_DIR"] = os.path.join(SESSION_DIR, "models")
+os.environ["VIBE_TRAINING_ROOT"] = os.path.join(SESSION_DIR, "genre_training")
 for _name in ("CUSTOM_HEAD", "VIBE_SNAPSHOTS", "GENRE_TOKEN"):
     os.environ.pop(_name, None)
 
@@ -52,6 +53,7 @@ def make_settings(tmp_path, **overrides):
         "model_dir": tmp_path / "models",
         "config_dir": tmp_path / "config",
         "taxonomy": tmp_path / "taxonomy.json",
+        "training": tmp_path / "genre_training",
         "token": TEST_TOKEN,
     }
     return Settings(**(base | overrides))
