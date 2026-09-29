@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
 from flask import Response, jsonify, render_template, request
 
 from .. import insight, taxonomy
@@ -273,8 +274,6 @@ def map_route():
 
 
 def _build_map(rows, tags_by_hash, mode, fp):
-    import numpy as np
-
     nodes, embs, emb_idx = [], [], []
     # Every payload is parsed exactly once here and the parsed form is carried
     # to the audit at the end. _map_node takes a dict as happily as a string.

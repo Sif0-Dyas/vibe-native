@@ -5,6 +5,8 @@ import json
 import time
 from pathlib import Path
 
+import numpy as np
+
 from .. import db as _db
 from ..artists import artist_tag
 from ..style import dominant_style
@@ -255,8 +257,6 @@ def cache_get(h: str):
 
 
 def cache_put(h: str, filename, filepath, title, payload: dict, emb):
-    import numpy as np
-
     blob = np.asarray(emb, dtype=np.float32).tobytes() if emb is not None else None
     with writing() as c:
         c.execute(
@@ -353,8 +353,6 @@ def audit_rows():
 
 # --- one embedding, and comparing two ---------------------------------------------------
 def track_embedding(h: str):
-    import numpy as np
-
     with reading() as c:
         row = c.execute("SELECT embedding FROM tracks WHERE hash=?", (h,)).fetchone()
     if not row or row[0] is None:
@@ -365,8 +363,6 @@ def track_embedding(h: str):
 def cosine(a, b):
     """Cosine similarity of two embeddings (maths, not SQL -- kept beside the
     readers whose vectors it compares); 0.0 if either is all zeros."""
-    import numpy as np
-
     na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
     if na == 0 or nb == 0:
         return 0.0

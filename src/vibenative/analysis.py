@@ -15,6 +15,8 @@ without onnxruntime installed -- exactly as the old code deferred ``essentia``.
 import threading
 from pathlib import Path
 
+import numpy as np
+
 from .config import log
 from .fake_engine import engines
 from .settings import current
@@ -64,8 +66,6 @@ def get_custom_head():
         head = None
         if path.exists():
             try:
-                import numpy as np
-
                 d = np.load(path, allow_pickle=False)
                 head = {k: d[k] for k in ("W1", "b1", "W2", "b2", "mu", "sigma")}
                 head["labels"] = [str(x) for x in d["labels"]]
@@ -84,8 +84,6 @@ def get_custom_head():
 
 def custom_predict(embeddings):
     """Forward pass of the trained NumPy head; track-level probabilities."""
-    import numpy as np
-
     head = get_custom_head()
     if head is None:
         return None
@@ -145,8 +143,6 @@ WAVE_BINS = 720  # amplitude envelope resolution; higher = finer waveform detail
 
 def waveform_peaks(audio, bins=WAVE_BINS):
     """Downsample |audio| into `bins` peak values in 0..1 for drawing."""
-    import numpy as np
-
     a = np.abs(np.asarray(audio))
     if a.size == 0:
         return [0.0] * bins
@@ -168,8 +164,6 @@ def waveform_minmax(audio, bins=WAVE_MM_BINS):
     normalized so the loudest peak reaches full scale. min/max give the peak
     outline (both rails from a center line), rms the loudness core. Returns
     ``{'bins', 'min', 'max', 'rms'}`` with each list in [-1, 1] (rms in [0, 1])."""
-    import numpy as np
-
     a = np.asarray(audio, dtype=np.float32).ravel()
     empty = [0.0] * bins
     if a.size == 0:
@@ -201,8 +195,6 @@ def load_samples_for_waveform(path):
 def frame_topk(preds, labels, k=6):
     """Per-frame top-k predictions as [style, score] pairs -- the data the
     hysteresis and sibling-merge lenses need (winner plus near-misses)."""
-    import numpy as np
-
     preds = np.asarray(preds)
     if preds.ndim != 2 or preds.shape[0] == 0:
         return []
@@ -225,8 +217,6 @@ def salience_read(preds, audio16, labels, topk=8):
     Returns [{style, score}] over the salient styles (scores sum to <=1; the
     remainder is the incidental tail, shown as "Other" in the UI).
     """
-    import numpy as np
-
     preds = np.asarray(preds)
     n = preds.shape[0]
     if n == 0:
@@ -336,8 +326,6 @@ def _assemble(labels, audio16, embeddings, preds, features) -> dict:
     per-frame segments, the salience read, top-k frames, custom-head scores, and the
     mean embedding, spliced with the musical ``features`` dict. Takes ``labels``
     explicitly (no ``get_engine()``) so it runs on synthetic inputs without models."""
-    import numpy as np
-
     mean = np.mean(preds, axis=0)
     order = np.argsort(mean)[::-1]
     styles = []
@@ -399,8 +387,6 @@ FINE_HOP_SECONDS = round(FINE_HOP * 256 / 16000, 2)  # 256-sample mel hop @ 16 k
 
 def refine_segments(path: Path):
     """Re-run one track with overlapping patches -> (dense segments, dense frames)."""
-    import numpy as np
-
     eng = get_engine()
     audio16 = engines().decode_16k_mono(path)
     # serialize the one shared inference pass; the fine hop is a frontend parameter.

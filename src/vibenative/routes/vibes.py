@@ -4,6 +4,7 @@ export/import, and similarity (match a track / rank the library) over the cached
 
 import json
 
+import numpy as np
 from flask import jsonify, request
 
 from ..repo import tracks as tracks_repo
@@ -245,8 +246,6 @@ def vibes_match_batch():
     request, the centroids computed once, and a track with no embedding is
     simply absent from the answer rather than a 404 for the lot.
     """
-    import numpy as np
-
     from .tags import _hashes_arg
 
     hashes = _hashes_arg()
@@ -267,8 +266,6 @@ def vibes_playlist(vid):
     if cen is None:
         return jsonify({"error": "vibe has no member tracks yet"}), 404
     threshold = float(request.args.get("threshold", 0.60))
-    import numpy as np
-
     rows = tracks_repo.embedded_rows()
     members = vibes_repo.member_hashes(vid)
     out = []

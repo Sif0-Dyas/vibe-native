@@ -4,6 +4,7 @@
 import json
 from pathlib import Path
 
+import numpy as np
 from flask import jsonify, request
 
 from ..names import safe_name
@@ -113,8 +114,6 @@ def training_candidates(genre):
     in training_labels. Excludes tracks already labelled this genre or previously
     rejected for it. Returns hash/title/sim/bpm/camelot, most-similar first. An
     empty centroid (nothing labelled yet) returns a clear message, not an error."""
-    import numpy as np
-
     genre = (genre or "").strip()
     if not genre:
         return jsonify({"error": "genre required"}), 400

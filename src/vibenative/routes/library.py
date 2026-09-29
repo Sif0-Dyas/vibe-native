@@ -5,6 +5,7 @@ similarity."""
 import json
 from pathlib import Path
 
+import numpy as np
 from flask import jsonify, request
 
 from .. import lookup
@@ -505,8 +506,6 @@ def lookup_route(h):
 @bp.get("/similar/<h>")
 def similar_route(h):
     """Top-k nearest tracks to <h> by embedding cosine (for the map popup)."""
-    import numpy as np
-
     k = max(1, min(int(request.args.get("k", 8)), 40))
     target = track_embedding(h)
     if target is None:
