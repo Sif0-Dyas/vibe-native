@@ -159,6 +159,16 @@ def test_training_confirm_refuses_before_labelling(client, tmp_path, settings, g
     assert not settings.training_root.exists()
 
 
+@pytest.mark.parametrize("genre", NO_ALNUM)
+def test_training_reject_refuses_before_writing(client, tmp_path, genre):
+    from vibenative.repo.training import reject_hashes
+
+    h = _track_with_file(tmp_path)
+    r = client.post("/training/reject", json={"hash": h, "genre": genre})
+    assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
+    assert reject_hashes(genre) == set()
+
+
 @pytest.mark.parametrize("genre", ["...", "- _ -", "🔥🔥"])  # no "/" in a URL segment
 def test_training_set_routes_refuse(client, tmp_path, settings, genre):
     from urllib.parse import quote

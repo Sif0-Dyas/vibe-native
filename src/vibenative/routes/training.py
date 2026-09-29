@@ -205,6 +205,8 @@ def training_reject():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
+    if not genre_folder(genre):
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
     training_repo.reject(h, genre)
     return jsonify({"ok": True, "hash": h, "genre": genre})
 
