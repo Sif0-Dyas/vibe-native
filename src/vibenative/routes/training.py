@@ -14,7 +14,7 @@ from ..repo import NotFound
 from ..repo import tracks as tracks_repo
 from ..repo import training as training_repo
 from ._shared import bp
-from .analysis import UploadError, _check_upload
+from .analysis import _check_upload
 
 
 @bp.post("/save_training")
@@ -54,10 +54,7 @@ def save_training_route():
 
     # browser upload (dropped tracks)
     f = request.files.get("file")
-    try:
-        suffix = _check_upload(f, "no file or filepath provided")
-    except UploadError as e:
-        return jsonify({"error": str(e)}), e.status
+    suffix = _check_upload(f, "no file or filepath provided")
     dest = dest_dir / _safe_upload_name(f.filename, suffix)
     if not dest.exists():
         f.save(str(dest))

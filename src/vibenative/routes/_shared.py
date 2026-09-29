@@ -3,12 +3,38 @@ both the map and library routes). Request auth is app-wide, in ``auth.py``."""
 
 from pathlib import Path
 
-from flask import Blueprint
+from flask import Blueprint, jsonify
+from werkzeug.exceptions import HTTPException
 
+from ..config import log
 from ..db import artist_tag as _artist_tag
 from ..style import ranked_read
 
 bp = Blueprint("main", __name__)
+
+
+class UploadError(Exception):
+    """Bad/missing upload -- carries the HTTP status the route should return."""
+
+    def __init__(self, message, status):
+        super().__init__(message)
+        self.status = status
+
+
+@bp.errorhandler(UploadError)
+def _upload_error(e):
+    return jsonify({"error": str(e)}), e.status
+
+
+@bp.errorhandler(Exception)
+def _unexpected_error(e):
+    """Anything a route didn't handle: logged with its traceback, and a 500 that
+    says nothing about the internals. HTTP errors (413 from MAX_CONTENT_LENGTH,
+    405, abort()) are not failures -- they go back as themselves."""
+    if isinstance(e, HTTPException):
+        return e
+    log.exception("request failed")
+    return jsonify({"error": "internal error"}), 500
 
 
 # ---------------------------------------------------------------------------
