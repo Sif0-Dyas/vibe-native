@@ -1143,7 +1143,8 @@ def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
     4/4), so `feel` is the field that actually separates these genres. Both are
     genre conventions, NOT per-track measurements -- the engine computes a single
     BPM and never locates beats or downbeats, so meter can't be detected."""
-    from vibenative.genres import PROFILES, summarise
+    from vibenative.genres import summarise
+    from vibenative.taxonomy.profiles import PROFILES
 
     missing = [k for k, v in PROFILES.items() if not v.get("signature") or not v.get("feel")]
     assert missing == []

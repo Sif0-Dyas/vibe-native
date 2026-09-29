@@ -1,6 +1,6 @@
 """User edits to the genre taxonomy, kept in a JSON file outside the database.
 
-The built-in tables in ``keystone.py`` are a good default and a bad final
+The built-in tables in ``tables.py`` are a good default and a bad final
 answer: they were written against one library, and the person using the app
 knows things they don't -- that Halftime belongs under Drum n Bass rather than
 standing alone, that a name you type constantly should resolve somewhere
@@ -30,9 +30,9 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-from .config import log
-from .paths import config_dir
-from .settings import current
+from ..config import log
+from ..paths import config_dir
+from ..settings import current
 
 VERSION = 1
 
@@ -249,7 +249,7 @@ def reset():
     return {"reset": True, "backup": str(moved) if moved else None}
 
 
-# --- lookups, used by keystone.py and palette.py ------------------------------
+# --- lookups, used by classify.py and palette.py ------------------------------
 def alias_of(style):
     """The keystone a user-named style resolves to, or None."""
     return load()["aliases"].get(str(style or "").strip().lower()) or None

@@ -8,11 +8,12 @@ from pathlib import Path
 import numpy as np
 from flask import Response, jsonify, render_template, request
 
-from .. import insight, taxonomy
+from .. import insight
 from ..config import log
 from ..repo import tags as tags_repo
 from ..repo import tracks as tracks_repo
 from ..style import dominant_read, ranked_read
+from ..taxonomy import overlay
 from ._shared import _artist_of, _second_style, bp
 
 # A runner-up needs at least this share before it's worth offering as a fix.
@@ -76,8 +77,8 @@ def _keystone_fields(p, style, mode="dark"):
     fields, not fallback chains: a node with holes in it meant every consumer
     carried its own guess at what should have been there, and they disagreed.
     """
-    from .. import keystone as K
     from .. import palette as P
+    from ..taxonomy import classify as K
 
     cls = K.classify(p)
     if not cls:
@@ -194,7 +195,7 @@ def _map_fingerprint(rev, mode):
     """
     from .. import __version__
     from ..settings import current
-    from ..taxonomy import path as taxonomy_path
+    from ..taxonomy.overlay import path as taxonomy_path
 
     h = hashlib.blake2b(digest_size=16)
     h.update(__version__.encode("utf-8"))
@@ -269,7 +270,7 @@ def map_route():
     tags_by_hash = tags_repo.names_by_hash()
     # One taxonomy overlay for the whole build: every node classified and
     # painted against the same file, and one stat() instead of one per lookup.
-    with taxonomy.pinned():
+    with overlay.pinned():
         return _build_map(rows, tags_by_hash, mode, fp)
 
 

@@ -1,7 +1,7 @@
 """Unit tests for the keystone taxonomy.
 
 Everything here runs on hand-built payloads -- no models, no database, no
-snapshot -- because keystone.py is pure table lookup over the style read that
+snapshot -- because taxonomy/classify.py is pure table lookup over the style read that
 analysis.py already stores.
 
 Two tests encode invariants that are easy to break by editing the tables:
@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from vibenative import keystone as K
+from vibenative.taxonomy import classify as K
+from vibenative.taxonomy import tables as T
 
 MODELS = Path(__file__).resolve().parent.parent / "models"
 LABELS = MODELS / "genre_discogs400-discogs-effnet-1.json"
@@ -98,7 +99,7 @@ def test_fusion_when_runner_up_clears_the_bar():
 
 def test_threshold_boundary_is_inclusive():
     """Exactly FUSION_THRESHOLD counts; a hair under does not."""
-    t = K.FUSION_THRESHOLD
+    t = T.FUSION_THRESHOLD
     assert K.classify(sal(("Dubstep", 1 - t), ("Trap", t)))["fusion"] is True
     assert K.classify(sal(("Dubstep", 1 - t + 0.01), ("Trap", t - 0.01)))["fusion"] is False
 
@@ -158,12 +159,12 @@ def test_electronic_keystones_have_a_family(keystone, family):
 @pytest.mark.parametrize("keystone", ["Metal", "Punk", "Rock", "Hip Hop", "Jazz", "Latin"])
 def test_non_electronic_collapses_to_other(keystone):
     """This is a tool for an electronic library -- everything else is one bucket."""
-    assert K.family_of(keystone) == K.OTHER_FAMILY
+    assert K.family_of(keystone) == T.OTHER_FAMILY
 
 
 def test_unknown_keystone_lands_in_other_rather_than_raising():
-    assert K.family_of("Sea Shanty") == K.OTHER_FAMILY
-    assert K.family_of(None) == K.OTHER_FAMILY
+    assert K.family_of("Sea Shanty") == T.OTHER_FAMILY
+    assert K.family_of(None) == T.OTHER_FAMILY
 
 
 def test_every_family_member_is_reachable_as_a_keystone():
@@ -172,15 +173,15 @@ def test_every_family_member_is_reachable_as_a_keystone():
     # Keystones arrive from the electronic table, from _OVERRIDES (Trap), and
     # from the Rock split -- all three are real sources.
     produced = (
-        set(K._STYLE_TO_KEYSTONE.values()) | set(K._OVERRIDES.values()) | {"Metal", "Punk", "Rock"}
+        set(T._STYLE_TO_KEYSTONE.values()) | set(T._OVERRIDES.values()) | {"Metal", "Punk", "Rock"}
     )
-    listed = {k for ks in K.FAMILIES.values() for k in ks}
+    listed = {k for ks in T.FAMILIES.values() for k in ks}
     assert listed - produced == set()
 
 
 def test_family_order_covers_every_family():
-    assert set(K.FAMILY_ORDER) == set(K.FAMILIES) | {K.OTHER_FAMILY}
-    assert K.FAMILY_ORDER[-1] == K.OTHER_FAMILY  # Other sorts last
+    assert set(T.FAMILY_ORDER) == set(T.FAMILIES) | {T.OTHER_FAMILY}
+    assert T.FAMILY_ORDER[-1] == T.OTHER_FAMILY  # Other sorts last
 
 
 def test_classify_reports_the_family():
@@ -245,7 +246,7 @@ def test_no_fusion_name_collides_with_a_real_style():
     """If a fusion name is also a style, the same blend gets two different
     labels depending on which path reached it. See FUSION_NAMES."""
     styles = {x.split("---")[-1].lower() for x in json.loads(LABELS.read_text())["classes"]}
-    collisions = {n for n in K.FUSION_NAMES.values() if n.lower() in styles}
+    collisions = {n for n in T.FUSION_NAMES.values() if n.lower() in styles}
     assert collisions == set()
 
 
@@ -254,12 +255,12 @@ def test_every_mapped_style_is_one_the_model_can_emit():
     """Guards against typos in the tables -- a misspelled style silently never
     matches, so its whole subgenre quietly falls out of its keystone."""
     styles = {x.split("---")[-1].lower() for x in json.loads(LABELS.read_text())["classes"]}
-    named = set(K._STYLE_TO_KEYSTONE) | set(K._OVERRIDES)
+    named = set(T._STYLE_TO_KEYSTONE) | set(T._OVERRIDES)
     assert named - styles == set()
 
 
 def test_fusion_names_are_symmetric():
-    for pair, name in K.FUSION_NAMES.items():
+    for pair, name in T.FUSION_NAMES.items():
         a, b = sorted(pair)
         assert K.label_for([a, b]) == K.label_for([b, a]) == name
 
@@ -300,4 +301,4 @@ def test_user_aliases_are_kept_out_of_the_model_vocabulary_check():
     """_USER_ALIASES holds names the model cannot emit; _OVERRIDES holds real
     Discogs styles. Mixing them would break the invariant that every _OVERRIDES
     key is a producible label."""
-    assert set(K._USER_ALIASES) & set(K._OVERRIDES) == set()
+    assert set(T._USER_ALIASES) & set(T._OVERRIDES) == set()

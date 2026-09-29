@@ -241,9 +241,9 @@ def keystone_order():
     repaint the whole map every time a new genre appeared, and colour is supposed
     to follow the entity. Same reasoning as ``palette.KEYSTONE_SLOT``.
     """
-    from . import keystone as K
+    from .taxonomy import tables as T
 
-    return [k for fam in K.FAMILY_ORDER for k in (K.FAMILIES.get(fam) or [])]
+    return [k for fam in T.FAMILY_ORDER for k in (T.FAMILIES.get(fam) or [])]
 
 
 def colors_for(name, mode="dark", keystones=None):
@@ -281,77 +281,9 @@ def colors_for(name, mode="dark", keystones=None):
     return out
 
 
-def _worst_pair(cols):
-    vals = sorted(set(cols.values()))
-    if len(vals) < 2:
-        return None, 0
-    worst, close = None, 0
-    for i, a in enumerate(vals):
-        for b in vals[i + 1 :]:
-            d = delta_e(a, b)
-            worst = d if worst is None else min(worst, d)
-            if d < READABLE:
-                close += 1
-    return worst, close
-
-
-def _default_colors(mode, keystones):
-    from . import palette as P
-
-    return {k: P.keystone_color(k, mode) for k in (keystones or keystone_order())}
-
-
-def separation(name, mode="dark", keystones=None):
-    """How well a preset separates, relative to the solved default.
-
-    Reported, never enforced. The user asked for schemes they can change freely,
-    so the honest move is to show what a choice costs and let them make it -- a
-    picker that silently blocked ``sunset`` would be answering a question nobody
-    asked.
-
-    ``verdict`` compares to ``studio`` because an absolute pass/fail is not
-    meaningful here: see the module docstring.
-    """
-    cols = colors_for(name, mode, keystones) or _default_colors(mode, keystones)
-    worst, close = _worst_pair(cols)
-    base, _ = _worst_pair(_default_colors(mode, keystones))
-    verdict = "unknown"
-    if worst is not None and base:
-        ratio = worst / base
-        verdict = "tighter" if ratio >= 1.15 else "looser" if ratio <= 0.85 else "comparable"
-    return {
-        "worst": None if worst is None else round(worst, 1),
-        "close_pairs": close,
-        "default_worst": None if base is None else round(base, 1),
-        "verdict": verdict,
-    }
-
-
-def summarise(mode="dark"):
-    """Every preset with its colours and its measured separation, for the picker."""
-    ks = keystone_order()
-    out = []
-    for name, spec in PRESETS.items():
-        cols = colors_for(name, mode, ks)
-        if not cols:  # the built-in: show what it actually paints
-            from . import palette as P
-
-            cols = {k: P.keystone_color(k, mode) for k in ks}
-        out.append(
-            {
-                "name": name,
-                "label": spec["label"],
-                "blurb": spec["blurb"],
-                "colors": [{"keystone": k, "color": cols[k]} for k in ks if k in cols],
-                "separation": separation(name, mode, ks),
-            }
-        )
-    return out
-
-
 def current():
     """The preset in force, from the taxonomy overlay."""
-    from .taxonomy import load
+    from .taxonomy.overlay import load
 
     name = (load().get("palette") or "").strip()
     return name if name in PRESETS else DEFAULT
@@ -365,7 +297,7 @@ def apply(name):
     and there would be no way to tell a preset from sixteen hand-picked colours.
     Per-genre colours are left alone -- they are the exceptions on top.
     """
-    from .taxonomy import patch
+    from .taxonomy.overlay import patch
 
     if name not in PRESETS:
         raise ValueError(f"unknown palette {name!r}")

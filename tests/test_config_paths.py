@@ -17,7 +17,8 @@ import sys
 
 import pytest
 
-from vibenative import paths, taxonomy
+from vibenative import paths
+from vibenative.taxonomy import overlay
 
 
 def _ini(path, db_path):
@@ -50,7 +51,7 @@ def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch, use_setting
     repo = paths.Path(paths.__file__).resolve().parents[2]
     assert paths.config_dir() == repo
     assert paths.settings_ini() == repo / "settings.ini"
-    assert taxonomy.path() == repo / "taxonomy.json"
+    assert overlay.path() == repo / "taxonomy.json"
 
     # packaged: %APPDATA%\Vibe Identify, never the exe's folder
     monkeypatch.setattr(sys, "frozen", True, raising=False)
@@ -59,13 +60,13 @@ def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch, use_setting
     cfg = tmp_path / "Roaming" / "Vibe Identify"
     assert paths.config_dir() == cfg
     assert paths.settings_ini() == cfg / "settings.ini"
-    assert taxonomy.path() == cfg / "taxonomy.json"
+    assert overlay.path() == cfg / "taxonomy.json"
 
     # the override wins in either mode
     use_settings(config_dir=tmp_path / "override")
     assert paths.settings_ini() == tmp_path / "override" / "settings.ini"
     monkeypatch.delattr(sys, "frozen")
-    assert taxonomy.path() == tmp_path / "override" / "taxonomy.json"
+    assert overlay.path() == tmp_path / "override" / "taxonomy.json"
 
 
 def test_installer_seed_is_copied_exactly_once(packaged, monkeypatch):
@@ -115,7 +116,7 @@ def test_db_path_and_taxonomy_edits_write_to_the_config_dir(client, tmp_path, us
     assert r.status_code == 200, r.get_json()
     saved = (cfg / "taxonomy.json").read_text(encoding="utf-8")
     assert '"Halftime": "Drum n Bass"' in saved
-    taxonomy.load(force=True)
+    overlay.load(force=True)
 
 
 def test_read_only_installer_ini_no_longer_breaks_db_path(client, packaged, tmp_path):

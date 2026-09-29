@@ -31,9 +31,9 @@ import json
 import threading
 from pathlib import Path
 
-from .config import log
+from ..config import log
 
-DATA = Path(__file__).resolve().parent / "data" / "genres_electronic.json"
+DATA = Path(__file__).resolve().parents[1] / "data" / "genres_electronic.json"
 
 # How far to walk up the parent chain before giving up. The hierarchy is shallow
 # in practice; a cap also stops a cycle in the source data from hanging a lookup.
@@ -58,7 +58,7 @@ def _load():
             _index = {}
             return _index
         except (OSError, ValueError) as e:
-            log.warning("genrelex: unusable crawl at %s (%s); lexicon disabled", DATA, e)
+            log.warning("lexicon: unusable crawl at %s (%s); lexicon disabled", DATA, e)
             _index = {}
             return _index
         idx = {}
@@ -72,7 +72,7 @@ def _load():
             for a in g.get("aliases") or []:
                 idx.setdefault(_norm(a), g)
         _index = idx
-        log.info("genrelex: %d genre names loaded (incl. aliases)", len(idx))
+        log.info("lexicon: %d genre names loaded (incl. aliases)", len(idx))
         return _index
 
 

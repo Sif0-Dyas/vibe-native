@@ -28,7 +28,8 @@ def genres_route():
     response much smaller when only the counts are wanted).
     """
     from .. import genres
-    from .. import keystone as K
+    from ..taxonomy import classify as K
+    from ..taxonomy import tables as T
 
     top = max(0, min(int(request.args.get("top", 5) or 0), 25))
     mode = "light" if request.args.get("mode") == "light" else "dark"
@@ -54,7 +55,7 @@ def genres_route():
                     "archgenre": a,
                     "count": sum(p["count"] for p in grouped[a]),
                     "share": round(sum(p["count"] for p in grouped[a]) / total, 4),
-                    "standalone": a in K.STANDALONE_ARCHGENRES,
+                    "standalone": a in T.STANDALONE_ARCHGENRES,
                     "keystones": grouped[a],
                 }
                 for a in order
@@ -82,8 +83,8 @@ def taxonomy_route():
     scheme (including families you own no tracks in) rather than only what you
     happen to have.
     """
-    from .. import keystone as K
     from .. import palette as P
+    from ..taxonomy import tables as T
 
     mode = "light" if request.args.get("mode") == "light" else "dark"
     return jsonify(
@@ -97,15 +98,15 @@ def taxonomy_route():
                             "color": P.keystone_color(k, mode),
                             "slotted": k in P.KEYSTONE_SLOT,
                         }
-                        for k in (K.FAMILIES.get(fam) or [])
+                        for k in (T.FAMILIES.get(fam) or [])
                     ],
                 }
-                for fam in K.FAMILY_ORDER
-                if fam != K.OTHER_FAMILY
+                for fam in T.FAMILY_ORDER
+                if fam != T.OTHER_FAMILY
             ],
-            "other_family": K.OTHER_FAMILY,
+            "other_family": T.OTHER_FAMILY,
             "legend": P.legend(mode),
-            "fusion_threshold": K.FUSION_THRESHOLD,
+            "fusion_threshold": T.FUSION_THRESHOLD,
         }
     )
 
@@ -166,16 +167,17 @@ def overlay_get_route():
     The path is returned because hand-editing the file is a supported way to use
     it, and the UI has no other way to tell you where to look.
     """
-    from .. import keystone as K
-    from .. import taxonomy
+    from ..taxonomy import classify as K
+    from ..taxonomy import overlay
+    from ..taxonomy import tables as T
 
     return jsonify(
         {
-            "overlay": taxonomy.load(),
-            "path": str(taxonomy.path()),
-            "version": taxonomy.VERSION,
+            "overlay": overlay.load(),
+            "path": str(overlay.path()),
+            "version": overlay.VERSION,
             "archgenres": K.archgenre_order(),
-            "families": K.FAMILY_ORDER,
+            "families": T.FAMILY_ORDER,
         }
     )
 
@@ -188,12 +190,12 @@ def overlay_patch_route():
     A map value of ``null`` clears that entry, which is how you go back to the
     built-in default rather than overriding it with something else.
     """
-    from .. import taxonomy
+    from ..taxonomy import overlay
 
     d = request.get_json(silent=True)
     if not isinstance(d, dict):
         return jsonify({"error": "object required"}), 400
-    return jsonify({"overlay": taxonomy.patch(d), "path": str(taxonomy.path())})
+    return jsonify({"overlay": overlay.patch(d), "path": str(overlay.path())})
 
 
 @bp.post("/taxonomy/overlay/reset")
@@ -203,7 +205,8 @@ def overlay_reset_route():
     Nothing is deleted -- the file is renamed, so a mis-click is recoverable.
     Same stance as the training reset below.
     """
-    from .. import snapshots, taxonomy
+    from .. import snapshots
+    from ..taxonomy import overlay
 
     confirm = (request.get_json(silent=True) or {}).get("confirm")
     if (confirm or "").strip().upper() != snapshots.CONFIRM_WORD:
@@ -213,7 +216,7 @@ def overlay_reset_route():
                 "confirm_word": snapshots.CONFIRM_WORD,
             }
         ), 400
-    return jsonify(taxonomy.reset())
+    return jsonify(overlay.reset())
 
 
 # --- colour presets -----------------------------------------------------------
@@ -224,10 +227,11 @@ def palettes_route():
     The separation numbers ship with the list on purpose: the presets are not
     equally readable, and a picker that hid that would be pretending they were.
     """
+    from .. import palette as P
     from .. import palettes as PP
 
     mode = "light" if request.args.get("mode") == "light" else "dark"
-    return jsonify({"current": PP.current(), "default": PP.DEFAULT, "presets": PP.summarise(mode)})
+    return jsonify({"current": PP.current(), "default": PP.DEFAULT, "presets": P.summarise(mode)})
 
 
 @bp.post("/palettes/<name>")

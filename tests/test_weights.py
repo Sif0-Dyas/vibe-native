@@ -172,7 +172,7 @@ def test_adjustments_outrank_automatic_reads_but_not_an_override():
 def test_keystone_follows_the_adjustment_too():
     """The map and the label must agree about a track you just adjusted -- and
     the keystone has to roll up, so pushing Deep House reads as House."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
     p = {"salience": [{"style": "Techno", "score": 0.7}, {"style": "Deep House", "score": 0.3}]}
     assert K.classify(p)["keystones"][0] == "Techno"

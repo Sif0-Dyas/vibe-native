@@ -153,12 +153,13 @@ def test_one_unslotted_keystone_still_rings():
 def test_every_electronic_family_owns_a_hue():
     """The allocation floor exists so a small family isn't left colourless --
     Chill and Experimental are 2% of today's library and will grow."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
+    from vibenative.taxonomy import tables as T
 
     slotted_families = {K.family_of(k) for k in P.KEYSTONE_SLOT}
-    electronic = set(K.FAMILIES)
+    electronic = set(T.FAMILIES)
     assert electronic - slotted_families == set()
-    assert K.OTHER_FAMILY not in slotted_families  # non-electronic never gets one
+    assert T.OTHER_FAMILY not in slotted_families  # non-electronic never gets one
 
 
 def test_family_lead_is_slotted_for_every_family():

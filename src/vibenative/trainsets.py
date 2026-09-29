@@ -64,7 +64,7 @@ def detail(genre, top_n=10):
     ``tracks`` is what the app believes today -- useful both as "is this genre
     working" and as the pool to pick more training examples from.
     """
-    from . import keystone as K
+    from .taxonomy import classify as K
 
     d = folder(genre)
     files = _audio_files(d)

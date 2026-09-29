@@ -14,7 +14,7 @@ import json
 import pytest
 
 from conftest import seed_track
-from vibenative import taxonomy
+from vibenative.taxonomy import overlay
 
 
 @pytest.fixture(autouse=True)
@@ -22,21 +22,21 @@ def tmp_overlay(settings):
     """The scratch overlay for this test: conftest's Settings.taxonomy, under
     tmp_path -- never the developer's real file."""
     f = settings.taxonomy
-    taxonomy.load(force=True)
+    overlay.load(force=True)
     yield f
-    taxonomy.load(force=True)
+    overlay.load(force=True)
 
 
 def write(f, obj):
     f.write_text(json.dumps(obj), encoding="utf-8")
-    taxonomy.load(force=True)
+    overlay.load(force=True)
 
 
 # --- the file itself ----------------------------------------------------------
 def test_no_file_means_no_opinions():
     """The overlay is additive; its absence must be indistinguishable from a
     build that never had the feature."""
-    assert taxonomy.load() == {
+    assert overlay.load() == {
         "aliases": {},
         "archgenre": {},
         "family": {},
@@ -50,145 +50,145 @@ def test_no_file_means_no_opinions():
 def test_only_departures_are_written():
     """Sparse, not a copy: a full dump of the tables would freeze today's
     defaults and silently shadow every later fix to them."""
-    f = taxonomy.path()
-    taxonomy.save({"archgenre": {"Halftime": "Drum n Bass"}})
+    f = overlay.path()
+    overlay.save({"archgenre": {"Halftime": "Drum n Bass"}})
     body = json.loads(f.read_text(encoding="utf-8"))
-    assert body == {"version": taxonomy.VERSION, "archgenre": {"Halftime": "Drum n Bass"}}
+    assert body == {"version": overlay.VERSION, "archgenre": {"Halftime": "Drum n Bass"}}
 
 
 def test_saved_keys_are_sorted_so_diffs_stay_readable():
-    taxonomy.save({"colors": {"Techno": "#0f0", "Ambient": "#00f", "House": "#f00"}})
-    body = json.loads(taxonomy.path().read_text(encoding="utf-8"))
+    overlay.save({"colors": {"Techno": "#0f0", "Ambient": "#00f", "House": "#f00"}})
+    body = json.loads(overlay.path().read_text(encoding="utf-8"))
     assert list(body["colors"]) == ["Ambient", "House", "Techno"]
 
 
 def test_edits_on_disk_are_picked_up_without_a_restart():
     """Hand-editing is a supported way to use this, so it has to re-read."""
-    f = taxonomy.path()
+    f = overlay.path()
     write(f, {"family": {"Industrial": "Bass"}})
-    assert taxonomy.family_override("Industrial") == "Bass"
+    assert overlay.family_override("Industrial") == "Bass"
     write(f, {"family": {"Industrial": "Chill"}})
-    assert taxonomy.family_override("Industrial") == "Chill"
+    assert overlay.family_override("Industrial") == "Chill"
 
 
 def test_a_pinned_block_holds_one_overlay_for_its_whole_length():
     """A whole-library build classifies every track against the same file --
     and does not stat() it once per lookup to find that out."""
-    f = taxonomy.path()
+    f = overlay.path()
     write(f, {"family": {"Industrial": "Bass"}})
-    with taxonomy.pinned():
-        assert taxonomy.family_override("Industrial") == "Bass"
+    with overlay.pinned():
+        assert overlay.family_override("Industrial") == "Bass"
         f.write_text(json.dumps({"family": {"Industrial": "Chill"}}), encoding="utf-8")
-        assert taxonomy.family_override("Industrial") == "Bass"  # held
-    assert taxonomy.family_override("Industrial") == "Chill"  # released
+        assert overlay.family_override("Industrial") == "Bass"  # held
+    assert overlay.family_override("Industrial") == "Chill"  # released
 
 
 # --- surviving a hand-edited file ---------------------------------------------
 def test_a_broken_file_falls_back_instead_of_crashing():
-    f = taxonomy.path()
+    f = overlay.path()
     f.write_text("{ not json at all", encoding="utf-8")
-    taxonomy.load(force=True)
-    assert taxonomy.load()["aliases"] == {}
+    overlay.load(force=True)
+    assert overlay.load()["aliases"] == {}
 
 
 def test_junk_costs_only_the_line_it_is_on():
     """One bad entry must not discard the entries around it."""
-    f = taxonomy.path()
+    f = overlay.path()
     write(f, {"aliases": {"riddim": "Dubstep", "": "Techno", "  ": ""}, "nonsense": 5})
-    assert taxonomy.load()["aliases"] == {"riddim": "Dubstep"}
+    assert overlay.load()["aliases"] == {"riddim": "Dubstep"}
 
 
 def test_a_file_of_the_wrong_shape_is_survivable():
-    f = taxonomy.path()
+    f = overlay.path()
     write(f, ["not", "an", "object"])
-    assert taxonomy.load()["aliases"] == {}
+    assert overlay.load()["aliases"] == {}
 
 
 def test_unknown_keys_are_ignored_not_rejected():
     """A newer build's key must not make the file unloadable by an older one."""
-    f = taxonomy.path()
+    f = overlay.path()
     write(f, {"aliases": {"riddim": "Dubstep"}, "future_thing": {"a": 1}})
-    assert taxonomy.alias_of("riddim") == "Dubstep"
+    assert overlay.alias_of("riddim") == "Dubstep"
 
 
 def test_aliases_match_regardless_of_typed_case():
-    f = taxonomy.path()
+    f = overlay.path()
     write(f, {"aliases": {"Colour Bass": "Dubstep"}})
-    assert taxonomy.alias_of("colour bass") == "Dubstep"
-    assert taxonomy.alias_of("COLOUR BASS") == "Dubstep"
+    assert overlay.alias_of("colour bass") == "Dubstep"
+    assert overlay.alias_of("COLOUR BASS") == "Dubstep"
 
 
 # --- patching -----------------------------------------------------------------
 def test_patch_merges_rather_than_replacing():
-    taxonomy.patch({"colors": {"House": "#f00"}})
-    taxonomy.patch({"colors": {"Techno": "#0f0"}})
-    assert taxonomy.load()["colors"] == {"House": "#f00", "Techno": "#0f0"}
+    overlay.patch({"colors": {"House": "#f00"}})
+    overlay.patch({"colors": {"Techno": "#0f0"}})
+    assert overlay.load()["colors"] == {"House": "#f00", "Techno": "#0f0"}
 
 
 def test_null_clears_an_entry_back_to_the_built_in_default():
     """Distinct from setting it to nothing -- "use the default" has to be
     expressible or an edit could never be taken back."""
-    taxonomy.patch({"family": {"Industrial": "Bass"}})
-    taxonomy.patch({"family": {"Industrial": None}})
-    assert taxonomy.family_override("Industrial") is None
+    overlay.patch({"family": {"Industrial": "Bass"}})
+    overlay.patch({"family": {"Industrial": None}})
+    assert overlay.family_override("Industrial") is None
 
 
 def test_lists_are_replaced_wholesale():
-    taxonomy.patch({"hidden": ["Disco"]})
-    taxonomy.patch({"hidden": ["Electro"]})
-    assert taxonomy.hidden() == {"Electro"}
+    overlay.patch({"hidden": ["Disco"]})
+    overlay.patch({"hidden": ["Electro"]})
+    assert overlay.hidden() == {"Electro"}
 
 
 def test_reset_keeps_a_backup():
     """A mis-click on reset must be recoverable -- the same stance snapshots takes."""
-    taxonomy.patch({"colors": {"House": "#f00"}})
-    out = taxonomy.reset()
-    assert taxonomy.load()["colors"] == {}
+    overlay.patch({"colors": {"House": "#f00"}})
+    out = overlay.reset()
+    assert overlay.load()["colors"] == {}
     assert out["backup"] and json.loads(open(out["backup"], encoding="utf-8").read())["colors"]
 
 
 # --- what the overlay actually changes ----------------------------------------
 def test_an_alias_outranks_the_built_in_tables():
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
     assert K.keystone_of("juke") == "House"  # the shipped table
-    write(taxonomy.path(), {"aliases": {"juke": "Drum n Bass"}})
+    write(overlay.path(), {"aliases": {"juke": "Drum n Bass"}})
     assert K.keystone_of("juke") == "Drum n Bass"
 
 
 def test_an_alias_does_not_steal_a_name_from_another_parent():
     """Electronic---Hardcore is gabber, Rock---Hardcore is Black Flag. An overlay
     entry applying parent-blind would re-break exactly that."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
     before = K.keystone_of("Rock---Hardcore")
-    write(taxonomy.path(), {"aliases": {"hardcore": "Hard Dance"}})
+    write(overlay.path(), {"aliases": {"hardcore": "Hard Dance"}})
     assert K.keystone_of("Rock---Hardcore") == before
     assert K.keystone_of("Electronic---Hardcore") == "Hard Dance"
 
 
 def test_an_archgenre_can_be_reassigned():
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
     assert K.archgenre_of("Halftime") == "Bass"
-    write(taxonomy.path(), {"archgenre": {"Halftime": "Drum n Bass"}})
+    write(overlay.path(), {"archgenre": {"Halftime": "Drum n Bass"}})
     assert K.archgenre_of("Halftime") == "Drum n Bass"
 
 
 def test_a_keystone_can_be_promoted_to_stand_alone():
     """Empty string means "top of its own tree", which is a different statement
     from "no opinion" -- without the distinction nothing could be promoted."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
-    write(taxonomy.path(), {"archgenre": {"Dubstep": ""}})
+    write(overlay.path(), {"archgenre": {"Dubstep": ""}})
     assert K.archgenre_of("Dubstep") == "Dubstep"
 
 
 def test_a_family_can_be_reassigned():
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
     assert K.family_of("Industrial") == "Experimental"
-    write(taxonomy.path(), {"family": {"Industrial": "Bass"}})
+    write(overlay.path(), {"family": {"Industrial": "Bass"}})
     assert K.family_of("Industrial") == "Bass"
 
 
@@ -199,15 +199,15 @@ def test_a_colour_can_be_claimed_for_a_genre_the_solver_left_grey():
     from vibenative import palette as P
 
     assert P.keystone_color("Trap", "dark") == P.NEUTRAL["dark"]
-    write(taxonomy.path(), {"colors": {"Trap": "#ff00aa"}})
+    write(overlay.path(), {"colors": {"Trap": "#ff00aa"}})
     assert P.keystone_color("Trap", "dark") == "#ff00aa"
 
 
 def test_a_partial_ordering_leaves_the_rest_in_place():
     """ "I only care that Dubstep is first" has to be a writable thing."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
-    write(taxonomy.path(), {"order": ["Dubstep"]})
+    write(overlay.path(), {"order": ["Dubstep"]})
     got = K.archgenre_order()
     assert got[0] == "Dubstep"
     assert "House" in got and "Techno" in got
@@ -236,9 +236,9 @@ def test_an_invented_archgenre_gets_a_place_in_the_order():
     """Moving a keystone under another keystone makes that one an archgenre. If
     the order doesn't know about it the group has nowhere to go -- and the first
     version of this dropped every track in it off the Genres tab."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
-    write(taxonomy.path(), {"archgenre": {"Halftime": "Drum n Bass"}})
+    write(overlay.path(), {"archgenre": {"Halftime": "Drum n Bass"}})
     assert "Drum n Bass" in K.archgenre_order()
 
 

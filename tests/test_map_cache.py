@@ -130,7 +130,7 @@ def test_the_taxonomy_overlay_is_part_of_the_key(client):
     """The overlay decides how every genre resolves -- and carries the palette
     and the per-genre colours with it. Hand-editing the file has to reach the
     map, or the cache would make editing it look broken."""
-    from vibenative.taxonomy import path as taxonomy_path
+    from vibenative.taxonomy.overlay import path as taxonomy_path
 
     seed(client)
     build(client)

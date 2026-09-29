@@ -8,16 +8,17 @@ than decoration.
 
 import pytest
 
+from vibenative import palette as P
 from vibenative import palettes as PP
-from vibenative import taxonomy
+from vibenative.taxonomy import overlay
 
 
 @pytest.fixture(autouse=True)
 def tmp_overlay(settings):
     # conftest's Settings already point the overlay at tmp_path; start from a clean read.
-    taxonomy.load(force=True)
+    overlay.load(force=True)
     yield
-    taxonomy.load(force=True)
+    overlay.load(force=True)
 
 
 # --- the colour maths ---------------------------------------------------------
@@ -46,20 +47,20 @@ def test_delta_e_is_zero_for_a_colour_against_itself():
 
 # --- what the picker reports --------------------------------------------------
 def test_every_preset_reports_a_measured_separation():
-    for p in PP.summarise("dark"):
+    for p in P.summarise("dark"):
         s = p["separation"]
         assert s["worst"] is not None and s["worst"] > 0
         assert s["verdict"] in ("tighter", "comparable", "looser")
 
 
 def test_the_default_measures_comparable_to_itself():
-    assert PP.separation("studio", "dark")["verdict"] == "comparable"
+    assert P.separation("studio", "dark")["verdict"] == "comparable"
 
 
 def test_a_narrow_arc_reports_looser_than_the_default():
     """Sunset trades separation for mood on purpose. The picker has to say so --
     that is the whole reason the number is shown."""
-    assert PP.separation("sunset", "dark")["verdict"] == "looser"
+    assert P.separation("sunset", "dark")["verdict"] == "looser"
 
 
 def test_two_lightness_levels_beat_one():
@@ -87,14 +88,14 @@ def test_the_preset_name_is_stored_not_the_colours_it_computes():
     """Storing the output would freeze it: a later fix to a ramp would never
     reach a library that had already chosen it."""
     PP.apply("neon")
-    assert taxonomy.load()["palette"] == "neon"
-    assert taxonomy.load()["colors"] == {}
+    assert overlay.load()["palette"] == "neon"
+    assert overlay.load()["colors"] == {}
 
 
 def test_choosing_the_default_writes_nothing():
     PP.apply("neon")
     PP.apply("studio")
-    assert taxonomy.load()["palette"] == ""
+    assert overlay.load()["palette"] == ""
     assert PP.current() == "studio"
 
 
@@ -115,7 +116,7 @@ def test_a_per_genre_colour_survives_switching_schemes():
     """Trying a scheme out must not silently discard hand-picked colours."""
     from vibenative import palette as P
 
-    taxonomy.patch({"colors": {"House": "#ff00aa"}})
+    overlay.patch({"colors": {"House": "#ff00aa"}})
     for name in ("neon", "pastel", "studio"):
         PP.apply(name)
         assert P.keystone_color("House", "dark") == "#ff00aa"
@@ -131,7 +132,7 @@ def test_switching_back_restores_the_solved_default():
 
 
 def test_a_junk_preset_name_in_the_file_falls_back_to_the_default():
-    taxonomy.patch({"palette": "not-a-scheme"})
+    overlay.patch({"palette": "not-a-scheme"})
     assert PP.current() == PP.DEFAULT
 
 
