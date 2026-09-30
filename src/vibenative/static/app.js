@@ -1004,8 +1004,7 @@ function finishRow(row, data, file){
       rm.addEventListener('click', async () => {
         rm.disabled = true; msg.textContent = 'removing…';
         try {
-          const resp = await fetch('/api/v1/override_segment/delete', {method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({id: o.id})});
+          const resp = await fetch(`/api/v1/override_segment/${o.id}`, {method:'DELETE'});
           const j = await resp.json();
           if (!resp.ok){ msg.textContent = j.error || 'failed'; rm.disabled = false; return; }
         } catch(_){ msg.textContent = 'request failed'; rm.disabled = false; return; }
@@ -1241,7 +1240,7 @@ function finishRow(row, data, file){
       + `Deletes its analysis (genre, BPM, key) and takes it off the map. `
       + `The audio file is untouched.`)) return;
     const res = getResult();
-    if (res && res.hash){ try{ await fetch(`/api/v1/forget/${res.hash}`, {method:'POST'}); }catch(_){} }
+    if (res && res.hash){ try{ await fetch(`/api/v1/tracks/${res.hash}`, {method:'DELETE'}); }catch(_){} }
     results = results.filter(r => r.row !== row);
     EXTRAS.forget(row); row.remove();
     if (!rowsEl.querySelector('.row')) emptyEl.style.display = '';
@@ -2312,7 +2311,7 @@ function escapeHtml(s){
         if (hooks.vibeMapGoto) hooks.vibeMapGoto(h);
       };
       row.querySelector('.flag-omit').onclick = async () => {
-        try{ await fetch(`/api/v1/forget/${h}`, {method:'POST'}); }catch(_){}
+        try{ await fetch(`/api/v1/tracks/${h}`, {method:'DELETE'}); }catch(_){}
         row.remove();
       };
     });

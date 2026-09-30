@@ -74,7 +74,7 @@ def test_vibe_reset_validation(client):
 # --- clear (drop members, keep the vibe) ------------------------------------
 def test_vibe_clear_empties_membership_keeps_vibe(client):
     vid = _make_vibe(client, "Full", [("a", 1.0), ("b", 0.2)])
-    r = client.post("/api/v1/vibes/clear", json={"vibe_id": vid})
+    r = client.delete(f"/api/v1/vibes/{vid}/tracks")
     assert r.status_code == 200 and r.get_json()["removed"] == 2
     # membership gone...
     assert _members(vid) == {}
@@ -83,8 +83,8 @@ def test_vibe_clear_empties_membership_keeps_vibe(client):
     assert row["count"] == 0
 
 
-def test_vibe_clear_validation(client):
-    assert client.post("/api/v1/vibes/clear", json={}).status_code == 400
+def test_vibe_clear_needs_an_integer_id(client):
+    assert client.delete("/api/v1/vibes/nope/tracks").status_code == 404
 
 
 # --- delete (cascade to vibe_tracks, no orphans) ----------------------------
@@ -92,7 +92,7 @@ def test_vibe_delete_cascades_no_orphans(client):
     keep = _make_vibe(client, "Keep", [("k1", 1.0)])
     victim = _make_vibe(client, "Victim", [("v1", 1.0), ("v2", 0.4)])
 
-    r = client.post("/api/v1/vibes/delete", json={"vibe_id": victim})
+    r = client.delete(f"/api/v1/vibes/{victim}")
     assert r.status_code == 200 and r.get_json()["deleted"] is True
 
     # the vibe is gone from the listing
@@ -110,12 +110,12 @@ def test_vibe_delete_cascades_no_orphans(client):
 
 
 def test_vibe_delete_missing_is_soft(client):
-    r = client.post("/api/v1/vibes/delete", json={"vibe_id": 999999})
+    r = client.delete("/api/v1/vibes/999999")
     assert r.status_code == 200 and r.get_json()["deleted"] is False
 
 
-def test_vibe_delete_validation(client):
-    assert client.post("/api/v1/vibes/delete", json={}).status_code == 400
+def test_vibe_delete_needs_an_integer_id(client):
+    assert client.delete("/api/v1/vibes/nope").status_code == 404
 
 
 # --- export / import round-trip ---------------------------------------------
@@ -146,7 +146,7 @@ def test_vibe_export_import_round_trip(client):
     exported = _export(client)
     # wipe every vibe (simulating a fresh DB) ...
     for v in client.get("/api/v1/vibes").get_json():
-        client.post("/api/v1/vibes/delete", json={"vibe_id": v["id"]})
+        client.delete(f"/api/v1/vibes/{v['id']}")
     assert client.get("/api/v1/vibes").get_json() == []
 
     # ... then import the export back in

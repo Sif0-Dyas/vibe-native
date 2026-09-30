@@ -208,7 +208,7 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
   async function delSaved(id, el) {
     if (!window.confirm('Delete this saved playlist?')) return;
     try {
-      await fetch('/api/v1/playlists/' + id + '/delete', { method: 'POST' });
+      await fetch('/api/v1/playlists/' + id, { method: 'DELETE' });
       el.remove(); playlistsChanged();
     } catch (_) { /* ignore */ }
     if (!savedList.querySelector('.pl-saved-item')) {

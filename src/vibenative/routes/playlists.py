@@ -51,7 +51,7 @@ def playlists_get(pid):
     return jsonify({"id": pid, "name": row[0], "tracks": tracks})
 
 
-@bp.post("/playlists/<int:pid>/delete")
+@bp.delete("/playlists/<int:pid>")
 def playlists_delete(pid):
     """Delete a saved playlist."""
     return jsonify({"deleted": playlists_repo.delete(pid)})

@@ -62,13 +62,9 @@ def vibes_weight():
     return jsonify({"vibe_id": vid, "hash": h, "weight": weight})
 
 
-@bp.post("/vibes/remove")
-def vibes_remove():
+@bp.delete("/vibes/<int:vid>/tracks/<h>")
+def vibes_remove(vid, h):
     """Remove a track from a vibe entirely (drop the membership link)."""
-    data = request.get_json(silent=True) or {}
-    vid, h = data.get("vibe_id"), data.get("hash")
-    if not vid or not h:
-        return jsonify({"error": "vibe_id and hash required"}), 400
     vibes_repo.remove(vid, h)
     return jsonify({"removed": True})
 
@@ -102,24 +98,16 @@ def vibes_reset():
     return jsonify({"reset": True, "tracks": n})
 
 
-@bp.post("/vibes/clear")
-def vibes_clear():
+@bp.delete("/vibes/<int:vid>/tracks")
+def vibes_clear(vid):
     """Remove ALL tracks from a vibe (keeps the empty vibe itself)."""
-    data = request.get_json(silent=True) or {}
-    vid = data.get("vibe_id")
-    if not vid:
-        return jsonify({"error": "vibe_id required"}), 400
     n = vibes_repo.clear(vid)
     return jsonify({"cleared": True, "removed": n})
 
 
-@bp.post("/vibes/delete")
-def vibes_delete():
+@bp.delete("/vibes/<int:vid>")
+def vibes_delete(vid):
     """Delete a vibe entirely, along with all of its membership links."""
-    data = request.get_json(silent=True) or {}
-    vid = data.get("vibe_id")
-    if not vid:
-        return jsonify({"error": "vibe_id required"}), 400
     return jsonify({"deleted": vibes_repo.delete(vid)})
 
 

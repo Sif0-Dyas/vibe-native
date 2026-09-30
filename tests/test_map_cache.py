@@ -120,7 +120,7 @@ def test_forgetting_a_track_rebuilds_the_map(client):
     seed(client, "mc1")
     seed(client, "mc2")
     build(client)
-    client.post("/api/v1/forget/mc2")
+    client.delete("/api/v1/tracks/mc2")
     hit, body = build(client)
     assert hit is False
     assert {n["hash"] for n in body["nodes"]} == {"mc1"}

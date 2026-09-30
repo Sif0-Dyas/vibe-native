@@ -276,10 +276,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       if (!window.confirm('Remove every track from "' + name + '"?\n\nThe vibe itself and its ' +
           'notes are kept, and no music files are touched — only the list of which tracks ' +
           'belong to it.')) return;
-      fetch('/api/v1/vibes/clear', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vibe_id: Number(id) })
-      }).then(function (r) { return r.json(); }).then(function () {
+      fetch('/api/v1/vibes/' + Number(id) + '/tracks', { method: 'DELETE' }).then(function (r) { return r.json(); }).then(function () {
         vibeLoadVibes(name);
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">could not clear</b>'; });
     };
@@ -288,10 +285,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       if (!window.confirm('Delete the vibe "' + name + '"?\n\nIts notes and its list of tracks ' +
           'are gone for good. Your music files are not touched, and the tracks stay in your ' +
           'library.')) return;
-      fetch('/api/v1/vibes/delete', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vibe_id: Number(id) })
-      }).then(function (r) { return r.json(); }).then(function () {
+      fetch('/api/v1/vibes/' + Number(id), { method: 'DELETE' }).then(function (r) { return r.json(); }).then(function () {
         vibeLoadVibes();
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">could not delete</b>'; });
     };

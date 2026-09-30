@@ -382,11 +382,11 @@ async function renderVibePanel(){
     });
     rowEl.querySelector('.vibe-clear').addEventListener('click', async () => {
       if (!window.confirm(`Remove ALL ${v.count} track${v.count===1?'':'s'} from "${v.name}"?\n\nThe vibe stays; the tracks are just unlinked from it.`)) return;
-      await vpost('/api/v1/vibes/clear', {vibe_id: v.id}); renderVibePanel();
+      await fetch(`/api/v1/vibes/${v.id}/tracks`, {method:'DELETE'}); renderVibePanel();
     });
     rowEl.querySelector('.vibe-del').addEventListener('click', async () => {
       if (!window.confirm(`Delete the vibe "${v.name}" entirely?\n\nThis removes the vibe and its membership. Your tracks and their analyses are untouched.`)) return;
-      await vpost('/api/v1/vibes/delete', {vibe_id: v.id}); renderVibePanel();
+      await fetch(`/api/v1/vibes/${v.id}`, {method:'DELETE'}); renderVibePanel();
     });
 
     // weight editor: a -1..+1 slider per member track (Rocchio feedback)
@@ -426,9 +426,7 @@ async function renderVibePanel(){
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({vibe_id: v.id, hash: t.hash, weight: parseFloat(slider.value)})}));
         d.querySelector('.vw-rm').addEventListener('click', async () => {
-          await fetch('/api/v1/vibes/remove', {method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({vibe_id: v.id, hash: t.hash})});
+          await fetch(`/api/v1/vibes/${v.id}/tracks/${t.hash}`, {method:'DELETE'});
           d.remove();
         });
         vwWrap.appendChild(d);

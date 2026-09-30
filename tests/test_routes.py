@@ -211,7 +211,7 @@ def test_forget_clears_every_per_track_table(client):
             c.execute("INSERT INTO key_labels(hash, key, scale) VALUES(?, 'C', 'major')", (h,))
         rev_before = library_rev(c)
 
-    assert client.post(f"/api/v1/forget/{'A' * 40}").get_json()["deleted"] == 1
+    assert client.delete(f"/api/v1/tracks/{'A' * 40}").get_json()["deleted"] == 1
 
     with closing(db()) as conn, conn as c:
         for t in TRACK_TABLES:
@@ -226,11 +226,11 @@ def test_forget_deletes_track(client):
     h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
         "hash"
     ]
-    r1 = client.post(f"/api/v1/forget/{h}")
+    r1 = client.delete(f"/api/v1/tracks/{h}")
     assert r1.status_code == 200
     assert r1.get_json()["deleted"] == 1
     # forgetting again is a harmless no-op (already gone)
-    assert client.post(f"/api/v1/forget/{h}").get_json()["deleted"] == 0
+    assert client.delete(f"/api/v1/tracks/{h}").get_json()["deleted"] == 0
 
 
 def test_override_sets_genre(client):
@@ -458,10 +458,7 @@ def test_vibe_lifecycle(client):
     assert len(members) == 1
     assert members[0]["hash"] == h and members[0]["weight"] == 1.0
 
-    assert (
-        client.post("/api/v1/vibes/remove", json={"vibe_id": vid, "hash": h}).get_json()["removed"]
-        is True
-    )
+    assert client.delete(f"/api/v1/vibes/{vid}/tracks/{h}").get_json()["removed"] is True
     assert client.get(f"/api/v1/vibes/{vid}/members").get_json() == []
 
 
@@ -502,7 +499,6 @@ def test_vibe_match_and_playlist(client):
 def test_vibe_routes_require_fields(client):
     assert client.post("/api/v1/vibes/add", json={}).status_code == 400
     assert client.post("/api/v1/vibes/weight", json={"vibe_id": 1}).status_code == 400
-    assert client.post("/api/v1/vibes/remove", json={}).status_code == 400
 
 
 def test_second_style_override_returns_none():
@@ -806,12 +802,12 @@ def test_override_segment_delete(client, tmp_path, monkeypatch):
     oid = r.get_json()["id"]
     assert isinstance(oid, int)
 
-    # validation: id required, unknown id -> 404
-    assert client.post("/api/v1/override_segment/delete", json={}).status_code == 400
-    assert client.post("/api/v1/override_segment/delete", json={"id": 999999}).status_code == 404
+    # validation: the id is an integer in the path, an unknown one -> 404
+    assert client.delete("/api/v1/override_segment/nope").status_code == 404
+    assert client.delete("/api/v1/override_segment/999999").status_code == 404
 
     # delete it (removes the record, and the clip when ffmpeg produced one)
-    d = client.post("/api/v1/override_segment/delete", json={"id": oid})
+    d = client.delete(f"/api/v1/override_segment/{oid}")
     assert d.status_code == 200 and d.get_json()["deleted"] == 1
     if shutil.which("ffmpeg"):
         assert d.get_json()["clip_removed"] is True

@@ -19,7 +19,7 @@ from ..style import identity_fields
 from ._shared import _artist_from, bp
 
 
-@bp.post("/forget/<h>")
+@bp.delete("/tracks/<h>")
 def forget_route(h):
     """Delete everything stored about a track by content hash (see
     db.forget_track): analysis, map, vibe/tag membership, overrides, ratings,
@@ -437,19 +437,11 @@ def override_segment_route():
     )
 
 
-@bp.post("/override_segment/delete")
-def override_segment_delete():
+@bp.delete("/override_segment/<int:oid>")
+def override_segment_delete(oid):
     """Remove a segment override by id: drops the DB record AND deletes the training
     clip it produced (undoing the override should not leave the clip behind to keep
     training the head). The client gates this behind an explicit confirm."""
-    data = request.get_json(silent=True) or {}
-    oid = data.get("id")
-    if oid is None:
-        return jsonify({"error": "id required"}), 400
-    try:
-        oid = int(oid)
-    except (TypeError, ValueError):
-        return jsonify({"error": "id must be an integer"}), 400
     row = tracks_repo.pop_segment(oid)
     if not row:
         return jsonify({"error": "override not found"}), 404

@@ -3582,7 +3582,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
       `Remove "${n.title}" from your library?\n\n` +
       `This deletes its analysis (genre, BPM, key) and takes it off the map. ` +
       `Your audio file is NOT touched — re-scanning it will analyze it fresh.`)) return;
-    try{ await fetch(`/api/v1/forget/${n.hash}`, {method:'POST'}); }catch(_){ /* still drop it locally */ }
+    try{ await fetch(`/api/v1/tracks/${n.hash}`, {method:'DELETE'}); }catch(_){ /* still drop it locally */ }
     NODES = NODES.filter(x => x.hash !== n.hash);
     EDGES = EDGES.filter(e => e.a !== n.hash && e.b !== n.hash);
     closePopup();

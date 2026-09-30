@@ -38,7 +38,7 @@ def test_playlist_crud_lifecycle(client):
     assert got.get_json() == {"id": pid, "name": "Warmup", "tracks": ["a", "b", "c"]}
 
     # delete -> reported, and the row is gone
-    d = client.post(f"/api/v1/playlists/{pid}/delete")
+    d = client.delete(f"/api/v1/playlists/{pid}")
     assert d.status_code == 200 and d.get_json()["deleted"] is True
     assert client.get(f"/api/v1/playlists/{pid}").status_code == 404
     assert _rows(client) == []
@@ -76,7 +76,7 @@ def test_playlist_get_not_found(client):
 def test_playlist_delete_missing_is_soft(client):
     # deleting an id that doesn't exist is a harmless 200 with deleted=False
     # (the client treats it as already-gone), not a 404.
-    r = client.post("/api/v1/playlists/999999/delete")
+    r = client.delete("/api/v1/playlists/999999")
     assert r.status_code == 200 and r.get_json()["deleted"] is False
 
 
