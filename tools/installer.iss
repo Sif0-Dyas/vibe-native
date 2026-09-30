@@ -66,7 +66,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Files]
 ; The entire built folder: the exe, its _internal bundle, models\, ffmpeg, notices.
 ; Exclude runtime artifacts a prior local run may have dropped here (the backend log
-; now lives in %LOCALAPPDATA%\Vibenative, but be defensive).
+; now lives in %LOCALAPPDATA%\Vibe Identify, but be defensive).
 Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.log"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
@@ -231,7 +231,9 @@ begin
   DeleteFile(DbPath);
   DeleteFile(DbPath + '-wal');
   DeleteFile(DbPath + '-shm');
-  { extracted section clips + the runtime log dir }
+  { extracted section clips, the runtime log dir, and the pre-rename folder:
+    the WebView2 profile and any logs from before the log dir was renamed }
   DelTree(ExpandConstant('{%USERPROFILE}\genre_training'), True, True, True);
+  DelTree(ExpandConstant('{localappdata}\{#MyAppName}'), True, True, True);
   DelTree(ExpandConstant('{localappdata}\Vibenative'), True, True, True);
 end;

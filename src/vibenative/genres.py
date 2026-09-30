@@ -20,7 +20,7 @@ mapping changes.
 import json
 import statistics
 
-from . import palette as P
+from . import keystone_colors
 from .repo import tracks as tracks_repo
 from .taxonomy import classify as K
 from .taxonomy import overlay
@@ -172,8 +172,8 @@ def summarise(top_n=5, mode="dark"):
                     # self-named entry before "House > House" reached a screen.
                     "self_count": b["subgenres"].get(name, 0),
                     "share": round(b["count"] / total, 4),
-                    "color": P.keystone_color(name, mode),
-                    "slotted": name in P.KEYSTONE_SLOT,
+                    "color": keystone_colors.keystone_color(name, mode),
+                    "slotted": name in keystone_colors.KEYSTONE_SLOT,
                     "blurb": meta.get("blurb", ""),
                     # Signature is near-constant across electronic music -- almost
                     # everything here is 4/4 -- so `feel` is the field that actually
@@ -220,7 +220,7 @@ def _subgenre_profile(style, count, bucket, keystone, mode, top_n):
         "style": style,
         "count": count,
         "keystone": keystone,
-        "color": P.keystone_color(keystone, mode),
+        "color": keystone_colors.keystone_color(keystone, mode),
         "bpm": {
             "canonical": None,
             "observed": _bpm_stats(bucket["sub_bpm"].get(style, [])),

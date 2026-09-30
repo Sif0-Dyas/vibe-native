@@ -16,7 +16,7 @@ imports the app before binding (waitress-serve); one that binds first (gunicorn'
 default) holds the port itself by then, so don't use this entry point with it.
 """
 
-from vibenative import Settings, auth, create_app, preflight
+from vibenative import PRODUCT_NAME, Settings, auth, create_app, preflight
 
 _SETTINGS = Settings.from_env()
 _HOST, _PORT = _SETTINGS.host, _SETTINGS.port
@@ -24,4 +24,4 @@ preflight.ensure_port_free(_HOST, _PORT)
 
 app = create_app(_SETTINGS)
 
-print(f"\nOpen Vibenative at:\n\n    {auth.launch_url(app, _HOST, _PORT)}\n", flush=True)
+print(f"\nOpen {PRODUCT_NAME} at:\n\n    {auth.launch_url(app, _HOST, _PORT)}\n", flush=True)

@@ -8,8 +8,7 @@ than decoration.
 
 import pytest
 
-from vibenative import palette as P
-from vibenative import palettes as PP
+from vibenative import color_presets, keystone_colors
 from vibenative.taxonomy import overlay
 
 
@@ -23,8 +22,8 @@ def tmp_overlay(settings):
 
 # --- the colour maths ---------------------------------------------------------
 def test_generated_colours_are_valid_hex():
-    for name in PP.names():
-        for hx in PP.colors_for(name, "dark").values():
+    for name in color_presets.names():
+        for hx in color_presets.colors_for(name, "dark").values():
             assert len(hx) == 7 and hx[0] == "#"
             int(hx[1:], 16)
 
@@ -33,8 +32,8 @@ def test_out_of_gamut_chroma_keeps_its_hue():
     """Clamping RGB instead would shift hue, so an evenly spaced ramp would come
     out visibly uneven wherever the gamut is narrow."""
     asked = 240.0
-    hx = PP.oklch_hex(0.70, 0.40, asked)  # far more chroma than sRGB can hold
-    li, a, b = PP._oklab_of(hx)
+    hx = color_presets.oklch_hex(0.70, 0.40, asked)  # far more chroma than sRGB can hold
+    li, a, b = color_presets._oklab_of(hx)
     import math
 
     got = math.degrees(math.atan2(b, a)) % 360
@@ -42,105 +41,105 @@ def test_out_of_gamut_chroma_keeps_its_hue():
 
 
 def test_delta_e_is_zero_for_a_colour_against_itself():
-    assert PP.delta_e("#3987e5", "#3987e5") == pytest.approx(0, abs=1e-9)
+    assert color_presets.delta_e("#3987e5", "#3987e5") == pytest.approx(0, abs=1e-9)
 
 
 # --- what the picker reports --------------------------------------------------
 def test_every_preset_reports_a_measured_separation():
-    for p in P.summarise("dark"):
+    for p in keystone_colors.summarise("dark"):
         s = p["separation"]
         assert s["worst"] is not None and s["worst"] > 0
         assert s["verdict"] in ("tighter", "comparable", "looser")
 
 
 def test_the_default_measures_comparable_to_itself():
-    assert P.separation("studio", "dark")["verdict"] == "comparable"
+    assert keystone_colors.separation("studio", "dark")["verdict"] == "comparable"
 
 
 def test_a_narrow_arc_reports_looser_than_the_default():
     """Sunset trades separation for mood on purpose. The picker has to say so --
     that is the whole reason the number is shown."""
-    assert P.separation("sunset", "dark")["verdict"] == "looser"
+    assert keystone_colors.separation("sunset", "dark")["verdict"] == "looser"
 
 
 def test_two_lightness_levels_beat_one():
     """Sixteen hues on a single lightness measured ΔE 5.0 -- unreadable. The
     split exists for that reason, so a regression to one level should fail."""
-    ks = PP.keystone_order()
-    spread = PP.colors_for("spectrum", "dark", ks)
-    lightnesses = {round(PP._oklab_of(c)[0], 2) for c in spread.values()}
+    ks = color_presets.keystone_order()
+    spread = color_presets.colors_for("spectrum", "dark", ks)
+    lightnesses = {round(color_presets._oklab_of(c)[0], 2) for c in spread.values()}
     assert len(lightnesses) > 1
 
 
 def test_no_two_genres_share_a_colour_in_a_generated_preset():
     """Two keystones on the same colour is worse than one being grey."""
-    cols = PP.colors_for("spectrum", "dark")
+    cols = color_presets.colors_for("spectrum", "dark")
     assert len(set(cols.values())) == len(cols)
 
 
 def test_a_hand_authored_preset_leaves_its_tail_grey_rather_than_recycling():
-    cols = PP.colors_for("okabe-ito", "dark")
-    assert len(cols) == 8 < len(PP.keystone_order())
+    cols = color_presets.colors_for("okabe-ito", "dark")
+    assert len(cols) == 8 < len(color_presets.keystone_order())
 
 
 # --- applying -----------------------------------------------------------------
 def test_the_preset_name_is_stored_not_the_colours_it_computes():
     """Storing the output would freeze it: a later fix to a ramp would never
     reach a library that had already chosen it."""
-    PP.apply("neon")
+    color_presets.apply("neon")
     assert overlay.load()["palette"] == "neon"
     assert overlay.load()["colors"] == {}
 
 
 def test_choosing_the_default_writes_nothing():
-    PP.apply("neon")
-    PP.apply("studio")
+    color_presets.apply("neon")
+    color_presets.apply("studio")
     assert overlay.load()["palette"] == ""
-    assert PP.current() == "studio"
+    assert color_presets.current() == "studio"
 
 
 def test_an_unknown_preset_is_refused():
     with pytest.raises(ValueError):
-        PP.apply("chartreuse-dreams")
+        color_presets.apply("chartreuse-dreams")
 
 
 def test_a_preset_repaints_the_library():
-    from vibenative import palette as P
+    from vibenative import keystone_colors
 
-    before = P.keystone_color("House", "dark")
-    PP.apply("neon")
-    assert P.keystone_color("House", "dark") != before
+    before = keystone_colors.keystone_color("House", "dark")
+    color_presets.apply("neon")
+    assert keystone_colors.keystone_color("House", "dark") != before
 
 
 def test_a_per_genre_colour_survives_switching_schemes():
     """Trying a scheme out must not silently discard hand-picked colours."""
-    from vibenative import palette as P
+    from vibenative import keystone_colors
 
     overlay.patch({"colors": {"House": "#ff00aa"}})
     for name in ("neon", "pastel", "studio"):
-        PP.apply(name)
-        assert P.keystone_color("House", "dark") == "#ff00aa"
+        color_presets.apply(name)
+        assert keystone_colors.keystone_color("House", "dark") == "#ff00aa"
 
 
 def test_switching_back_restores_the_solved_default():
-    from vibenative import palette as P
+    from vibenative import keystone_colors
 
-    before = P.keystone_color("Techno", "dark")
-    PP.apply("sunset")
-    PP.apply("studio")
-    assert P.keystone_color("Techno", "dark") == before
+    before = keystone_colors.keystone_color("Techno", "dark")
+    color_presets.apply("sunset")
+    color_presets.apply("studio")
+    assert keystone_colors.keystone_color("Techno", "dark") == before
 
 
 def test_a_junk_preset_name_in_the_file_falls_back_to_the_default():
     overlay.patch({"palette": "not-a-scheme"})
-    assert PP.current() == PP.DEFAULT
+    assert color_presets.current() == color_presets.DEFAULT
 
 
 # --- the HTTP surface ---------------------------------------------------------
 def test_routes(client):
     body = client.get("/api/v1/palettes").get_json()
     assert body["current"] == "studio"
-    assert {p["name"] for p in body["presets"]} == set(PP.names())
+    assert {p["name"] for p in body["presets"]} == set(color_presets.names())
     assert body["presets"][0]["colors"]  # swatches, so the picker can show them
 
     assert client.post("/api/v1/palettes/neon").get_json()["current"] == "neon"

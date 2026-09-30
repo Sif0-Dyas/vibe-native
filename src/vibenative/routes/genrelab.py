@@ -83,7 +83,7 @@ def taxonomy_route():
     scheme (including families you own no tracks in) rather than only what you
     happen to have.
     """
-    from .. import palette as P
+    from .. import keystone_colors
     from ..taxonomy import tables as T
 
     mode = "light" if request.args.get("mode") == "light" else "dark"
@@ -95,8 +95,8 @@ def taxonomy_route():
                     "keystones": [
                         {
                             "keystone": k,
-                            "color": P.keystone_color(k, mode),
-                            "slotted": k in P.KEYSTONE_SLOT,
+                            "color": keystone_colors.keystone_color(k, mode),
+                            "slotted": k in keystone_colors.KEYSTONE_SLOT,
                         }
                         for k in (T.FAMILIES.get(fam) or [])
                     ],
@@ -105,7 +105,7 @@ def taxonomy_route():
                 if fam != T.OTHER_FAMILY
             ],
             "other_family": T.OTHER_FAMILY,
-            "legend": P.legend(mode),
+            "legend": keystone_colors.legend(mode),
             "fusion_threshold": T.FUSION_THRESHOLD,
         }
     )
@@ -238,11 +238,16 @@ def palettes_route():
     The separation numbers ship with the list on purpose: the presets are not
     equally readable, and a picker that hid that would be pretending they were.
     """
-    from .. import palette as P
-    from .. import palettes as PP
+    from .. import color_presets, keystone_colors
 
     mode = "light" if request.args.get("mode") == "light" else "dark"
-    return jsonify({"current": PP.current(), "default": PP.DEFAULT, "presets": P.summarise(mode)})
+    return jsonify(
+        {
+            "current": color_presets.current(),
+            "default": color_presets.DEFAULT,
+            "presets": keystone_colors.summarise(mode),
+        }
+    )
 
 
 @bp.post("/palettes/<name>")
@@ -250,12 +255,12 @@ def palette_apply_route(name):
     """Switch to a colour preset. Per-genre colours are left alone -- they are
     the exceptions layered on top, and dropping them here would silently discard
     hand-picked colours as a side effect of trying a scheme out."""
-    from .. import palettes as PP
+    from .. import color_presets
 
     try:
-        return jsonify({"current": PP.apply(name)})
+        return jsonify({"current": color_presets.apply(name)})
     except ValueError:
-        return jsonify({"error": f"unknown palette {name!r}", "known": PP.names()}), 404
+        return jsonify({"error": f"unknown palette {name!r}", "known": color_presets.names()}), 404
 
 
 # --- snapshots ----------------------------------------------------------------

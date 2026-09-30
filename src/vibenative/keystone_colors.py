@@ -33,7 +33,7 @@ Palette values are the validated default categorical ramp; both modes are
 selected steps, not an automatic flip.
 """
 
-from . import palettes
+from . import color_presets
 
 # Categorical slots, in validated order. Light and dark are separate selected
 # steps -- do not derive one from the other.
@@ -188,9 +188,9 @@ def keystone_color(keystone, mode="dark"):
     chosen = color_override(keystone)
     if chosen:
         return chosen
-    preset = palettes.current()
-    if preset != palettes.DEFAULT:
-        hit = palettes.colors_for(preset, mode).get(keystone)
+    preset = color_presets.current()
+    if preset != color_presets.DEFAULT:
+        hit = color_presets.colors_for(preset, mode).get(keystone)
         if hit:
             return hit
     idx = KEYSTONE_SLOT.get(keystone)
@@ -377,8 +377,8 @@ def legend(mode="dark"):
 
 
 # --- presets, measured against this palette ------------------------------------
-# These compare a preset (palettes.py) with the colours keystone_color paints;
-# they live here so palettes.py never needs palette.py -- the dependency runs one
+# These compare a preset (color_presets.py) with the colours keystone_color paints;
+# they live here so color_presets.py never needs keystone_colors.py -- the dependency runs one
 # way, palette -> palettes.
 def _worst_pair(cols):
     vals = sorted(set(cols.values()))
@@ -387,15 +387,15 @@ def _worst_pair(cols):
     worst, close = None, 0
     for i, a in enumerate(vals):
         for b in vals[i + 1 :]:
-            d = palettes.delta_e(a, b)
+            d = color_presets.delta_e(a, b)
             worst = d if worst is None else min(worst, d)
-            if d < palettes.READABLE:
+            if d < color_presets.READABLE:
                 close += 1
     return worst, close
 
 
 def _default_colors(mode, keystones):
-    return {k: keystone_color(k, mode) for k in (keystones or palettes.keystone_order())}
+    return {k: keystone_color(k, mode) for k in (keystones or color_presets.keystone_order())}
 
 
 def separation(name, mode="dark", keystones=None):
@@ -409,7 +409,7 @@ def separation(name, mode="dark", keystones=None):
     ``verdict`` compares to ``studio`` because an absolute pass/fail is not
     meaningful here: see the module docstring.
     """
-    cols = palettes.colors_for(name, mode, keystones) or _default_colors(mode, keystones)
+    cols = color_presets.colors_for(name, mode, keystones) or _default_colors(mode, keystones)
     worst, close = _worst_pair(cols)
     base, _ = _worst_pair(_default_colors(mode, keystones))
     verdict = "unknown"
@@ -426,10 +426,10 @@ def separation(name, mode="dark", keystones=None):
 
 def summarise(mode="dark"):
     """Every preset with its colours and its measured separation, for the picker."""
-    ks = palettes.keystone_order()
+    ks = color_presets.keystone_order()
     out = []
-    for name, spec in palettes.PRESETS.items():
-        cols = palettes.colors_for(name, mode, ks)
+    for name, spec in color_presets.PRESETS.items():
+        cols = color_presets.colors_for(name, mode, ks)
         if not cols:  # the built-in: show what it actually paints
             cols = {k: keystone_color(k, mode) for k in ks}
         out.append(

@@ -249,7 +249,7 @@ def reset():
     return {"reset": True, "backup": str(moved) if moved else None}
 
 
-# --- lookups, used by classify.py and palette.py ------------------------------
+# --- lookups, used by classify.py and keystone_colors.py ----------------------
 def alias_of(style):
     """The keystone a user-named style resolves to, or None."""
     return load()["aliases"].get(str(style or "").strip().lower()) or None

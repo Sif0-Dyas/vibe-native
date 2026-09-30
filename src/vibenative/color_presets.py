@@ -1,6 +1,6 @@
 """Preset colour schemes for the keystone palette.
 
-``palette.py`` solves one palette against this library's real fusion pairs and
+``keystone_colors.py`` solves one palette against this library's real fusion pairs and
 guards it with separation tests. That is the right default and the wrong
 straitjacket: which colour House is has no correct answer, and a scheme that
 looks right to the person reading the map beats one that measures well.
@@ -15,7 +15,7 @@ implying every scheme separates equally.
 
 Measured *against the default*, not against an absolute floor. The obvious
 framing -- pass/fail at the ΔE 15 readability line -- was tried and thrown away
-because nothing passes, including the solved default: ``palette.py`` is explicit
+because nothing passes, including the solved default: ``keystone_colors.py`` is explicit
 that past three colours no arrangement separates all pairs, and its ΔE 19.3
 figure covers the pairs the library actually produces, not all 28. A flag that
 failed the shipped palette would be measuring the wrong thing loudly. So the
@@ -35,7 +35,7 @@ Two kinds:
 
 **Why two lightness levels.** The first version of this spread sixteen hues
 evenly at one lightness and measured a worst pair of ΔE 5.0 -- unreadable. That
-is not a tuning miss, it is the same ceiling ``palette.py`` documents: at a fixed
+is not a tuning miss, it is the same ceiling ``keystone_colors.py`` documents: at a fixed
 lightness you are packing points into a chroma-limited disc, and about eight fit
 before they collide. Splitting the same hues across two lightness levels doubles
 the usable count, because two genres sharing a hue are then separated by
@@ -46,12 +46,12 @@ of hand-picking.
 import math
 
 # Below this OKLab ΔE (x100) two colours are hard to tell apart even with full
-# colour vision. Same floor palette.py was validated against.
+# colour vision. Same floor keystone_colors.py was validated against.
 READABLE = 15.0
 
 # Evenly spaced hues stop separating past about this many at one lightness --
 # measured, not assumed: sixteen on one level came out at a worst pair of ΔE 5.0.
-# It is the same eight ``palette.py`` arrived at by hand.
+# It is the same eight ``keystone_colors.py`` arrived at by hand.
 HUES_PER_LEVEL = 8
 
 
@@ -239,7 +239,7 @@ def keystone_order():
 
     Fixed on purpose: a preset that reordered itself as the library grew would
     repaint the whole map every time a new genre appeared, and colour is supposed
-    to follow the entity. Same reasoning as ``palette.KEYSTONE_SLOT``.
+    to follow the entity. Same reasoning as ``keystone_colors.KEYSTONE_SLOT``.
     """
     from .taxonomy import tables as T
 
@@ -249,7 +249,7 @@ def keystone_order():
 def colors_for(name, mode="dark", keystones=None):
     """``{keystone: hex}`` for a preset, or ``{}`` for the built-in default.
 
-    An empty result means "fall through to palette.py", which is how ``studio``
+    An empty result means "fall through to keystone_colors.py", which is how ``studio``
     stays the solved assignment rather than a copy of it that could drift.
     """
     spec = PRESETS.get(name)
@@ -261,7 +261,7 @@ def colors_for(name, mode="dark", keystones=None):
     if spec["kind"] == "fixed":
         ramp = spec.get(mode) or spec.get("dark") or []
         # A hand-authored list runs out. Recycling would put two keystones on the
-        # same colour, which palette.py argues is worse than one being grey --
+        # same colour, which keystone_colors.py argues is worse than one being grey --
         # so the tail is simply left for the neutral to cover.
         return {k: ramp[i] for i, k in enumerate(ks) if i < len(ramp)}
     lo, hi = spec["arc"]

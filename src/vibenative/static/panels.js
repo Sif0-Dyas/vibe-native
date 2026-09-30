@@ -292,7 +292,7 @@ async function renderVibePanel(){
       const data = await fetch('/api/v1/vibes/export').then(r => r.json());
       const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'vibenative-vibes.json'; a.click();
+      a.href = URL.createObjectURL(blob); a.download = 'vibe-identify-vibes.json'; a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } catch (_) { alert('export failed'); }
   });

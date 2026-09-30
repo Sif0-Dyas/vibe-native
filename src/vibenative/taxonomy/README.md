@@ -30,5 +30,5 @@ How a genre name resolves: a Discogs style, or a name someone typed, to a
 A name none of these resolves has no keystone (`None`), and groups under
 **Other**.
 
-Colours are presentation and live outside the package (`palette.py`, the solved
-default; `palettes.py`, the presets); they read the overlay's colour choices.
+Colours are presentation and live outside the package (`keystone_colors.py`, the solved
+default; `color_presets.py`, the presets); they read the overlay's colour choices.

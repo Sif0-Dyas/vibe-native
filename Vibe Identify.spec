@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller ONE-FOLDER build of the Vibenative desktop shell -> dist/Vibe Identify/.
+"""PyInstaller ONE-FOLDER build of the Vibe Identify desktop shell -> dist/Vibe Identify/.
 
 Why onedir, not onefile:
   * onefile re-extracts the entire bundle (CPython + onnxruntime/DirectML DLLs,

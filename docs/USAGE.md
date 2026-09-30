@@ -1,6 +1,6 @@
-# Vibedentify — User Guide
+# Vibe Identify — User Guide
 
-Vibedentify listens to your tracks and tells you their **genre, BPM, and key**, then lets you explore your whole collection as an interactive **map of sound** — or browse it as a sortable **list**. It's built for DJs, producers, and collectors who want to understand and organize a library fast.
+Vibe Identify listens to your tracks and tells you their **genre, BPM, and key**, then lets you explore your whole collection as an interactive **map of sound** — or browse it as a sortable **list**. It's built for DJs, producers, and collectors who want to understand and organize a library fast.
 
 Everything runs on your own machine: **your audio never leaves the computer, and your files are never changed** — analyzing only reads them.
 
@@ -38,9 +38,9 @@ The app has seven tabs across the top, roughly in the order you'll use them:
 
 **To try it right now:** go to **Analyzer** and drag an audio file anywhere onto the window. In a second or two you'll see its genre, tempo, key, and a colored waveform. That's the whole loop — analyze on **Analyzer**, then browse it on **Library** or explore it on **Map**.
 
-> **New here? The two words to learn.** A **genre** is decided *for* you — Vibedentify listens to the track and works out what it is. A **vibe** is decided *by* you — your own label for a mood, a moment, or a set. Genres live on the **Genres** tab, vibes on the **Vibes** tab, and both show up on the **Map**.
+> **New here? The two words to learn.** A **genre** is decided *for* you — Vibe Identify listens to the track and works out what it is. A **vibe** is decided *by* you — your own label for a mood, a moment, or a set. Genres live on the **Genres** tab, vibes on the **Vibes** tab, and both show up on the **Map**.
 
-**A quick mental model.** Vibedentify doesn't slap one label on a track. It listens *moment by moment* across the whole song, guessing the genre continuously, then summarizes those guesses into an overall read. That single idea explains a lot of the app: the **waveform** shows the moment-by-moment guesses, the **genre breakdown** shows the summary, and the **lenses** (section 5) let you change how that summary is formed — all instantly, without re-listening to the audio.
+**A quick mental model.** Vibe Identify doesn't slap one label on a track. It listens *moment by moment* across the whole song, guessing the genre continuously, then summarizes those guesses into an overall read. That single idea explains a lot of the app: the **waveform** shows the moment-by-moment guesses, the **genre breakdown** shows the summary, and the **lenses** (section 5) let you change how that summary is formed — all instantly, without re-listening to the audio.
 
 ---
 
@@ -452,7 +452,7 @@ You can also share a view: the address bar updates as you go (`#map`, `#universe
 
 ## 9. Harmonic mixing (for DJs)
 
-On the Map, select a track and turn on **🎧 harmonic**. Vibedentify rings every track that would mix smoothly with it — matching **key** (neighbors on the Camelot wheel, or the relative major/minor) **and tempo** (within about ±6%, or at half/double time) — and dims everything else.
+On the Map, select a track and turn on **🎧 harmonic**. Vibe Identify rings every track that would mix smoothly with it — matching **key** (neighbors on the Camelot wheel, or the relative major/minor) **and tempo** (within about ±6%, or at half/double time) — and dims everything else.
 
 It turns the Map into a "what can I play next?" tool: pick a track, flip harmonic on, and your compatible options light up across the whole library. Pair it with the **playlist** panel (section 6) to build a harmonically-ordered set, then **⭳ .m3u** it into your DJ software.
 

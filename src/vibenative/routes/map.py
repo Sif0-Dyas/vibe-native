@@ -77,7 +77,7 @@ def _keystone_fields(p, style, mode="dark"):
     fields, not fallback chains: a node with holes in it meant every consumer
     carried its own guess at what should have been there, and they disagreed.
     """
-    from .. import palette as P
+    from .. import keystone_colors
     from ..taxonomy import classify as K
 
     cls = K.classify(p)
@@ -95,7 +95,7 @@ def _keystone_fields(p, style, mode="dark"):
             "rings": [],
             "kcolor": None,
         }
-    paint = P.track_paint(cls, mode) or {}
+    paint = keystone_colors.track_paint(cls, mode) or {}
     return {
         "family": cls["family"],
         "keystones": cls["keystones"],

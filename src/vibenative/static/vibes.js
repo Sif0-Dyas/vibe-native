@@ -57,7 +57,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       '<b>Why the notes matter.</b> In six months you will not remember why a track ' +
       'went into a vibe. The notes box on each card is for exactly that: what belongs, ' +
       'what does not, and when you would play it.<br><br>' +
-      '<b>What Vibedentify does with it.</b> Once a vibe has about ten tracks, it learns ' +
+      '<b>What Vibe Identify does with it.</b> Once a vibe has about ten tracks, it learns ' +
       'the sound they have in common and can go find more of it in your library. That is ' +
       'why a card says <span class="vib-state warn">growing</span> until then &mdash; not ' +
       'a rule, just the point where the suggestions start being worth reading.' +

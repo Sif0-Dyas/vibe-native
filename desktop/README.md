@@ -1,6 +1,6 @@
-# Vibedentify — Windows desktop shell
+# Vibe Identify — Windows desktop shell
 
-A native, chromeless Windows window around the Vibenative app. It does **not**
+A native, chromeless Windows window around the Vibe Identify app. It does **not**
 change any app code: it opens the same UI (served locally on a random loopback
 port) in an Edge WebView2 window, starts the native backend for you if it isn't
 already running, and adds two things a plain browser can't do.
@@ -112,12 +112,12 @@ backend, no pywebview needed — this is what CI runs.
 
 ## Packaging to a standalone .exe (optional, out of scope)
 
-PyInstaller could later fold this into a single `Vibedentify.exe`:
+PyInstaller could later fold this into a single `Vibe Identify.exe`:
 
 ```
 uv sync --group desktop
-uv run pyinstaller --noconsole --onefile --name Vibedentify desktop\genre_app.pyw
+uv run pyinstaller --noconsole --onefile --name "Vibe Identify" desktop\genre_app.pyw
 ```
 
-The resulting `dist\Vibedentify.exe` launches like installed software (still needs
+The resulting `dist\Vibe Identify.exe` launches like installed software (still needs
 the project venv + models for analysis). Not built or tested here — a future option.

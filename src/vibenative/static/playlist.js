@@ -138,7 +138,7 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'audio/x-mpegurl' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'vibedentify-playlist.m3u';
+    a.download = 'vibe-identify-playlist.m3u';
     a.click();
     URL.revokeObjectURL(a.href);
   }

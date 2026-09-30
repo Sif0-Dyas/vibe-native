@@ -195,12 +195,12 @@ def test_a_family_can_be_reassigned():
 def test_a_colour_can_be_claimed_for_a_genre_the_solver_left_grey():
     """Only eight keystones won a hue; the rest are neutral. Claiming one for a
     genre that matters to you has to be allowed -- the separation guarantees
-    palette.py solves for only bind those eight slots."""
-    from vibenative import palette as P
+    keystone_colors.py solves for only bind those eight slots."""
+    from vibenative import keystone_colors
 
-    assert P.keystone_color("Trap", "dark") == P.NEUTRAL["dark"]
+    assert keystone_colors.keystone_color("Trap", "dark") == keystone_colors.NEUTRAL["dark"]
     write(overlay.path(), {"colors": {"Trap": "#ff00aa"}})
-    assert P.keystone_color("Trap", "dark") == "#ff00aa"
+    assert keystone_colors.keystone_color("Trap", "dark") == "#ff00aa"
 
 
 def test_a_partial_ordering_leaves_the_rest_in_place():

@@ -246,7 +246,7 @@ STANDALONE_ARCHGENRES = ["House", "Techno", "Trance", "Hard Dance", "Electro", "
 #
 # Measured shape of this library: Dance 50.6%, Bass 42.5%, Other 2.7%,
 # Chill 2.5%, Experimental 1.8%. That 93% in two families is exactly why colour
-# lives on the keystone and not here -- see palette.py.
+# lives on the keystone and not here -- see keystone_colors.py.
 FAMILIES = {
     "Dance": ["House", "Techno", "Trance", "Hard Dance", "Disco", "Electro"],
     "Bass": ["Dubstep", "Drum n Bass", "Halftime", "Trap", "Breakbeat"],

@@ -1,4 +1,4 @@
-# Vibe Native
+# Vibe Identify — native Windows build (`vibe-native`)
 
 Native-Windows rebuild of [Vibe_Identify](https://github.com/Sif0-Dyas/Vibe_Identify)'s
 analysis engine: ONNX Runtime (+ DirectML GPU) instead of Essentia, same app,
@@ -83,7 +83,7 @@ uv run python -m vibenative        # serves on 127.0.0.1:5005
 It prints the URL to open, token included:
 
 ```
-Open Vibenative at:
+Open Vibe Identify at:
 
     http://127.0.0.1:5005/?k=<token>
 ```

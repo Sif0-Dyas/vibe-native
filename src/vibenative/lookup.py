@@ -18,12 +18,16 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from . import PRODUCT_NAME, __version__
 from .config import log
 from .settings import current
 
 # MusicBrainz etiquette: a descriptive User-Agent with contact info, and no more
-# than one request per second. Discogs also wants an identifying UA.
-USER_AGENT = "Vibedentify/1.0 (+https://github.com/Sif0-Dyas/Vibe_Identify)"
+# than one request per second. Discogs also wants an identifying UA. Built from the
+# product name (a UA product token has no spaces) and the running version.
+USER_AGENT = (
+    f"{PRODUCT_NAME.replace(' ', '')}/{__version__} (+https://github.com/Sif0-Dyas/vibe-native)"
+)
 TIMEOUT = 5  # seconds, per source
 
 _REMIX_RE = re.compile(

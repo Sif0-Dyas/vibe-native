@@ -19,7 +19,7 @@ from conftest import authed
 def test_index_serves_page(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert b"Vibedentify" in r.data
+    assert b"Vibe Identify" in r.data
 
 
 def test_map_empty_db(client):

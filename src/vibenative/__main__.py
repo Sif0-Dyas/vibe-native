@@ -8,7 +8,7 @@ dev server.
 
 import logging
 
-from . import auth, create_app, preflight, serve
+from . import PRODUCT_NAME, auth, create_app, preflight, serve
 from .fake_engine import engines
 from .settings import Settings
 
@@ -30,7 +30,7 @@ def main():
     # Every request needs the token (auth.py). Print the URL that carries it on
     # stdout, on its own line, so it can be copied straight into a browser; the
     # first page load turns it into a cookie. Set GENRE_TOKEN to pin it.
-    print(f"\nOpen Vibenative at:\n\n    {auth.launch_url(app, host, port)}\n", flush=True)
+    print(f"\nOpen {PRODUCT_NAME} at:\n\n    {auth.launch_url(app, host, port)}\n", flush=True)
     serve.serve(app, host, port)  # waitress; the pre-flight ran at the top
 
 

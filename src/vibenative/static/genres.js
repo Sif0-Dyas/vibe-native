@@ -348,7 +348,7 @@ let vibeLoadGenres; // assigned below, where the file sets it up
   function howCard() {
     return '<div class="opt-card gen-how opt-fold collapsed"><h3>How this works</h3>' +
       '<div class="opt-note">' +
-      'Vibedentify listens to each track and works out what <b>genre</b> it is. ' +
+      'Vibe Identify listens to each track and works out what <b>genre</b> it is. ' +
       'Genres are arranged in a tree, from broadest to most specific:' +
       '<div class="gen-tree-key">' +
         '<span><b>Archgenre</b><i>the widest bucket &mdash; e.g. <em>Bass Music</em></i></span>' +
@@ -426,7 +426,7 @@ let vibeLoadGenres; // assigned below, where the file sets it up
     }).join('');
     return '<div class="opt-card"><h3>Training data</h3>' +
       '<div class="opt-note">This is separate from vibes, and it is about '  +
-      '<b>genres</b>. Whenever you correct a track’s genre by hand, Vibedentify keeps ' +
+      '<b>genres</b>. Whenever you correct a track’s genre by hand, Vibe Identify keeps ' +
       'a copy of that audio as an example to learn from. This is what it has so far.</div>' +
       (rows || '<div class="opt-note">Nothing yet. Correcting a track’s genre files its ' +
         'audio here automatically.</div>') +
@@ -481,7 +481,7 @@ let vibeLoadGenres; // assigned below, where the file sets it up
       '<div class="opt-card"><h3>Re-label your library</h3>' +
         '<div class="opt-row"><span class="k">Status</span>' +
           '<span class="v" id="gen-rl-stat">—</span></div>' +
-        '<div class="opt-note">When you teach Vibedentify a genre (the <b>train</b> button on ' +
+        '<div class="opt-note">When you teach Vibe Identify a genre (the <b>train</b> button on ' +
         'any genre card), tracks you analysed <i>before</i> that still carry their old genre. ' +
         'Re-labelling re-reads them using what it has learned since. It does not re-scan and ' +
         'it never touches your audio files.<br><br>' +
