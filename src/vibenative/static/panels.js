@@ -2,15 +2,14 @@
    the sibling-group editor, per-row tags, the external-lookup results panel, the
    vibes panel (+ per-row match holders), and the label-propagation queue.
 
-   LOAD ORDER: load AFTER app.js and player.js (see index.html). These panels call
-   shared helpers from app.js (escapeHtml, styleInfo, colorFor, fmtTime, …) and
+   These panels import shared helpers from app.js (escapeHtml, styleInfo, …) and
    read app.js row state (results, GLOBAL, SIBLING_MAP, SIBLING_GROUPS); the label
    queue drives the shared PLAYER from player.js. In turn app.js's row builder
-   (finishRow) calls renderTags / renderLookup / renderVibeMatches defined here — a
-   normal cross-file reference in the shared <script> scope, declared as globals in
-   eslint.config.js. */
+   (finishRow) imports renderTags / renderLookup / renderVibeMatches from here. */
 
-/* exported renderTags, renderLookup, renderVibeMatches */ // defined here, called from app.js's finishRow (shared scope)
+import { GLOBAL, SIBLING_GROUPS, SIBLING_MAP, escapeHtml, results, styleInfo } from './app.js';
+import { PLAYER } from './player.js';
+
 
 /* ---- Sibling editor ---- */
 const sibPanel = document.getElementById('sib-panel');
@@ -769,3 +768,5 @@ async function renderVibeMatches(row, hash, found){
     for (const p of open) p.classList.remove('open');
   });
 })();
+
+export { renderLookup, renderTags, renderVibeMatches };

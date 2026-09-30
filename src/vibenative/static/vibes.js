@@ -12,6 +12,10 @@
 
    The side panel remains for quick add/remove while working through tracks;
    this tab is the place to sit down and describe them. */
+
+import { applyFolds, nameHue, statRowsHtml, vibeWaveSvg, wireTileToggle } from './app.js';
+let vibeLoadVibes; // assigned below, where the file sets it up
+
 (function () {
   var body;
 
@@ -68,7 +72,7 @@
     var top = sorted.length ? sorted[0] : null;
     var described = vibes.filter(function (v) { return (v.description || '').trim(); }).length;
 
-    var list = window.statRowsHtml(sorted.map(function (v) {
+    var list = statRowsHtml(sorted.map(function (v) {
       return { name: v.name, count: v.count, color: vibeColor(v.name) };
     }), total);
 
@@ -98,7 +102,7 @@
     return '<div class="gen-key vib-key" data-id="' + v.id + '" style="--gen-col:' + col + '">' +
       '<button class="gen-tile" type="button">' +
         '<span class="gen-wavebox" style="border-color:' + col + '55">' +
-          window.vibeWaveSvg(col, v.name) + '</span>' +
+          vibeWaveSvg(col, v.name) + '</span>' +
         '<span class="gen-titles">' +
           '<span class="gen-name">' + esc(v.name) + '</span>' +
           '<span class="gen-level" title="A category you created yourself">vibe</span>' +
@@ -177,7 +181,7 @@
       '<h2 class="gen-sechd">Library actions<span>backups</span></h2>' +
       backupCard();
     wire();
-    window.applyFolds(body);
+    applyFolds(body);
   }
 
   function wire() {
@@ -197,7 +201,7 @@
             return;
           }
           el.value = '';
-          window.vibeLoadVibes(name);
+          vibeLoadVibes(name);
         }).catch(function () {
           topMsg.innerHTML = '<b class="opt-bad">could not create</b>';
         });
@@ -220,7 +224,7 @@
           if (j.error) { impMsg.innerHTML = '<b class="opt-bad">' + esc(j.error) + '</b>'; return; }
           impMsg.innerHTML = '<b class="opt-good">imported — ' + j.created + ' new, ' +
             j.merged + ' merged, ' + j.tracks + ' track link(s)</b>';
-          window.vibeLoadVibes();
+          vibeLoadVibes();
         });
       }).catch(function () { impMsg.innerHTML = '<b class="opt-bad">import failed</b>'; });
       impFile.value = '';
@@ -228,7 +232,7 @@
 
     // Select a tile to expand it, one at a time, matching the Genres tab
     // (wireTileToggle, app.js).
-    window.wireTileToggle(body, body.querySelectorAll('.vib-key .gen-tile'), openCard);
+    wireTileToggle(body, body.querySelectorAll('.vib-key .gen-tile'), openCard);
   }
 
   /* Everything that needs the card to be visible first: sizing the textarea to
@@ -264,7 +268,7 @@
         body: JSON.stringify({ vibe_id: Number(id), name: next.trim() })
       }).then(function (r) { return r.json(); }).then(function (j) {
         if (j.error) { actMsg.innerHTML = '<b class="opt-bad">' + esc(j.error) + '</b>'; return; }
-        window.vibeLoadVibes(j.name);
+        vibeLoadVibes(j.name);
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">rename failed</b>'; });
     };
 
@@ -276,7 +280,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vibe_id: Number(id) })
       }).then(function (r) { return r.json(); }).then(function () {
-        window.vibeLoadVibes(name);
+        vibeLoadVibes(name);
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">could not clear</b>'; });
     };
 
@@ -288,7 +292,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vibe_id: Number(id) })
       }).then(function (r) { return r.json(); }).then(function () {
-        window.vibeLoadVibes();
+        vibeLoadVibes();
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">could not delete</b>'; });
     };
 
@@ -314,7 +318,7 @@
 
   /* `keep` re-opens the named card after a reload, so renaming or clearing a
      vibe doesn't drop you back at the top of the page. */
-  window.vibeLoadVibes = function (keep) {
+  vibeLoadVibes = function (keep) {
     body = document.getElementById('vib-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
@@ -334,3 +338,5 @@
     });
   };
 })();
+
+export { vibeLoadVibes };

@@ -1,5 +1,9 @@
 /* Options tab — app status (version, DB, ffmpeg, GPU) + quick links to the manage
-   panels. Fetches /status and renders it. Self-contained IIFE. */
+   panels. Fetches /status and renders it. */
+
+import { EQ_STYLES, KEYVIEW, PREFS, THEMES, setKeyView, setPref } from './app.js';
+let vibeLoadOptions; // assigned below, where the file sets it up
+
 (function () {
   var body;
 
@@ -317,7 +321,7 @@
           ' (' + j.already_ok + ' already fine, ' + j.unanalysed_files + ' not in your library)';
         note('fp-msg', msg, false);
         apply.disabled = doApply || todo === 0;
-        if (doApply) window.vibeLoadOptions();     // refresh the status line
+        if (doApply) vibeLoadOptions();     // refresh the status line
       }).catch(function () { note('fp-msg', 'scan failed', true); });
     }
     check.onclick = function () { run(false); };
@@ -373,7 +377,7 @@
   }
 
   // Called by map.js's switchTo() when the Options tab is opened.
-  window.vibeLoadOptions = function () {
+  vibeLoadOptions = function () {
     body = document.getElementById('opt-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
@@ -382,3 +386,5 @@
     });
   };
 })();
+
+export { vibeLoadOptions };

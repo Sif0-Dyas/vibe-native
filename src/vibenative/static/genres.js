@@ -10,6 +10,10 @@
 
    Also hosts the two library-wide genre actions, both reversible: re-label
    (re-run the head over stored embeddings) and reset (back to stock). */
+
+import { applyFolds, statRowsHtml, vibeWaveSvg, wireTileToggle } from './app.js';
+let vibeLoadGenres; // assigned below, where the file sets it up
+
 (function () {
   var body;
 
@@ -49,7 +53,7 @@
 
   /* The tile's waveform mark. Lives in app.js so the Vibes tab draws exactly
      the same mark from the same seed -- see vibeWaveSvg there. */
-  var waveSvg = window.vibeWaveSvg;
+  var waveSvg = vibeWaveSvg;
 
   /* The most representative tracks of a card, as list items. */
   function topList(tracks) {
@@ -390,7 +394,7 @@
       r.title = r.name + ' — ' + r.count + ' track' + (r.count === 1 ? '' : 's') + ', ' +
         (total ? (r.count / total) * 100 : 0).toFixed(1) + '% of your library';
     });
-    var list = window.statRowsHtml(rows, total);
+    var list = statRowsHtml(rows, total);
 
     return '<div class="opt-card opt-fold"><h3>Total genres</h3>' +
       '<div class="gen-bigstats">' +
@@ -509,7 +513,7 @@
     wireActions();
     // one console per keystone card, built on demand -- each is several queries
     // Select a tile to expand it, one at a time (wireTileToggle, app.js).
-    window.wireTileToggle(body, body.querySelectorAll('.gen-tile'));
+    wireTileToggle(body, body.querySelectorAll('.gen-tile'));
     body.querySelectorAll('.gen-reset-top').forEach(function (b) {
       b.onclick = function () {
         var g = b.dataset.g;
@@ -517,7 +521,7 @@
             'Its audio is archived (not deleted) and only this genre’s ' +
             'labels are cleared. Every other genre keeps its training.')) return;
         fetch('/training/set/' + encodeURIComponent(g) + '/reset', { method: 'POST' })
-          .then(function () { window.vibeLoadGenres(); }).catch(function () {});
+          .then(function () { vibeLoadGenres(); }).catch(function () {});
       };
     });
     body.querySelectorAll('.gen-train').forEach(function (b) {
@@ -620,7 +624,7 @@
           msg('re-labelled ' + j.updated + ' tracks (' + j.skipped_override +
               ' manual overrides left alone). Snapshot taken first.');
           applyBtn.disabled = true;
-          window.vibeLoadGenres();
+          vibeLoadGenres();
         }).catch(function () { msg('apply failed', true); });
     };
 
@@ -628,7 +632,7 @@
       fetch('/relabel/revert', { method: 'POST' })
         .then(function (r) { return r.json(); }).then(function (j) {
           msg('reverted ' + j.reverted + ' tracks to their original reads');
-          window.vibeLoadGenres();
+          vibeLoadGenres();
         }).catch(function () { msg('revert failed', true); });
     };
 
@@ -711,7 +715,7 @@
         });
       });
       render(groups, st);
-      window.applyFolds(body);
+      applyFolds(body);
       if (keep) {
         var card = body.querySelector('.gen-key[data-g="' + keep.replace(/"/g, '\\"') + '"]');
         if (card) {
@@ -725,5 +729,7 @@
     });
   }
 
-  window.vibeLoadGenres = function () { load(); };
+  vibeLoadGenres = function () { load(); };
 })();
+
+export { vibeLoadGenres };

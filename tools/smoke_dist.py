@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import socket
 import subprocess  # nosec B404  # launches the just-built exe with a fixed arg list, no shell
@@ -97,6 +98,48 @@ def _get(url: str, timeout: float = 5.0):
         return e.code, e.read()
     except (urllib.error.URLError, OSError, TimeoutError) as e:
         return None, str(e)
+
+
+_IMPORT = re.compile(r"""(?:^|\n)\s*import\s+(?:[^'";]*?\s+from\s+)?['"]\./([\w-]+\.js)['"]""")
+
+
+def _check_modules(base: str, token: str, page: bytes) -> None:
+    """The frontend is ES modules: the page loads main.js, which imports the rest.
+    A module the bundle doesn't serve breaks the whole page (and the desktop shell
+    shows a blank window), so every module reachable from main.js is fetched. And
+    every name the shell's INJECT_JS calls on window must be put there by main.js --
+    the only place the page assigns window names -- or the native folder picker
+    silently does nothing."""
+    check(
+        "the page loads main.js as a module",
+        b'type="module" src="/static/main.js"' in page,
+        True,
+    )
+    seen, todo, failed = set(), ["main.js"], []
+    main_js = ""
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        status, body = _get(f"{base}/static/{name}?k={token}")
+        if status != 200:
+            failed.append(f"{name}: {status}")
+            continue
+        text = body.decode("utf-8", "replace")
+        if name == "main.js":
+            main_js = text
+        todo += _IMPORT.findall(text)
+    note("modules served", len(seen))
+    check("every module main.js reaches is served", failed, [])
+    shell = (ROOT / "desktop" / "genre_app.pyw").read_text(encoding="utf-8")
+    inject = re.search(r'INJECT_JS = r"""(.*?)"""', shell, re.S)
+    wanted = sorted(
+        set(re.findall(r"\bwindow\.(\w+)\(", inject.group(1) if inject else "")) - {"pywebview"}
+    )
+    note("window names the shell calls", wanted)
+    missing = [n for n in wanted if not re.search(rf"\bwindow\.{n}\s*=", main_js)]
+    check("main.js puts every one on window", missing, [])
 
 
 def _make_tagged_track(path: Path, title: str, seconds: int = 12) -> bool:
@@ -331,6 +374,7 @@ def main() -> int:
             check("the page is the app", b"Vibe" in (ui or b""), True)
             css_status, _ = _get(f"{base}/static/app.css?k={token}")
             check("serves static assets from the bundle", css_status, 200)
+            _check_modules(base, token, ui or b"")
 
             print(
                 "\n"

@@ -24,10 +24,13 @@
      AUDIO.setListen(kind) — the user flipped the switch: claim, then resume the
                              winner. Only ever called from the UI.
 
-   LOAD ORDER: after player.js (needs PLAYER); before nowbar.js and map.js,
-   which call AUDIO. */
+   Imports PLAYER (player.js); exports AUDIO, which nowbar.js and map.js import. */
 
-/* exported AUDIO */ // defined here, used by player.js, nowbar.js and map.js
+import { hooks } from './hooks.js';
+import { fmtTime } from './app.js';
+import { PLAYER } from './player.js';
+let wireGotoTitle; // assigned below, where the file sets it up
+
 
 const AUDIO = (function () {
   const KEY = 'vibeAudio';
@@ -56,21 +59,21 @@ const AUDIO = (function () {
   function gotoTitle(titleEl, cls, hashOf) {
     const go = () => {
       const h = hashOf();
-      if (h && typeof window.vibeMapGoto === 'function') window.vibeMapGoto(h);
+      if (h && typeof hooks.vibeMapGoto === 'function') hooks.vibeMapGoto(h);
     };
     titleEl.addEventListener('click', go);
     titleEl.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
     });
     return function sync() {
-      const findable = !!(hashOf() && typeof window.vibeMapGoto === 'function');
+      const findable = !!(hashOf() && typeof hooks.vibeMapGoto === 'function');
       titleEl.classList.toggle(cls, findable);
       titleEl.title = findable ? 'find this track on the map' : '';
       if (findable) { titleEl.tabIndex = 0; titleEl.setAttribute('role', 'button'); }
       else { titleEl.removeAttribute('tabindex'); titleEl.removeAttribute('role'); }
     };
   }
-  window.wireGotoTitle = gotoTitle;
+  wireGotoTitle = gotoTitle;
   const trackLoaded = () => !!(typeof PLAYER !== 'undefined' && PLAYER.now);
   const isPlaying = a => !!(a && !a.paused && !a.ended);
 
@@ -257,3 +260,7 @@ const AUDIO = (function () {
     },
   };
 })();
+
+hooks.audio = AUDIO; // player.js loads first and claims focus through this
+
+export { AUDIO, wireGotoTitle };

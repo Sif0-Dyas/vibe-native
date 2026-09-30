@@ -1,13 +1,17 @@
 /* Vibedentify front-end — List / analyzer, plus the shared helpers used by
    the whole UI.
 
-   LOAD ORDER: app.js loads FIRST (see index.html). It defines the shared
-   helpers — escapeHtml, colorFor, styleInfo, familyOf, fmtTime, the lens
-   functions, etc. — plus the row state (results, GLOBAL, SIBLING_MAP,
-   SIBLING_GROUPS) that panels.js, player.js and map.js reference at runtime.
-   Those files load after this one. The side panels live in panels.js; the row
-   builder here (finishRow) calls its renderTags / renderLookup /
-   renderVibeMatches — a cross-file reference in the shared <script> scope. */
+   An ES module (loaded through main.js). It exports the shared helpers —
+   escapeHtml, styleInfo, familyOf, fmtTime, the lens functions, etc. — plus the
+   row state (results, GLOBAL, SIBLING_MAP, SIBLING_GROUPS) that panels.js,
+   player.js and map.js import. The side panels live in panels.js; the row
+   builder here (finishRow) imports its renderTags / renderLookup /
+   renderVibeMatches. Calls into files that load later go through hooks.js. */
+
+import { hooks } from './hooks.js';
+import { FSH, HASH_FILES, OBJ_URLS, PLAYER, attachPlayer } from './player.js';
+import { renderLookup, renderTags, renderVibeMatches } from './panels.js';
+let vibeLoadGuide; // assigned below, where the file sets it up
 
 /* ---- diagnostics: ship frontend breadcrumbs to the backend log ------------
    The WebView renderer can crash on its own (e.g. OOM during a big batch),
@@ -34,13 +38,11 @@ function vibeWaveSvg(color, seed){
   return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
          'style="color:' + escapeHtml(color == null ? '' : color) + '">' + bars.join('') + '</svg>';
 }
-window.vibeWaveSvg = vibeWaveSvg;
 
 /* A stable hue (0..359) from a name. Anything with no palette entry -- a
    genre family the palette does not slot, a vibe -- is coloured by this, and
    it is one function so a vibe's swatch on the Vibes tab and its galaxy in
    the Universe are the same colour by construction, not by coincidence. */
-/* exported nameHue */ // used by map.js and vibes.js (shared scope)
 function nameHue(name){
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
@@ -66,7 +68,6 @@ function wireTileToggle(body, tiles, onOpen){
     };
   });
 }
-window.wireTileToggle = wireTileToggle;
 
 /* Folding cards. Any .opt-fold card closes and opens from its heading; the
    state is remembered per heading so a tab comes back the way you left it.
@@ -91,7 +92,7 @@ document.addEventListener('click', e => {
   FOLDS[foldKey(card)] = closed;
   try { localStorage.setItem('vibeFolds', JSON.stringify(FOLDS)); } catch (_) { /* private mode */ }
 });
-window.applyFolds = root => {
+const applyFolds = root => {
   for (const card of root.querySelectorAll('.opt-fold')){
     const k = foldKey(card);
     if (k in FOLDS) card.classList.toggle('collapsed', !!FOLDS[k]);
@@ -118,7 +119,6 @@ function statRowsHtml(rows, total){
     '</div>';
   }).join('');
 }
-window.statRowsHtml = statRowsHtml;
 
 function clientLog(msg, level){
   try {
@@ -394,7 +394,7 @@ function refreshFooter(){
 /* Load a cached track into the List by content hash (used by the Library tab's
    click-to-load). Reuses the exact path /batch uses: a stand-in file object + a
    finishRow() call with the cached payload, so no re-analysis and all row actions work. */
-window.loadTrackByHash = async (hash) => {
+const loadTrackByHash = async (hash) => {
   if (results.some(r => r.hash === hash)){          // already in the list -> just reveal it
     const ex = results.find(r => r.hash === hash);
     if (ex && ex.row) ex.row.scrollIntoView({behavior:'smooth', block:'center'});
@@ -485,7 +485,7 @@ function openKeyMenu(anchorEl, track, repaint){
       track.key = j.key; track.scale = j.scale; track.camelot = j.camelot; track.key_source = j.key_source;
       closeKeyMenu();
       if (repaint) repaint();
-      if (window.reloadLibrary) window.reloadLibrary();
+      if (hooks.reloadLibrary) hooks.reloadLibrary();
     } catch (_) { msg.textContent = 'could not reach the app'; }
   }
   keyMenu.querySelectorAll('.keypick').forEach(b => b.addEventListener('click', () => {
@@ -501,7 +501,6 @@ function keyText(t){
   return [k.cam, k.mus].filter(Boolean).join(' ');
 }
 
-/* exported setKeyView */ // called from options.js's Appearance card (shared scope)
 /* Change it everywhere at once. The rows re-render in place; the map is told so
    an open popup and the hover label stop disagreeing with the setting. */
 function setKeyView(mode){
@@ -509,7 +508,7 @@ function setKeyView(mode){
   KEYVIEW.mode = mode;
   try { localStorage.setItem('vibeKeyView', mode); } catch (_) { /* private mode */ }
   for (const r of results) if (r.row && r.row._renderKey) r.row._renderKey();
-  if (typeof window.vibeKeyViewChanged === 'function') window.vibeKeyViewChanged();
+  if (typeof hooks.vibeKeyViewChanged === 'function') hooks.vibeKeyViewChanged();
 }
 
 /* Mark a row you were just pointed at. A track that was already analysed does
@@ -2054,7 +2053,8 @@ batchBtn.addEventListener('click', () => {
 });
 
 // The guard lives HERE, not only on the button: the desktop shell's native folder
-// picker calls window.runBatch() directly, and so could anything else.
+// picker calls window.runBatch() directly (main.js puts it there), and so could
+// anything else.
 async function runBatch(folderPath){
   if (batchBusy()) return;
   batchRunning = true;
@@ -2297,7 +2297,7 @@ function escapeHtml(s){
       const h = row.getAttribute('data-h');
       row.querySelector('.flag-go').onclick = () => {
         panel.classList.remove('open');
-        if (window.vibeMapGoto) window.vibeMapGoto(h);
+        if (hooks.vibeMapGoto) hooks.vibeMapGoto(h);
       };
       row.querySelector('.flag-omit').onclick = async () => {
         try{ await fetch(`/forget/${h}`, {method:'POST'}); }catch(_){}
@@ -2372,7 +2372,7 @@ function escapeHtml(s){
     return out.join('\n');
   }
 
-  window.vibeLoadGuide = async () => {
+  vibeLoadGuide = async () => {
     if (loaded) return;
     loaded = true;
     try{
@@ -2386,5 +2386,7 @@ function escapeHtml(s){
 
   // deep link (#guide) switches the view before this module defines the loader,
   // so kick off the load here too.
-  if (location.hash === '#guide') window.vibeLoadGuide();
+  if (location.hash === '#guide') vibeLoadGuide();
 })();
+
+export { EQ_STYLES, GLOBAL, KEYVIEW, PREFS, SIBLING_GROUPS, SIBLING_MAP, THEMES, adjustPanelHtml, applyFolds, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, loadTrackByHash, nameHue, results, runBatch, setKeyView, setPref, statRowsHtml, styleInfo, vibeLoadGuide, vibeWaveSvg, wireAdjustPanel, wireTileToggle };

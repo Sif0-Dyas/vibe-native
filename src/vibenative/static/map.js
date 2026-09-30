@@ -1,10 +1,22 @@
 /* Genre Map — the 3-D constellation view (scene, camera controls, tree
-   view, popups, search, tab switching). Self-contained IIFE.
+   view, popups, search, tab switching).
 
-   LOAD ORDER: load AFTER app.js — uses shared helpers from app.js
-   (escapeHtml, colorFor, styleInfo, familyOf, fmtTime) and calls
-   window.vibeLoadGuide (defined in app.js). Exposes window.vibeMapGoto,
-   which app.js's review panel calls. See index.html. */
+   Imports shared helpers from app.js (escapeHtml, familyOf, fmtTime, ...) and
+   each tab's loader (vibeLoadGuide, vibeLoadLibrary, ...). Sets
+   hooks.vibeMapGoto, which app.js's review panel and audio.js call, and
+   hooks.vibeKeyViewChanged. */
+
+import { hooks } from './hooks.js';
+import { PREFS, adjustPanelHtml, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, nameHue, vibeLoadGuide, wireAdjustPanel } from './app.js';
+import { FSH } from './player.js';
+import { AUDIO } from './audio.js';
+import { playHash } from './nowbar.js';
+import { playlistAdd, playlistHas } from './playlist.js';
+import { vibeLoadLibrary } from './library.js';
+import { vibeLoadOptions } from './options.js';
+import { vibeLoadGenres } from './genres.js';
+import { vibeLoadVibes } from './vibes.js';
+let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets it up
 
 /* ===================================================================
    Genre Map -- 3D constellation of the whole scanned library.
@@ -3218,7 +3230,7 @@
       <div class="pop-actions">${n.a
         ? `<button class="pop-play">▶ play</button>`
         : `<button class="pop-play" disabled title="no file on disk — re-scan this folder (batch) to enable playback">▶ no file</button>`}
-        <button class="pop-add">${(window.playlistHas && window.playlistHas(n.hash)) ? '✓ in playlist' : '＋ playlist'}</button></div>
+        <button class="pop-add">${(playlistHas && playlistHas(n.hash)) ? '✓ in playlist' : '＋ playlist'}</button></div>
       ${n.flag ? `<div class="pop-flag">⚠ low-confidence read — its closest neighbours sound like
         <b>${escapeHtml(n.suggest || '?')}</b></div>` : ''}
       <div id="pop-pick"><div class="pop-bar" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">finding a match…</div></div>
@@ -3268,14 +3280,14 @@
     if (playBtn && n.a) playBtn.onclick = () => {
       // the sample stays CUED -- starting the track claims your ears (audio.js),
       // and the sample strip's switch hands them back without re-selecting.
-      if (window.playHash) window.playHash(n.hash, {
+      if (playHash) playHash(n.hash, {
         title: n.artist ? stripArtist(n.title, n.artist) : n.title,
         artist: n.artist || '', color: famCss(n.fam),
       });
     };
     const addBtn = popEl.querySelector('.pop-add');
     if (addBtn) addBtn.onclick = () => {
-      if (window.playlistAdd) window.playlistAdd({
+      if (playlistAdd) playlistAdd({
         hash: n.hash, title: n.artist ? stripArtist(n.title, n.artist) : n.title,
         artist: n.artist || '', color: famCss(n.fam), a: n.a,
       });
@@ -3635,7 +3647,7 @@
         ev.stopPropagation();
         const h = btn.getAttribute('data-h');
         const s = sim.find(x => x.hash === h);
-        if (s && window.playHash) window.playHash(h, {
+        if (s && playHash) playHash(h, {
           title: s.artist ? stripArtist(s.title, s.artist) : s.title,
           artist: s.artist || '', color: famCss(familyOf(s.style || '') || 'Other'),
         });
@@ -3645,8 +3657,8 @@
         ev.stopPropagation();
         const h = btn.getAttribute('data-h');
         const s = sim.find(x => x.hash === h);
-        if (s && window.playlistAdd) {
-          window.playlistAdd({
+        if (s && playlistAdd) {
+          playlistAdd({
             hash: h, title: s.artist ? stripArtist(s.title, s.artist) : s.title,
             artist: s.artist || '', color: famCss(familyOf(s.style || '') || 'Other'), a: s.a,
           });
@@ -3946,7 +3958,7 @@
       await refreshPlaylists();
       syncFilt();
     }
-    window.mapFilterPopulate = populate;
+    mapFilterPopulate = populate;
 
     // let anything outside this block (the popup's tag chips) refresh the panel
     /* The genre list: one row per keystone, with its track count, all ticked
@@ -4001,7 +4013,7 @@
          mostly-electronic library is the metal, punk and hip hop. */
       $f('flt-gen-elec').addEventListener('click', () => setGenres(r => r.fam !== 'Other'));
     }
-    window.mapGenrePopulate = buildGenres;
+    mapGenrePopulate = buildGenres;
 
     syncFilterUI = syncFilt;
     const onFilt = () => { syncFilt(); };
@@ -4028,7 +4040,7 @@
       playlistHashes = null;
       $f('flt-artist').value = ''; $f('flt-key').value = ''; $f('flt-pl').value = '';
       $f('flt-playable').checked = false;
-      if (window.mapGenrePopulate) window.mapGenrePopulate();   // re-tick every genre
+      if (mapGenrePopulate) mapGenrePopulate();   // re-tick every genre
       $f('flt-bpm-lo').value = 0; $f('flt-bpm-hi').value = 100;
       $f('flt-len-lo').value = 0; $f('flt-len-hi').value = 100;
       for (const b of filtPanel.querySelectorAll('.flt-tag.on')) b.classList.remove('on');
@@ -4689,11 +4701,11 @@
     if (genView) genView.hidden = viewName !== 'genres';
     const vibView = document.getElementById('vibes-view');
     if (vibView) vibView.hidden = viewName !== 'vibes';
-    if (viewName === 'guide' && window.vibeLoadGuide) window.vibeLoadGuide();
-    if (viewName === 'library' && window.vibeLoadLibrary) window.vibeLoadLibrary();
-    if (viewName === 'options' && window.vibeLoadOptions) window.vibeLoadOptions();
-    if (viewName === 'genres' && window.vibeLoadGenres) window.vibeLoadGenres();
-    if (viewName === 'vibes' && window.vibeLoadVibes) window.vibeLoadVibes();
+    if (viewName === 'guide' && vibeLoadGuide) vibeLoadGuide();
+    if (viewName === 'library' && vibeLoadLibrary) vibeLoadLibrary();
+    if (viewName === 'options' && vibeLoadOptions) vibeLoadOptions();
+    if (viewName === 'genres' && vibeLoadGenres) vibeLoadGenres();
+    if (viewName === 'vibes' && vibeLoadVibes) vibeLoadVibes();
     showMap(viewName === 'map');
     const hash = viewName==='map' ? '#map' : (viewName==='guide' ? '#guide'
                  : (viewName==='library' ? '#library'
@@ -4717,8 +4729,8 @@
         startLoop();
         // the filter choosers are built from the loaded library, so they can only
         // be populated once the nodes exist
-        if (window.mapFilterPopulate) window.mapFilterPopulate();
-        if (window.mapGenrePopulate) window.mapGenrePopulate();
+        if (mapFilterPopulate) mapFilterPopulate();
+        if (mapGenrePopulate) mapGenrePopulate();
         if (want && byHash.has(want[1])) selectNode(want[1], true);   // cut, don't fly
       });
     } else { stopLoop(); }
@@ -4764,12 +4776,12 @@
   // The key notation changed under an open map: the hover label repaints itself
   // every frame, but a popup already on screen would keep the old notation until
   // it was closed and reopened.
-  window.vibeKeyViewChanged = () => {
+  hooks.vibeKeyViewChanged = () => {
     if (popEl && !popEl.hidden && selHash && byHash.has(selHash)) openPopup(byHash.get(selHash));
   };
 
   // let other UI (the review-reads panel) jump to a track on the map
-  window.vibeMapGoto = (hash) => {
+  hooks.vibeMapGoto = (hash) => {
     try{ history.replaceState(null, '', '#map=' + hash); }catch(_){}
     switchTo('map');
   };

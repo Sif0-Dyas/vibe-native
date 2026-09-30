@@ -563,16 +563,7 @@
 <!-- load order matters: app.js defines shared helpers used by the others;
      nowbar.js needs PLAYER (player.js) and is used by map.js; audio.js needs
      PLAYER and is called by nowbar.js and map.js -->
-<script src="/static/app.js"></script>
-<script src="/static/player.js"></script>
-<script src="/static/audio.js"></script>
-<script src="/static/panels.js"></script>
-<script src="/static/nowbar.js"></script>
-<script src="/static/playlist.js"></script>
-<script src="/static/library.js"></script>
-<script src="/static/options.js"></script>
-<script src="/static/genres.js"></script>
-<script src="/static/vibes.js"></script>
-<script src="/static/map.js"></script>
+<!-- One entry module; it imports the rest in their load order (see main.js). -->
+<script type="module" src="/static/main.js"></script>
 </body>
 </html>

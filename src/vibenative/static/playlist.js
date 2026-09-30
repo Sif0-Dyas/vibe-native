@@ -2,10 +2,13 @@
    managed in a slide-out panel, persisted to localStorage, played through the
    shared Now Playing bar (prev/next), and exportable as .m3u.
 
-   LOAD ORDER: after nowbar.js (uses window.playHash / nowShowQueueControls);
-   before map.js, which calls the globals exposed here:
-     window.playlistAdd(track)   window.playlistHas(hash)
-   plus the queue hooks nowbar.js looks for: __nowNext / __nowPrev / nowClearQueue */
+   Imports playHash / nowShowQueueControls from nowbar.js. Exports
+   playlistAdd(track) and playlistHas(hash), which map.js imports, and sets the
+   queue hooks nowbar.js calls (hooks.js: nowNext / nowPrev / nowClearQueue). */
+
+import { hooks } from './hooks.js';
+import { nowShowQueueControls, playHash } from './nowbar.js';
+let playlistAdd, playlistHas; // assigned below, where the file sets it up
 
 (function () {
   const KEY = 'vibePlaylist';
@@ -26,7 +29,7 @@
     const n = PL.tracks.length;
     document.querySelectorAll('.pl-badge, #pl-count').forEach(e => { e.textContent = n; });
     document.querySelectorAll('.pl-badge').forEach(e => e.classList.toggle('has', n > 0));
-    if (window.nowShowQueueControls) window.nowShowQueueControls(PL.tracks.length > 1 && PL.qi >= 0);
+    if (nowShowQueueControls) nowShowQueueControls(PL.tracks.length > 1 && PL.qi >= 0);
   }
 
   function render() {
@@ -61,7 +64,7 @@
     const t = PL.tracks[i];
     if (!t.a) return;               // no server-side file
     PL.qi = i;
-    if (window.playHash) window.playHash(t.hash, { title: t.title, artist: t.artist, color: t.color });
+    if (playHash) playHash(t.hash, { title: t.title, artist: t.artist, color: t.color });
     render();
   }
   // advance/retreat over PLAYABLE tracks (skip files-missing entries)
@@ -71,9 +74,9 @@
       if (PL.tracks[i].a) { playAt(i); return; }
     }
   }
-  window.__nowNext = () => step(1);
-  window.__nowPrev = () => step(-1);
-  window.nowClearQueue = () => { PL.qi = -1; render(); };
+  hooks.nowNext = () => step(1);
+  hooks.nowPrev = () => step(-1);
+  hooks.nowClearQueue = () => { PL.qi = -1; render(); };
 
   function move(i, d) {
     const j = i + d;
@@ -90,7 +93,7 @@
   }
 
   // ---- public API (called from map.js) ----
-  window.playlistAdd = function (t) {
+  playlistAdd = function (t) {
     if (!t || !t.hash) return false;
     if (PL.tracks.some(x => x.hash === t.hash)) return false;   // dedupe
     PL.tracks.push({ hash: t.hash, title: t.title, artist: t.artist, color: t.color, a: t.a ? 1 : 0 });
@@ -101,7 +104,7 @@
     });
     return true;
   };
-  window.playlistHas = h => PL.tracks.some(x => x.hash === h);
+  playlistHas = h => PL.tracks.some(x => x.hash === h);
 
   // ---- panel open/close + actions ----
   const open = () => { panel.classList.add('open'); render(); };
@@ -216,3 +219,5 @@
   render();   // initial (restores the working playlist)
   if (location.hash === '#playlist') open();   // deep link to the panel
 })();
+
+export { playlistAdd, playlistHas };
