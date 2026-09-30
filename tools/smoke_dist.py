@@ -44,6 +44,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+from version import pyproject_version  # noqa: E402
+
 DIST = ROOT / "dist" / "Vibe Identify"
 EXE = DIST / "Vibe Identify.exe"
 
@@ -318,8 +321,7 @@ def main() -> int:
 
             s = json.loads(body)
             print("what the bundle provides:")
-            check("reports a version", bool(s.get("version")), True)
-            note("version", s.get("version"))
+            check("reports pyproject.toml's version", s.get("version"), pyproject_version())
             check("ffmpeg resolves with nothing on PATH", s.get("ffmpeg"), True)
             check("ffprobe resolves with nothing on PATH", s.get("ffprobe"), True)
             # and it is the bundled copy, not something the machine happened to have

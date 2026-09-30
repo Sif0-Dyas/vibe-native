@@ -26,6 +26,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+from version import pyproject_version  # noqa: E402
+
 SPEC = ROOT / "Vibe Identify.spec"
 DIST = ROOT / "dist" / "Vibe Identify"
 
@@ -47,6 +50,19 @@ def main() -> int:
     if not SPEC.is_file():
         print(f"ERROR: spec not found: {SPEC}")
         return 2
+
+    # The frozen app reports the version in the metadata PyInstaller copies from
+    # this venv; if pyproject was bumped since the last sync, that metadata is
+    # stale and the build would ship under the old number.
+    from importlib.metadata import version as installed_version
+
+    version = pyproject_version()
+    installed = installed_version("vibenative")
+    if installed != version:
+        print(f"ERROR: pyproject.toml says {version} but the venv has vibenative {installed}.")
+        print("Run `uv sync --group desktop` so the installed metadata matches, then rebuild.")
+        return 2
+    print(f"version: {version}  (from pyproject.toml)")
 
     if not args.no_clean:
         for d in (ROOT / "build", ROOT / "dist"):
@@ -105,7 +121,7 @@ def main() -> int:
 
     size = _dir_size(DIST)
     print("\n" + "=" * 60)
-    print(f"Built in {time.time() - t0:.0f}s")
+    print(f"Built {version} in {time.time() - t0:.0f}s")
     print(f"  folder: {DIST}")
     print(f"  size:   {size / 1e6:.0f} MB")
     print(f"  exe:    {exe}")

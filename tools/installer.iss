@@ -2,8 +2,8 @@
 ; Windows installer (Start-menu + optional desktop shortcut, uninstaller).
 ;
 ; Build it with:  python tools/build_installer.py   (reads the version from
-; vibenative.__version__ and passes it here via /DMyAppVersion=...). You can also run
-; iscc directly:  iscc /DMyAppVersion=2.1.0 "tools\installer.iss"
+; pyproject.toml and passes it here via /DMyAppVersion=...). You can also run
+; iscc directly:  iscc /DMyAppVersion=<pyproject version> "tools\installer.iss"
 ;
 ; DATA SAFETY (verified): this installer only writes under {app} (Program Files).
 ;   * The music database lives in %USERPROFILE%\genre_v2.db (default) or wherever
@@ -13,8 +13,10 @@
 ;     READS them, and its exe-adjacent resolution (models_dir()) finds {app}\models
 ;     with no change. ffmpeg installs the same way, beside the exe.
 
+; No default: the version comes from pyproject.toml or the build stops, so a
+; Setup can never carry a number that isn't the app's.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.0.0-dev"
+  #error MyAppVersion is not set. Build with tools/build_installer.py, or pass /DMyAppVersion=<pyproject version>.
 #endif
 #ifndef DistDir
   #define DistDir "..\dist\Vibe Identify"

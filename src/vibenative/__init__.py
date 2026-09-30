@@ -7,12 +7,20 @@ The application is assembled by the :func:`create_app` factory so that tests
 (and any WSGI server) get a fresh, independently-configured instance.
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
+
 from flask import Flask
 
-# THE single source of truth for the app/installer version. Surfaced in the UI footer
-# (so an installed build is identifiable) and read by the installer build script to
-# stamp Setup. Keep pyproject.toml's [project].version in sync with this.
-__version__ = "2.1.0"
+# The version is written once, in pyproject.toml, and read back here from the
+# installed distribution's metadata -- the editable install in dev, the metadata
+# the spec bundles in a frozen build. Surfaced in the UI footer and /status (so an
+# installed build is identifiable) and in the User-Agent; tools/version.py hands
+# the same number to the exe and installer builds.
+try:
+    __version__ = _dist_version("vibenative")
+except PackageNotFoundError:  # a bare source tree, never installed: say so
+    __version__ = "0+unknown"
 
 # The product's name wherever a user sees it. The desktop shell (which must
 # start without importing this package) and the installer spell it out too;

@@ -1,7 +1,7 @@
 """Build the Windows installer (Inno Setup) from the packaged dist folder.
 
 Runs Inno's `iscc` against tools/installer.iss with the app version stamped from
-vibenative.__version__, and prints the resulting Setup .exe path + size. MANUAL only
+pyproject.toml (tools/version.py), and prints the resulting Setup .exe path + size. MANUAL only
 (like build_exe.py) — never in CI.
 
     python tools/build_installer.py            # dist must already exist
@@ -49,10 +49,10 @@ def find_iscc() -> str | None:
 
 
 def app_version() -> str:
-    sys.path.insert(0, str(ROOT / "src"))
-    import vibenative
+    sys.path.insert(0, str(ROOT / "tools"))
+    from version import pyproject_version
 
-    return vibenative.__version__
+    return pyproject_version()
 
 
 def main() -> int:
@@ -81,7 +81,7 @@ def main() -> int:
 
     version = app_version()
     print(f"iscc:    {iscc}")
-    print(f"version: {version}  (from vibenative.__version__)")
+    print(f"version: {version}  (from pyproject.toml)")
     OUTDIR.mkdir(parents=True, exist_ok=True)
 
     r = subprocess.run(  # nosec B603  # iscc from find_iscc(), fixed args, no shell

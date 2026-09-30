@@ -26,6 +26,7 @@ from PyInstaller.utils.hooks import (
     collect_data_files,
     collect_dynamic_libs,
     collect_submodules,
+    copy_metadata,
 )
 
 PROJECT = os.path.abspath(os.getcwd())  # PyInstaller runs the spec from the repo root
@@ -40,6 +41,9 @@ SRC = os.path.join(PROJECT, "src")  # src-layout: the importable `vibenative` pa
 datas = collect_data_files("vibenative", excludes=["data/enao.json"])
 # the in-app Guide reads docs/USAGE.md -> bundle it (resolved via paths.resource_base())
 datas += [(os.path.join(PROJECT, "docs", "USAGE.md"), "docs")]
+# vibenative's dist-info: __version__ is read through importlib.metadata, so
+# without it the frozen app cannot say which version it is.
+datas += copy_metadata("vibenative")
 hiddenimports = collect_submodules("vibenative")  # routes.* / db / engine modules (lazy imports)
 
 # --- onnxruntime native libraries, INCLUDING the DirectML EP --------------------
