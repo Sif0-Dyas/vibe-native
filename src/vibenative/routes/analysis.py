@@ -29,7 +29,7 @@ from ..hashing import file_hash
 from ..repo import tracks as tracks_repo
 from ..repo.tracks import cache_get, cache_put, waveform_cache_get, waveform_cache_put
 from ..serve import MAX_BATCH_WORKERS
-from ..style import dominant_read
+from ..style import dominant_read, identity_fields
 from ._shared import UploadError, bp
 
 
@@ -120,6 +120,7 @@ def analyze_route():
                 waveform_cache_put(h, wave)
             payload["hash"] = h
             payload["cached"] = False
+            payload.update(identity_fields(payload))
             return jsonify(payload)
     except UnreadableAudio as e:
         log.warning(
@@ -185,8 +186,9 @@ def _backfill_waveform(h, upload):
 def _cached_response(cached, h, **extra):
     """A cached payload dressed the way every cache hit is returned.
 
-    ``adjusted`` is the blend after the track's manual weight adjustments (or
-    None), sent with every cached payload so a track nudged on the map reads
+    ``dominant_*`` is the track's identity (style.identity_fields) -- what the
+    Analyzer shows and colours a row by. ``adjusted`` is the blend after the
+    track's manual weight adjustments (or None), sent with every cached payload so a track nudged on the map reads
     the same the moment it lands in the Analyzer -- the alternative was a
     second round-trip per row just to find out most rows had nothing to say.
     """
@@ -195,6 +197,7 @@ def _cached_response(cached, h, **extra):
     cached.update({"hash": h, "cached": True, **extra})
     cached["segment_overrides"] = _segment_overrides(h)
     cached["adjusted"] = read_with_steps(cached)
+    cached.update(identity_fields(cached))
     return cached
 
 
@@ -397,6 +400,7 @@ def batch_route():
             if wave is not None:
                 waveform_cache_put(h, wave)
             payload.update({"ok": True, "hash": h, "cached": False})
+            payload.update(identity_fields(payload))
             log.info("  · OK %s (%.1fs)", path.name, _time.time() - t0)
             return payload
         except UnreadableAudio as e:

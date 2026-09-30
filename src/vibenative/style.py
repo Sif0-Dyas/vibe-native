@@ -42,13 +42,63 @@ def dominant_read(payload):
     Every tier leaves the ones beneath it intact, so any of them can be undone.
     (None, 0.0) when there is no read at all.
     """
-    payload = payload or {}
-    if payload.get("override"):
-        return payload["override"], 1.0
-    ranked = ranked_read(payload)
-    if ranked:
-        return ranked[0].get("style"), round(float(ranked[0].get("score", 0)), 4)
-    return None, 0.0
+    ident = identity(payload)
+    return ident["style"], ident["score"]
+
+
+def identity(payload):
+    """The track's identity, the tier it came from, and that tier's read:
+    ``{"style", "score", "source", "read"}``. ``source`` is "override",
+    "weights", "relabel", "salience" or "styles" (None with no read at all);
+    ``read`` is the ranked read the style is the top of -- what a view shows
+    as the track's blend. The precedence is dominant_read's (above); this is
+    the same chain, reporting which step answered."""
+    p = payload or {}
+    if p.get("override"):
+        o = p["override"]
+        return {
+            "style": o,
+            "score": 1.0,
+            "source": "override",
+            "read": [{"style": o, "score": 1.0}],
+        }
+    read = read_with_steps(p)
+    if read:
+        source = "weights"
+    else:
+        read = base_read(p)
+        if (p.get("relabel") or {}).get("styles"):
+            source = "relabel"
+        elif p.get("salience"):
+            source = "salience"
+        elif p.get("styles"):
+            source = "styles"
+        else:
+            return {"style": None, "score": 0.0, "source": None, "read": []}
+    top = read[0]
+    return {
+        "style": top.get("style"),
+        "score": round(float(top.get("score", 0)), 4),
+        "source": source,
+        "read": read,
+    }
+
+
+def identity_fields(payload, top=8):
+    """identity() as the flat fields every analysis response, cached row and
+    edit response carries, so a client shows the server's answer instead of
+    working one out: dominant_style, dominant_score, dominant_source and
+    dominant_read (the top ``top`` entries of the read)."""
+    ident = identity(payload)
+    return {
+        "dominant_style": ident["style"],
+        "dominant_score": ident["score"],
+        "dominant_source": ident["source"],
+        "dominant_read": [
+            {"style": e.get("style"), "score": float(e.get("score", 0) or 0)}
+            for e in ident["read"][:top]
+        ],
+    }
 
 
 def ranked_read(payload):

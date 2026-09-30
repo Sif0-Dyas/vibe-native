@@ -15,6 +15,7 @@ from ..repo import tracks as tracks_repo
 from ..repo.keys import key_label_delete, key_label_put, key_labels_map
 from ..repo.tracks import cosine, forget_track, track_embedding
 from ..settings import current
+from ..style import identity_fields
 from ._shared import _artist_from, bp
 
 
@@ -237,7 +238,7 @@ def override_route(h):
         return p
 
     try:
-        filepath, _p = tracks_repo.update_payload(h, set_override)
+        filepath, p = tracks_repo.update_payload(h, set_override)
     except NotFound:
         return jsonify({"error": "track not in database"}), 404
     # INVARIANT: the training-copy file I/O below runs AFTER the payload write
@@ -253,7 +254,7 @@ def override_route(h):
             if not dest.exists():
                 shutil.copy2(src, dest)
             trained = True
-    return jsonify({"ok": True, "genre": genre, "trained": trained})
+    return jsonify({"ok": True, "genre": genre, "trained": trained, **identity_fields(p)})
 
 
 @bp.post("/key/<h>")
@@ -614,6 +615,7 @@ def weights_get(h):
             "adjusted": W.read_with_steps(p) or base[:8],
             "max_step": W.MAX_STEP,
             "words": {str(k): v for k, v in W.STEP_WORDS.items()},
+            **identity_fields(p),
         }
     )
 
@@ -703,5 +705,6 @@ def weights_put(h):
             "steps": p.get("weights") or {},
             "drops": _effective_drops(p),
             "adjusted": W.read_with_steps(p) or [],
+            **identity_fields(p),
         }
     )

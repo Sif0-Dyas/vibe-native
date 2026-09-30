@@ -165,3 +165,60 @@ def test_migration_11_backfills_the_dominant_style(tmp_path, use_settings):
             assert after[h] == dominant_style(p), h
     assert after["g" * 40] == before["g" * 40]  # unparseable: column left alone
     db.init_db()  # idempotent
+
+
+# --- every response carries the identity the Analyzer shows ----------------------
+def _identity_of(body):
+    return {
+        k: body[k] for k in ("dominant_style", "dominant_score", "dominant_source", "dominant_read")
+    }
+
+
+def test_every_row_and_edit_response_carries_the_identity(client, tmp_path):
+    import io
+
+    from vibenative.style import identity_fields
+
+    def stored(h):
+        from vibenative.repo.tracks import payload
+
+        return identity_fields(json.loads(payload(h)))
+
+    wav = b"RIFF" + b"\x00" * 64  # the fake engine reads nothing but the bytes
+    fresh = client.post(
+        "/analyze", data={"file": (io.BytesIO(wav), "t.wav")}, content_type="multipart/form-data"
+    ).get_json()
+    h = fresh["hash"]
+    assert _identity_of(fresh) == stored(h) and fresh["dominant_source"] == "salience"
+    cached = client.post(
+        "/analyze", data={"file": (io.BytesIO(wav), "t.wav")}, content_type="multipart/form-data"
+    ).get_json()
+    assert cached["cached"] and _identity_of(cached) == stored(h)
+    assert _identity_of(client.get(f"/track/{h}").get_json()) == stored(h)
+
+    folder = tmp_path / "scan"
+    folder.mkdir()
+    (folder / "a.wav").write_bytes(b"RIFF" + b"\x01" * 64)
+    lines = [
+        json.loads(x)
+        for x in client.post("/batch", json={"path": str(folder)})
+        .get_data(as_text=True)
+        .splitlines()
+        if x.strip()
+    ]
+    row = next(x for x in lines if x.get("ok"))
+    assert _identity_of(row) == stored(row["hash"])
+
+    w = client.post(
+        f"/weights/{h}", json={"steps": {fresh["dominant_read"][1]["style"]: 3}}
+    ).get_json()
+    assert _identity_of(w) == stored(h) and w["dominant_source"] == "weights"
+    assert _identity_of(client.get(f"/weights/{h}").get_json()) == stored(h)
+
+    o = client.post(f"/override/{h}", json={"genre": "Dubstep"}).get_json()
+    assert _identity_of(o) == stored(h)
+    assert (o["dominant_style"], o["dominant_score"], o["dominant_source"]) == (
+        "Dubstep",
+        1.0,
+        "override",
+    )

@@ -321,6 +321,22 @@ function familyOf(style){
   if (canon) return STYLE_FAMILY[canon.toLowerCase()] || canon;
   return style;
 }
+/* The note under a row's waveform names the lens its bands are drawn with --
+   the same words as the "Genre over time" menu. */
+const LENS_NOTES = {
+  raw:          ['raw view', 'Every frame shows its own winner, unsmoothed.'],
+  hysteresis:   ['steady view', 'One-off single-frame genre flickers are ignored, so the bands do not strobe.'],
+  sibling:      ['merged view', 'Near-identical genres are merged into one band.'],
+  family:       ['family view', 'Each band is the keystone its frame\'s genres add up to.'],
+  'hyst+sib':   ['steady + merged view', 'Flickers are ignored and near-identical genres merged.'],
+};
+function paintLensNote(el, mode){
+  if (!el) return;
+  const [text, title] = LENS_NOTES[mode] || [mode + ' view', ''];
+  el.textContent = text;
+  el.title = title;
+}
+
 /* family-merge: pool each frame's scores by family, take the winner */
 function segsFamily(frames){
   return frames.map(f => {
@@ -716,8 +732,13 @@ function finishRow(row, data, file){
   // (these have no server-side copy — the in-memory File is the only source).
   if (file && data.hash) HASH_FILES.set(data.hash, file);
   const styles = data.styles || [];
-  const primary = styles[0] || {style: '?', score: 0};   // guard: model returned no styles
-  const pcol = colorFor(primary.style);
+  /* What the track IS -- style, score, and the tier it came from (override,
+     hand adjustments, re-label, salience, flat styles) -- is the server's answer
+     (style.identity), sent with every row as dominant_*. The row shows it and
+     is coloured by it; it never works one out for itself, so the Analyzer, the
+     Map and the Library cannot call one track three different things. */
+  row._identity = identityOf(data);
+  const rowColor = () => colorFor(row._identity.style || '?');
   row.querySelector('.title').textContent = data.title;
 
   /* The genre cell is a rendered body plus a fixed strip of controls. They were
@@ -729,16 +750,6 @@ function finishRow(row, data, file){
   const genreBody = document.createElement('div');
   genreBody.className = 'genre-body';
   genreCell.appendChild(genreBody);
-
-  // A blend the user has bent by hand (see wireRowAdjust). Sent with the payload
-  // so a track adjusted on the map already reads adjusted here, with no round-trip.
-  row._adjusted = (data.adjusted && data.adjusted.length) ? data.adjusted : null;
-  // A manual override outranks both, which is the server's own precedence
-  // (routes/_shared.py: override > adjustments > relabel > salience). It was
-  // never read here, so a track you overrode last week came back to the Analyzer
-  // still showing the model's read -- the Map and the Library called it one thing
-  // and this screen called it another.
-  row._override = data.override || null;
 
   /* waveform under the title, painted by per-segment genre, with magnifier */
   let renderGenreCell = () => {};   // assigned below; called on smoothing change
@@ -768,7 +779,7 @@ function finishRow(row, data, file){
     controls.className = 'wavehint';
     controls.innerHTML = `<span class="restag" title="Each coloured band along the waveform covers about two seconds of audio.">2s bands</span>` +
       `<button class="finebtn" type="button" title="Re-read this track in finer slices (~0.5s). Slower, but catches short sections.">\u2295 closer look</button>` +
-      `<span class="smoothnote" title="One-off single-frame genre flickers are ignored, so the bands do not strobe.">steady view</span>`;
+      `<span class="smoothnote"></span>`;
     const resTag = controls.querySelector('.restag');
     const fineBtn = controls.querySelector('.finebtn');
 
@@ -816,6 +827,7 @@ function finishRow(row, data, file){
     function segMode(){ return row._segOverride || GLOBAL.seg; }
 
     function applySmoothing(){
+      paintLensNote(controls.querySelector('.smoothnote'), segMode());
       // 1) segmentation lens turns per-frame top-k into the genre stream
       const lensed = waveState.frames ? segsForMode(waveState.frames, segMode()) : null;
       waveState.raw = lensed || waveState.winners;
@@ -826,7 +838,7 @@ function finishRow(row, data, file){
       waveState.mainSet = mainGenreSet(waveState.segments, waveState.fine);
     }
     function redraw(focus){
-      drawWave(c, waveState.peaks, pcol, waveState.segments, focus ?? null, waveState.mainSet, ovFracs(), waveState.mm);
+      drawWave(c, waveState.peaks, rowColor(), waveState.segments, focus ?? null, waveState.mainSet, ovFracs(), waveState.mm);
     }
     applySmoothing();
     requestAnimationFrame(() => redraw(null));
@@ -1086,53 +1098,54 @@ function finishRow(row, data, file){
   renderGenreCell = () => {
     const ws = row._waveState;
     const useTimeline = ws && ws.segments && ws.segments.length;
-    let shown, srcLabel;
-    if (row._override){
+    const ident = row._identity;
+    if (ident.source === 'override'){
       // One word, by your own hand. No blend to draw: the whole point of an
       // override is that it replaced the read rather than bending it.
-      const oc = colorFor(row._override), oi = styleInfo(row._override);
+      const oc = colorFor(ident.style), oi = styleInfo(ident.style);
       genreBody.innerHTML =
         `<div class="genre-src">manual override</div>` +
         `<span class="chip overridden" style="--c:${oc}" title="manually set">` +
         `<span class="dot ${oi.shape}" style="background:${oc}"></span>` +
-        `${escapeHtml(row._override)}</span>`;
-      row._genreList = [{style: row._override, score: 1}];
+        `${escapeHtml(ident.style)}</span>`;
+      row._genreList = [{style: ident.style, score: 1}];
       return;
     }
+    // The blend under the headline: the read the server's style is the top of.
+    // Only for a salience read does the identity view offer the other way of
+    // looking at it -- the flat share of the track, frame by frame. It changes
+    // the bar, never the headline.
     const idMode = (row._idOverride || GLOBAL.identity);
-    if (row._adjusted && row._adjusted.length){
-      // Hand adjustments outrank every automatic read: they ARE the read now.
-      // Shown whole rather than thresholded -- a genre you pushed down to 1%
-      // disappearing from the list makes the press look like it did nothing.
-      shown = row._adjusted.map(s => ({style:s.style, score:s.score, other:false}));
-      srcLabel = 'genre · adjusted by hand';
-    } else if (idMode === 'v2' && data.salience && data.salience.length){
-      const named = data.salience.filter(s => s.score >= 0.03);
-      const namedSum = named.reduce((a, s) => a + s.score, 0);
-      const otherSum = Math.max(0, 1 - namedSum);
-      shown = named.map(s => ({style:s.style, score:s.score, other:false}));
-      if (otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
-      srcLabel = 'genre · weighted by energy';
-    } else if (useTimeline){
-      // v1: flat % of track by frame count, over the lens-processed stream
+    let shown, srcLabel;
+    if (ident.source === 'salience' && idMode === 'v1' && useTimeline){
       const all = timelinePercents(ws.segments);
       const named = all.filter(s => s.score >= 0.03);
       const otherSum = all.filter(s => s.score < 0.03).reduce((a, s) => a + s.score, 0);
       shown = named.map(s => ({style:s.style, score:s.score, other:false}));
       if (otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
       srcLabel = 'v1 · % of track (flat)';
+    } else if (ident.source === 'weights'){
+      // Shown whole rather than thresholded -- a genre you pushed down to 1%
+      // disappearing from the list makes the press look like it did nothing.
+      shown = ident.read.map(s => ({style:s.style, score:s.score, other:false}));
+      srcLabel = 'genre · adjusted by hand';
     } else {
-      shown = styles.slice(0, 5).filter(s => s.score >= 0.02)
-                    .map(s => ({style:s.style, score:s.score, other:false}));
-      if (!shown.length) shown = styles.slice(0, 1).map(s => ({style:s.style, score:s.score}));
-      srcLabel = 'model confidence';
+      const named = ident.read.filter(s => s.score >= 0.03);
+      shown = named.map(s => ({style:s.style, score:s.score, other:false}));
+      const otherSum = Math.max(0, 1 - named.reduce((a, s) => a + s.score, 0));
+      if (ident.source !== 'styles' && otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
+      if (!shown.length && ident.style) shown = [{style: ident.style, score: ident.score, other:false}];
+      srcLabel = ident.source === 'relabel' ? 'genre · re-labelled'
+               : ident.source === 'styles' ? 'model confidence'
+               : 'genre · weighted by energy';
     }
+    if (!shown.length) shown = [{style: '?', score: 0, other: false}];
     const tot = shown.reduce((a, s) => a + s.score, 0) || 1;
     const pct = v => (v * 100 < 0.5 && v > 0) ? '<1' : (v * 100).toFixed(0);
-    // headline = top non-Other genre (never lead with "Other")
-    const head = shown.find(s => !s.other) || shown[0];
-    const hcol = head.other ? OTHER_COLOR : colorFor(head.style);
-    const hshape = head.other ? 'hx' : styleInfo(head.style).shape;
+    // the headline is the track's identity, whatever view the bar shows
+    const head = {style: ident.style || shown[0].style, score: ident.score, other: false};
+    const hcol = colorFor(head.style);
+    const hshape = styleInfo(head.style).shape;
 
     const segHtml = shown.map(s => {
       const col = s.other ? OTHER_COLOR : colorFor(s.style);
@@ -1180,6 +1193,7 @@ function finishRow(row, data, file){
   };
   renderGenreCell();
   row._renderGenre = renderGenreCell;
+  function redrawRow(){ renderGenreCell(); if (row._redrawWave) row._redrawWave(); }
 
   // click a genre swatch to recolor it everywhere (delegated; survives re-renders)
   if (!genreCell._recolorBound){
@@ -1303,15 +1317,16 @@ function finishRow(row, data, file){
      row gets its hash from the server a moment after the row exists;
      re-rendering the genre cell is what makes the percentages move as you
      press. */
-  const showAdjusted = state => { applyAdjusted(row, state); renderGenreCell(); };
+  // The adjust panel's GET and POST both return the track's identity: take it.
+  const showIdentity = state => {
+    if (state && state.dominant_source !== undefined){ row._identity = identityOf(state); redrawRow(); }
+  };
   wireAdjustPanel(adjBtn, adjBox, {
     hashOf: () => data.hash || ((getResult() || {}).hash || null),
-    // Only redraw the cell when there is actually an adjustment to show.
-    // Merely opening the panel must not repaint a row -- on an overridden
-    // track that would swap the override chip for the model read nobody asked
-    // to see again.
-    onLoaded: state => { if (row._adjusted || adjustHasEdits(state)) showAdjusted(state); },
-    onSaved: showAdjusted,
+    // Opening the panel may repaint the row: it shows the server's identity,
+    // which on an overridden track is still the override.
+    onLoaded: showIdentity,
+    onSaved: showIdentity,
   });
 
   overrideBtn.addEventListener('click', () => {
@@ -1348,15 +1363,12 @@ function finishRow(row, data, file){
     const genre = oInput.value.trim();
     if (!genre) return;
 
-    // 1. show it. Through renderGenreCell like every other read, so a saved
-    //    override and one loaded from the database can't drift apart.
-    row._override = genre;
-    renderGenreCell();
-    // An override supersedes any hand adjustment -- the steps stay on the server,
-    // but this row now reads as the one word you gave it. Only the body is
-    // rewritten, so adjust / omit / lookup stay where they were: changing your
-    // mind afterwards doesn't mean reloading the track to get the controls back.
-    row._adjusted = null;
+    // 1. show it at once (the server's answer, below, replaces this). An override
+    //    supersedes any hand adjustment -- the steps stay on the server, but the
+    //    row reads as the one word you gave it. Only the body is rewritten, so
+    //    adjust / omit / lookup stay where they were.
+    row._identity = {style: genre, score: 1, source: 'override', read: [{style: genre, score: 1}]};
+    redrawRow();
     adjBox.hidden = true;
     editor.style.display = 'none';
     overrideBtn.style.display = '';
@@ -1382,6 +1394,8 @@ function finishRow(row, data, file){
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || 'override failed');
         trained = !!j.trained;
+        row._identity = identityOf(j);
+        redrawRow();
       }
       // dropped files have no server-side path -> re-upload the file so the
       // training copy still gets saved (the override above already persisted).
@@ -1529,13 +1543,16 @@ async function fillGenreList(extra){
   paint();
 }
 
-/* Hand a row its adjusted blend, or take it away again. Cleared when no step is
-   left, so undoing every adjustment restores exactly what the model said rather
-   than freezing the last adjusted numbers in place. */
-function applyAdjusted(row, state){
-  row._adjusted = (adjustHasEdits(state) && state.adjusted && state.adjusted.length)
-    ? state.adjusted.map(e => ({style: e.style, score: e.score}))
-    : null;
+/* The track's identity as the server sends it with every row and edit
+   response (style.identity_fields): the style, its score, the tier it came
+   from, and that tier's ranked read. */
+function identityOf(d){
+  return {
+    style: d.dominant_style || null,
+    score: d.dominant_score || 0,
+    source: d.dominant_source || null,
+    read: d.dominant_read || [],
+  };
 }
 
 /* ---- the adjust panel -----------------------------------------------------
@@ -1568,11 +1585,6 @@ function adjustPanelHtml(){
 }
 
 /* Whether a panel state carries any edit at all. */
-function adjustHasEdits(state){
-  return !!(state && ((state.steps && Object.keys(state.steps).length)
-                   || (state.drops && state.drops.length)));
-}
-
 function wireAdjustPanel(btn, box, opts){
   const rowsEl_ = box.querySelector('.adj-rows');
   const addIn = box.querySelector('.adj-add-in');
