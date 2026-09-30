@@ -1,5 +1,5 @@
-"""Every API route lives under /api/v1; only the page and its static files are
-at the root. There are no compatibility aliases -- the old paths are gone."""
+"""Every API route lives under /api/v1; only the pages (the app and /label) and
+their static files are at the root. There are no compatibility aliases -- the old paths are gone."""
 
 from vibenative.routes import API_PREFIX
 
@@ -7,7 +7,7 @@ from vibenative.routes import API_PREFIX
 def test_every_route_but_the_page_is_under_the_api_prefix(client):
     rules = {r.rule for r in client.application.url_map.iter_rules()}
     at_root = {r for r in rules if not r.startswith(API_PREFIX + "/")}
-    assert at_root == {"/", "/static/<path:filename>"}
+    assert at_root == {"/", "/label", "/static/<path:filename>"}
     assert API_PREFIX == "/api/v1"
 
 
@@ -45,6 +45,7 @@ def test_deletes_are_delete_verbs_and_the_post_forms_are_gone(client):
         "/api/v1/vibes/<int:vid>",
         "/api/v1/vibes/<int:vid>/tracks",
         "/api/v1/vibes/<int:vid>/tracks/<h>",
+        "/api/v1/labels/<h>",
     }
     cross = {"Sec-Fetch-Site": "cross-site"}
     assert client.delete("/api/v1/vibes/1", headers=cross).status_code == 403

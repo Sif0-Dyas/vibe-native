@@ -223,12 +223,17 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] Third-party inventory — `PROVENANCE.md`; in-app notices
 - [x] Drop mutagen (GPL) — `metadata.py`
 - [ ] Ask MTG/UPF about a commercial license for the models — the answer decides the rest
+- [x] Label export and blind labelling (prep for the benchmark and the head retrain)
+  - `tools/export_labels.py <db copy> --out labels.csv`: one row per (hash, filepath, genre, source), source `override` / `weight` (top of the hand-adjusted blend) / `id3-genre` (the tag metadata.read_tags stored at analysis; `--probe` re-reads the files) / `manual` (blind labels). Opens the DB read-only and never migrates it. One normaliser for every source: it respells to the classifier's style name (case, `&`/`and`/`'n'`, hyphens, a parenthesised qualifier, one half of `A / B`, or through a lexicon alias), else a Discogs parent genre, else keeps the name as written. It never collapses a genre into its keystone -- "Trap Wave" (10 overrides) and "Phonk" are why someone typed an override. A multi-genre tag keeps its one specific genre; a store's whole genre menu in one field is skipped as ambiguous, "Electronic" / "Dance" alone as no genre.
+  - On a copy of the local library (6,162 tracks): override 28, weight 9, id3-genre 2,081, manual 0 -- 2,117 tracks with at least one label. 2,851 tracks carry a genre tag: 241 distinct values -> 116 distinct genres after normalisation (35 of the model's styles, 5 parent genres, 76 other), in 17 keystones; 285 tags skipped as ambiguous (204 of them one pasted Beatport menu), 482 as umbrella-only.
+  - Blind labels: `/label`, a page of its own rather than an Analyzer flag. Its API (`/api/v1/labels*`, `genre_labels`, migration 12, in `TRACK_TABLES`) returns only hash / title / artist, and its vocabulary is the keystones plus the 400 styles, not the library's reads. The script calls nothing but that API and `/audio`. `tests/test_labels.py` pins both. A random unlabelled track each time, so ~200 labels are a sample of the library -- of the part still on disk: only 1,730 of the 4,584 recorded file paths exist, and `/labels/next` passes over the rest (which also means `--probe` can re-read at most those).
 - [ ] Accuracy benchmark: hand-label ~200 tracks from the library (genre, BPM, key) alongside GiantSteps; every engine change reports against it. Current key baseline: 66.6% GiantSteps
 - [ ] Retrain key profiles on owned `key_labels` (PROVENANCE #5)
 - [ ] Counsel confirms `frontend_mel.py` / `tempo.py` provenance (PROVENANCE §3–4); fix the README's AGPL claim accordingly
 - [ ] Settle `enao.json` (PROVENANCE #6): permission, replacement, or stop shipping
   - The reader is gone (`vibenative.enao` and its test were deleted), so the only remaining question is the local data file's licence.
 - [ ] If no license: permissive embedder + tempo estimator; retrain the genre head on the 400-label taxonomy; retire `tools/convert_models.py`, `requirements-convert.txt`
+  - A head trained on EffNet embeddings inherits the models' licence, whoever wrote the head: the custom head (`training/`) and any retrain of the 400-label head over `effnet.onnx` stay bound to MTG's terms. The unbound head is trained on `tools/export_labels.py`'s labels over the replacement embedder, and benchmarked on the `manual` (blind) ones.
 - [ ] `pip-licenses --fail-on` in CI
 
 **Phase 5 — proving it**

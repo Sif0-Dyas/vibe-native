@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind labelling · {{ product }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<script>
+  // The Analyzer's theme (app.js owns PREFS.theme); read only.
+  try {
+    var p = JSON.parse(localStorage.getItem('vibePrefs') || '{}') || {};
+    if (p.theme && p.theme !== 'neon') document.documentElement.dataset.theme = p.theme;
+  } catch (e) { /* private mode */ }
+</script>
+<style>
+  .lbl-wrap{max-width:640px; width:100%; margin:0 auto; padding:24px 16px 48px; display:flex; flex-direction:column; gap:18px}
+  .lbl-wrap h2{font-family:'Syne',sans-serif; font-size:20px}
+  .lbl-note{color:var(--dim); font-size:13px; line-height:1.5}
+  .lbl-card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:18px; display:flex; flex-direction:column; gap:14px}
+  .lbl-title{font-size:17px; font-weight:600; overflow-wrap:anywhere}
+  .lbl-artist{color:var(--dim); overflow-wrap:anywhere}
+  .lbl-card audio{width:100%}
+  .lbl-row{display:flex; gap:8px; flex-wrap:wrap}
+  .lbl-row input{flex:1 1 220px; min-width:0; background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:var(--r-sm); padding:8px 10px; font:inherit}
+  .lbl-row button{background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:var(--r-sm); padding:8px 14px; font:inherit; cursor:pointer}
+  .lbl-row button.primary{border-color:var(--accent-a)}
+  .lbl-row button:disabled{opacity:.5; cursor:default}
+  .lbl-status{color:var(--dim); font-size:13px; min-height:1.2em}
+  .lbl-status.err{color:var(--err)}
+  .lbl-count{font-family:'JetBrains Mono',monospace; color:var(--dim); font-size:13px}
+  .lbl-recent{list-style:none; display:flex; flex-direction:column; gap:6px}
+  .lbl-recent li{display:flex; gap:10px; align-items:baseline; font-size:13px}
+  .lbl-recent .t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dim)}
+  .lbl-recent .g{font-weight:600}
+  .lbl-recent button{background:none; border:none; color:var(--dimmer); cursor:pointer; font:inherit}
+  .lbl-recent button:hover{color:var(--text)}
+</style>
+</head>
+<body>
+<main class="lbl-wrap">
+  <div>
+    <h2>Blind labelling</h2>
+    <p class="lbl-note">Listen, then name the genre. The model's read is not on this page and the
+      page never asks for it, so these labels can measure the model instead of echoing it.
+      They are kept apart from overrides and adjustments. <a href="/">Back to the app</a></p>
+  </div>
+  <div class="lbl-count" id="lbl-count"></div>
+  <section class="lbl-card" id="lbl-card" hidden>
+    <div>
+      <div class="lbl-title" id="lbl-title"></div>
+      <div class="lbl-artist" id="lbl-artist"></div>
+    </div>
+    <audio id="lbl-audio" controls preload="none"></audio>
+    <form class="lbl-row" id="lbl-form" autocomplete="off">
+      <input id="lbl-genre" list="lbl-vocab" placeholder="genre, e.g. Deep House" aria-label="genre">
+      <button type="submit" class="primary" id="lbl-save">Save &amp; next</button>
+      <button type="button" id="lbl-skip">Skip</button>
+    </form>
+    <div class="lbl-status" id="lbl-status"></div>
+  </section>
+  <p class="lbl-note" id="lbl-done" hidden>Every library track with a file on disk has a label.</p>
+  <section>
+    <h3 class="lbl-note">Recent</h3>
+    <ul class="lbl-recent" id="lbl-recent"></ul>
+  </section>
+</main>
+<datalist id="lbl-vocab"></datalist>
+<script type="module" src="/static/label.js"></script>
+</body>
+</html>

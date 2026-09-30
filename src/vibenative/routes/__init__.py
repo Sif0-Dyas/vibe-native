@@ -9,6 +9,7 @@ app factory mounts it under API_PREFIX. The page itself (/) is on ``pages``.
 from . import (  # noqa: F401  -- importing each domain module registers its routes on bp
     analysis,
     genrelab,
+    labels,
     library,
     map,
     playlists,

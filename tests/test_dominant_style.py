@@ -158,7 +158,10 @@ def test_migration_11_backfills_the_dominant_style(tmp_path, use_settings):
 
     conn = sqlite3.connect(path)
     try:
-        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 11
+        assert (
+            conn.execute("SELECT version FROM schema_version").fetchone()[0]
+            == (db.MIGRATIONS[-1][0])
+        )
         after = dict(conn.execute("SELECT hash, style FROM tracks"))
     finally:
         conn.close()
