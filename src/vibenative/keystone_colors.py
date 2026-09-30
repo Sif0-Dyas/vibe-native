@@ -33,6 +33,8 @@ Palette values are the validated default categorical ramp; both modes are
 selected steps, not an automatic flip.
 """
 
+from . import color_presets
+
 # Categorical slots, in validated order. Light and dark are separate selected
 # steps -- do not derive one from the other.
 _SLOTS = [
@@ -74,7 +76,7 @@ _SLOTS = [
 #
 # Hue is the *keystone's* encoding, not the family's: 93% of the library is two
 # families, so colouring by family would paint almost the whole map two colours.
-# Family reads from position on the map instead -- see keystone.FAMILIES.
+# Family reads from position on the map instead -- see taxonomy/tables.py FAMILIES.
 #
 # Allocation runs a **floor of one slot per electronic family** before handing
 # the rest out by involvement. Without that floor the top eight were all Dance
@@ -181,16 +183,14 @@ def keystone_color(keystone, mode="dark"):
     # including over the neutral, since claiming a hue for a genre the solver
     # left grey is a legitimate thing to want, and the separation guarantees
     # below only bind the eight slots this file solved.
-    from .taxonomy import color_override
+    from .taxonomy.overlay import color_override
 
     chosen = color_override(keystone)
     if chosen:
         return chosen
-    from . import palettes
-
-    preset = palettes.current()
-    if preset != palettes.DEFAULT:
-        hit = palettes.colors_for(preset, mode).get(keystone)
+    preset = color_presets.current()
+    if preset != color_presets.DEFAULT:
+        hit = color_presets.colors_for(preset, mode).get(keystone)
         if hit:
             return hit
     idx = KEYSTONE_SLOT.get(keystone)
@@ -253,7 +253,7 @@ _MIN_BAND = 0.18
 
 
 def track_paint(classification, mode="dark", max_rings=MAX_RINGS):
-    """How to paint one track, from a ``keystone.classify()`` result.
+    """How to paint one track, from a ``taxonomy.classify.classify()`` result.
 
     Returns ``None`` for an unclassified track, otherwise a set of concentric
     bands, innermost (the keystone) first::
@@ -373,4 +373,72 @@ def legend(mode="dark"):
         for k, i in sorted(KEYSTONE_SLOT.items(), key=lambda kv: kv[1])
     ]
     out.append({"keystone": "Other", "color": NEUTRAL[mode], "slot": None})
+    return out
+
+
+# --- presets, measured against this palette ------------------------------------
+# These compare a preset (color_presets.py) with the colours keystone_color paints;
+# they live here so color_presets.py never needs keystone_colors.py -- the dependency runs one
+# way, palette -> palettes.
+def _worst_pair(cols):
+    vals = sorted(set(cols.values()))
+    if len(vals) < 2:
+        return None, 0
+    worst, close = None, 0
+    for i, a in enumerate(vals):
+        for b in vals[i + 1 :]:
+            d = color_presets.delta_e(a, b)
+            worst = d if worst is None else min(worst, d)
+            if d < color_presets.READABLE:
+                close += 1
+    return worst, close
+
+
+def _default_colors(mode, keystones):
+    return {k: keystone_color(k, mode) for k in (keystones or color_presets.keystone_order())}
+
+
+def separation(name, mode="dark", keystones=None):
+    """How well a preset separates, relative to the solved default.
+
+    Reported, never enforced. The user asked for schemes they can change freely,
+    so the honest move is to show what a choice costs and let them make it -- a
+    picker that silently blocked ``sunset`` would be answering a question nobody
+    asked.
+
+    ``verdict`` compares to ``studio`` because an absolute pass/fail is not
+    meaningful here: see the module docstring.
+    """
+    cols = color_presets.colors_for(name, mode, keystones) or _default_colors(mode, keystones)
+    worst, close = _worst_pair(cols)
+    base, _ = _worst_pair(_default_colors(mode, keystones))
+    verdict = "unknown"
+    if worst is not None and base:
+        ratio = worst / base
+        verdict = "tighter" if ratio >= 1.15 else "looser" if ratio <= 0.85 else "comparable"
+    return {
+        "worst": None if worst is None else round(worst, 1),
+        "close_pairs": close,
+        "default_worst": None if base is None else round(base, 1),
+        "verdict": verdict,
+    }
+
+
+def summarise(mode="dark"):
+    """Every preset with its colours and its measured separation, for the picker."""
+    ks = color_presets.keystone_order()
+    out = []
+    for name, spec in color_presets.PRESETS.items():
+        cols = color_presets.colors_for(name, mode, ks)
+        if not cols:  # the built-in: show what it actually paints
+            cols = {k: keystone_color(k, mode) for k in ks}
+        out.append(
+            {
+                "name": name,
+                "label": spec["label"],
+                "blurb": spec["blurb"],
+                "colors": [{"keystone": k, "color": cols[k]} for k in ks if k in cols],
+                "separation": separation(name, mode, ks),
+            }
+        )
     return out

@@ -2,20 +2,19 @@
 (candidates / confirm / reject)."""
 
 import json
-import time
-from contextlib import closing
 from pathlib import Path
 
+import numpy as np
 from flask import jsonify, request
 
-from ..db import (
-    _db_lock,
-    cosine,
-    db,
-    is_library_filepath,
-)
+from ..names import GENRE_NEEDS_ALNUM, genre_folder
+from ..repo import NotFound
+from ..repo import tracks as tracks_repo
+from ..repo import training as training_repo
+from ..repo.tracks import cosine, is_library_filepath
+from ..settings import current
 from ._shared import bp
-from .analysis import UploadError, _check_upload
+from .analysis import _check_upload
 
 
 @bp.post("/save_training")
@@ -30,11 +29,11 @@ def save_training_route():
         return jsonify({"error": "genre required"}), 400
 
     # sanitize the genre name for use as a folder name
-    safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in genre_raw).strip()
+    safe = genre_folder(genre_raw)
     if not safe:
-        return jsonify({"error": "invalid genre name"}), 400
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
 
-    dest_dir = Path.home() / "genre_training" / safe
+    dest_dir = current().training_root / safe
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # server-side path (batch mode) -- only a track already in the library. Checked
@@ -55,10 +54,7 @@ def save_training_route():
 
     # browser upload (dropped tracks)
     f = request.files.get("file")
-    try:
-        suffix = _check_upload(f, "no file or filepath provided")
-    except UploadError as e:
-        return jsonify({"error": str(e)}), e.status
+    suffix = _check_upload(f, "no file or filepath provided")
     dest = dest_dir / _safe_upload_name(f.filename, suffix)
     if not dest.exists():
         f.save(str(dest))
@@ -98,11 +94,11 @@ def _copy_into_training(filepath, genre):
 
     if not filepath:
         return False
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    safe = genre_folder(genre)
     src = Path(filepath)
     if not safe or not src.is_file():
         return False
-    dest_dir = Path.home() / "genre_training" / safe
+    dest_dir = current().training_root / safe
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src.name
     if not dest.exists():
@@ -118,8 +114,6 @@ def training_candidates(genre):
     in training_labels. Excludes tracks already labelled this genre or previously
     rejected for it. Returns hash/title/sim/bpm/camelot, most-similar first. An
     empty centroid (nothing labelled yet) returns a clear message, not an error."""
-    import numpy as np
-
     genre = (genre or "").strip()
     if not genre:
         return jsonify({"error": "genre required"}), 400
@@ -129,14 +123,9 @@ def training_candidates(genre):
         limit = 25
     limit = max(1, min(200, limit))
 
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, title, filename, payload, embedding FROM tracks").fetchall()
-        labeled = {
-            r[0] for r in c.execute("SELECT hash FROM training_labels WHERE genre=?", (genre,))
-        }
-        rejected = {
-            r[0] for r in c.execute("SELECT hash FROM training_rejects WHERE genre=?", (genre,))
-        }
+    rows = tracks_repo.embedding_rows()
+    labeled = training_repo.label_hashes(genre)
+    rejected = training_repo.reject_hashes(genre)
 
     # parse once; fold in override-labelled tracks as part of the labelled set
     parsed = {}
@@ -196,16 +185,12 @@ def training_confirm():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
-        if not row:
-            return jsonify({"error": "track not in database"}), 404
-        filepath = row[0]
-        c.execute(
-            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
-            (h, genre, "propagation", time.time()),
-        )
-        c.execute("DELETE FROM training_rejects WHERE hash=? AND genre=?", (h, genre))
+    if not genre_folder(genre):
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
+    try:
+        filepath = training_repo.confirm(h, genre)
+    except NotFound:
+        return jsonify({"error": "track not in database"}), 404
     # disk I/O stays OUTSIDE the lock (never hold the DB lock across a copy)
     trained = _copy_into_training(filepath, genre)
     return jsonify({"ok": True, "hash": h, "genre": genre, "trained": trained})
@@ -220,8 +205,9 @@ def training_reject():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute("INSERT OR IGNORE INTO training_rejects(hash, genre) VALUES(?,?)", (h, genre))
+    if not genre_folder(genre):
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
+    training_repo.reject(h, genre)
     return jsonify({"ok": True, "hash": h, "genre": genre})
 
 
@@ -242,7 +228,7 @@ def training_status_route():
     ``/save_training`` file audio into -- the same folders ``training/train_head.py``
     consumes -- so this reports the real training set rather than an intention.
     """
-    root = Path.home() / "genre_training"
+    root = current().training_root
     genres = []
     if root.is_dir():
         for d in sorted(root.iterdir()):
@@ -262,14 +248,12 @@ def training_status_route():
                     "needs": max(0, TRAIN_READY - n),
                 }
             )
-    from ..analysis import CUSTOM_HEAD_PATH
-
     return jsonify(
         {
             "folder": str(root),
             "genres": sorted(genres, key=lambda g: -g["files"]),
             "total_files": sum(g["files"] for g in genres),
-            "custom_head": CUSTOM_HEAD_PATH.exists(),
+            "custom_head": current().custom_head_path.exists(),
             "thresholds": {"thin": TRAIN_THIN, "ready": TRAIN_READY},
         }
     )
@@ -311,12 +295,14 @@ def trainset_export(genre):
 
     from .. import trainsets
 
+    safe = genre_folder(genre)
+    if not safe:
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
     data = trainsets.export(genre)
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
     return Response(
         json.dumps(data, indent=1),
         mimetype="application/json",
-        headers={"Content-Disposition": f'attachment; filename="training-{safe or "genre"}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="training-{safe}.json"'},
     )
 
 
@@ -342,31 +328,14 @@ def trainset_add(genre):
     audio across when a server-side path is known -- no re-analysis, and it
     works from anywhere a track can be selected.
     """
-    import time as _time
-
-    from .. import trainsets
 
     hashes = [h for h in ((request.get_json(silent=True) or {}).get("hashes") or []) if h]
     if not hashes:
         return jsonify({"error": "hashes required"}), 400
-    safe = trainsets._safe(genre)
-    if not safe:
-        return jsonify({"error": "invalid genre name"}), 400
+    if not genre_folder(genre):
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        rows = {
-            r[0]: (r[1] or "").strip()
-            for r in c.execute(
-                "SELECT hash, filepath FROM tracks WHERE hash IN (%s)"  # nosec B608  # ints/params below
-                % ",".join("?" * len(hashes)),
-                hashes,
-            )
-        }
-        now = _time.time()
-        c.executemany(
-            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
-            [(h, genre, "manual", now) for h in rows],
-        )
+    rows = training_repo.add_manual(genre, hashes)
     copied = 0
     for h, fp in rows.items():
         if fp and _copy_into_training(fp, genre):

@@ -105,10 +105,7 @@ def test_no_ffprobe_degrades_to_nothing(tmp_path, monkeypatch):
 
 def test_analysis_still_exports_the_tag_readers():
     """The rest of the app imports these from analysis; keep that working."""
-    from vibenative import analysis
+    from vibenative import analysis, metadata
 
-    # Compared by defining module, not identity: conftest re-imports the package
-    # per test, so the two names can be equal functions from different instances.
-    assert analysis.read_title.__module__.endswith("metadata")
-    assert analysis.read_tags.__module__.endswith("metadata")
-    assert callable(analysis.read_title) and callable(analysis.read_tags)
+    assert analysis.read_title is metadata.read_title
+    assert analysis.read_tags is metadata.read_tags

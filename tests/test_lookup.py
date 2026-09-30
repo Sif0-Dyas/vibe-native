@@ -3,13 +3,14 @@
 urlopen is replaced, so nothing here touches the network.
 """
 
+import dataclasses
 import io
 import logging
 import urllib.error
 
 import pytest
 
-from vibenative import lookup
+from vibenative import lookup, settings
 
 TOKEN = "tok-SECRET-123"  # nosec B105  # a fake credential for the test
 KEY, SECRET = "key-SECRET-456", "sec-SECRET-789"  # nosec B105
@@ -37,9 +38,10 @@ def sent(monkeypatch):
 
 
 def _creds(monkeypatch, token="", key="", secret=""):
-    monkeypatch.setattr(lookup, "DISCOGS_TOKEN", token)
-    monkeypatch.setattr(lookup, "DISCOGS_KEY", key)
-    monkeypatch.setattr(lookup, "DISCOGS_SECRET", secret)
+    s = dataclasses.replace(
+        settings.current(), discogs_token=token, discogs_key=key, discogs_secret=secret
+    )
+    settings.use(s)
 
 
 @pytest.mark.parametrize(

@@ -9,7 +9,6 @@ Real files on disk (tiny ones) rather than mocks, because the whole point is
 hashing actual bytes.
 """
 
-import importlib
 import sqlite3
 
 import pytest
@@ -21,21 +20,15 @@ CREATE TABLE tracks(hash TEXT PRIMARY KEY, filename TEXT, filepath TEXT, title T
 
 
 @pytest.fixture
-def fp(tmp_path, monkeypatch):
+def fp(tmp_path, use_settings):
     dbfile = tmp_path / "lib.db"
     con = sqlite3.connect(dbfile)
     con.executescript(SCHEMA)
     con.commit()
     con.close()
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    from vibenative import db as dbmod
-
-    importlib.reload(dbmod)
+    use_settings(db_path=dbfile)
     from vibenative import filepaths
 
-    monkeypatch.setattr(filepaths, "db", dbmod.db)
-    monkeypatch.setattr(filepaths, "_db_lock", dbmod._db_lock)
-    monkeypatch.setattr(filepaths, "file_hash", dbmod.file_hash)
     filepaths._DB = dbfile
     return filepaths
 

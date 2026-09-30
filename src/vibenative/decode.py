@@ -16,6 +16,7 @@ verified against Essentia's actual output on all 121 oracle tracks (cos > 0.999)
      samplerate/librosa dependency.
 """
 
+import logging
 import os
 import shutil
 import subprocess  # nosec B404  # only runs ffmpeg/ffprobe with fixed arg lists, never a shell
@@ -24,6 +25,8 @@ from pathlib import Path
 import numpy as np
 
 from .paths import exe_dir
+
+log = logging.getLogger("vibenative")
 
 # On a frozen --windowed Windows build, each ffmpeg/ffprobe call would briefly
 # flash a console window — hundreds of them during a batch scan, which also churns
@@ -222,3 +225,17 @@ def decode_both(path) -> tuple[np.ndarray, np.ndarray]:
 def decode_16k_mono(path) -> np.ndarray:
     """Decode to 16 kHz mono float32 (the genre/embedder path)."""
     return decode_mono(path, SR)
+
+
+def warn_if_tools_missing():
+    """Warn (don't crash) if ffmpeg/ffprobe aren't locatable. The server still
+    boots -- cached-library browsing works without them -- but new analysis needs
+    ffmpeg to decode audio, so surface a helpful, actionable hint."""
+    missing = [t for t in ("ffmpeg", "ffprobe") if not find_tool(t)]
+    if missing:
+        log.warning(
+            "%s not found on PATH or the WinGet Links dir -- audio decode will fail. "
+            "Install it with:  winget install Gyan.FFmpeg   (then reopen the terminal). "
+            "Cached tracks still load; only NEW analysis needs ffmpeg.",
+            " + ".join(missing),
+        )

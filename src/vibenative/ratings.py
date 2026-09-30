@@ -20,11 +20,9 @@ Rekordbox has nowhere else to put them: grade first, then the note, joined with
 " - " exactly as typed -- ``A - peak time, big room``.
 """
 
-import time
-from contextlib import closing
 from xml.sax.saxutils import quoteattr  # nosec B406  # escapes Rekordbox XML output; no parsing
 
-from .db import _db_lock, db
+from .repo import ratings as ratings_repo
 
 # Rekordbox stores stars as 51-point steps, not 1-5. Values off this ladder are
 # not honoured by the importer, so map rather than scale.
@@ -46,8 +44,7 @@ def _clamp_stars(v):
 
 def get(hash_):
     """One track's rating, or the empty rating if it has none."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT stars, grade, note FROM ratings WHERE hash=?", (hash_,)).fetchone()
+    row = ratings_repo.get(hash_)
     if not row:
         return {"hash": hash_, "stars": 0, "grade": "", "note": ""}
     return {"hash": hash_, "stars": row[0] or 0, "grade": row[1] or "", "note": row[2] or ""}
@@ -61,8 +58,7 @@ def all_tracks():
     stars by rating and needs the whole set before it draws a single frame;
     fetching per-track there would be one request per point.
     """
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, stars, grade, note FROM ratings").fetchall()
+    rows = ratings_repo.all_rows()
     return {h: {"stars": st or 0, "grade": g or "", "note": n or ""} for h, st, g, n in rows}
 
 
@@ -72,35 +68,30 @@ def get_many(hashes):
     hashes = list(hashes)
     if not hashes:
         return {}
-    out = {}
-    with closing(db()) as conn, conn as c:
-        # chunked so a huge library can't blow SQLite's variable limit (999)
-        for i in range(0, len(hashes), 500):
-            chunk = hashes[i : i + 500]
-            q = ",".join("?" * len(chunk))
-            for h, stars, grade, note in c.execute(
-                f"SELECT hash, stars, grade, note FROM ratings WHERE hash IN ({q})",  # nosec B608
-                chunk,
-            ):
-                out[h] = {"hash": h, "stars": stars or 0, "grade": grade or "", "note": note or ""}
-    return out
+    return {
+        h: {"hash": h, "stars": stars or 0, "grade": grade or "", "note": note or ""}
+        for h, stars, grade, note in ratings_repo.rows_for(hashes)
+    }
 
 
 def put(hash_, stars=None, grade=None, note=None):
     """Create or update a rating. Only the fields passed are changed, so setting
-    stars from the map doesn't wipe a note written in the library view."""
-    cur = get(hash_)
-    stars = _clamp_stars(cur["stars"] if stars is None else stars)
-    grade = (cur["grade"] if grade is None else str(grade)).strip().upper()[:4]
-    note = (cur["note"] if note is None else str(note)).strip()[:MAX_NOTE]
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT INTO ratings(hash, stars, grade, note, updated) VALUES(?,?,?,?,?) "
-            "ON CONFLICT(hash) DO UPDATE SET stars=excluded.stars, grade=excluded.grade, "
-            "note=excluded.note, updated=excluded.updated",
-            (hash_, stars, grade, note, time.time()),
+    stars from the map doesn't wipe a note written in the library view -- even
+    when both land at once: the current row is read and the new one written in
+    one locked transaction (repo.ratings.update)."""
+
+    def merge(row):
+        cur_stars, cur_grade, cur_note = (
+            (row[0] or 0, row[1] or "", row[2] or "") if row else (0, "", "")
         )
-    return {"hash": hash_, "stars": stars, "grade": grade, "note": note}
+        return (
+            _clamp_stars(cur_stars if stars is None else stars),
+            (cur_grade if grade is None else str(grade)).strip().upper()[:4],
+            (cur_note if note is None else str(note)).strip()[:MAX_NOTE],
+        )
+
+    new_stars, new_grade, new_note = ratings_repo.update(hash_, merge)
+    return {"hash": hash_, "stars": new_stars, "grade": new_grade, "note": new_note}
 
 
 # ---------------------------------------------------------------------------
@@ -164,18 +155,7 @@ def artist_get_many(names):
             keys.append(k)
     if not keys:
         return {}
-    out = {}
-    with closing(db()) as conn, conn as c:
-        for i in range(0, len(keys), 500):
-            chunk = keys[i : i + 500]
-            q = ",".join("?" * len(chunk))
-            for k, display, stars, grade, note in c.execute(
-                f"SELECT artist_key, display, stars, grade, note FROM artist_ratings "  # nosec B608
-                f"WHERE artist_key IN ({q})",
-                chunk,
-            ):
-                out[k] = _artist_row(k, display, stars, grade, note)
-    return out
+    return {r[0]: _artist_row(*r) for r in ratings_repo.artist_rows_for(keys)}
 
 
 def artist_put(name, stars=None, grade=None, note=None):
@@ -184,32 +164,30 @@ def artist_put(name, stars=None, grade=None, note=None):
     key = artist_key(name)
     if not key:
         raise ValueError("artist name required")
-    cur = artist_get(name)
-    stars = _clamp_stars(cur["stars"] if stars is None else stars)
-    grade = (cur["grade"] if grade is None else str(grade)).strip().upper()[:4]
-    note = (cur["note"] if note is None else str(note)).strip()[:MAX_NOTE]
-    display = str(name).strip() or cur["artist"]
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT INTO artist_ratings(artist_key, display, stars, grade, note, updated) "
-            "VALUES(?,?,?,?,?,?) "
-            "ON CONFLICT(artist_key) DO UPDATE SET display=excluded.display, "
-            "stars=excluded.stars, grade=excluded.grade, note=excluded.note, "
-            "updated=excluded.updated",
-            (key, display, stars, grade, note, time.time()),
+
+    def merge(row):
+        # The same current values artist_get() gives: an unrated artist reads as
+        # stars 0, and a blank stored display falls back to the name as given.
+        if row:
+            cur_display = row[0] or key
+            cur_stars, cur_grade, cur_note = row[1] or 0, row[2] or "", row[3] or ""
+        else:
+            cur_display, cur_stars, cur_grade, cur_note = str(name).strip(), 0, "", ""
+        return (
+            str(name).strip() or cur_display,
+            _clamp_stars(cur_stars if stars is None else stars),
+            (cur_grade if grade is None else str(grade)).strip().upper()[:4],
+            (cur_note if note is None else str(note)).strip()[:MAX_NOTE],
         )
-    return {"artist": display, "key": key, "stars": stars, "grade": grade, "note": note}
+
+    display, new_stars, new_grade, new_note = ratings_repo.artist_update(key, merge)
+    return {"artist": display, "key": key, "stars": new_stars, "grade": new_grade, "note": new_note}
 
 
 def artist_all():
     """Every rated artist, best first. Backs the map's artist-rating overlay in
     one request rather than one per visible star."""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT artist_key, display, stars, grade, note FROM artist_ratings "
-            "ORDER BY stars DESC, display COLLATE NOCASE"
-        ).fetchall()
-    return [_artist_row(*r) for r in rows]
+    return [_artist_row(*r) for r in ratings_repo.artist_all_rows()]
 
 
 def comment_for(rating):

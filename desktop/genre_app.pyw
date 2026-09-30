@@ -1,4 +1,4 @@
-"""Vibenative desktop shell — a native Windows window around the native app.
+"""Vibe Identify desktop shell — a native Windows window around the native app.
 
 This is an ADDITIVE launcher. It does not modify any app code: it opens the exact
 same Flask UI (served locally on a random loopback port) inside a chromeless native
@@ -7,7 +7,7 @@ running, and injects a small JS shim at runtime that adds one thing a plain
 browser can't do:
 
   * a native Windows *folder* picker whose picked ``C:\\...`` path is handed
-    straight to the app's existing runBatch() (the native /batch route reads
+    straight to the app's existing runBatch() (the native /api/v1/batch route reads
     Windows paths directly now — no WSL translation).
 
 Two backend modes (native ONNX engine, no WSL anywhere):
@@ -75,15 +75,23 @@ BOOT_TIMEOUT_S = int(os.environ.get("GENRE_BOOT_TIMEOUT", "150"))
 
 CREATE_NO_WINDOW = 0x08000000  # keep a console from flashing up (Windows only)
 
+# The product's name: the window title, the taskbar identity, the log folder.
+# vibenative.PRODUCT_NAME, spelled out because the shell starts before (and, in
+# the two-process fallback, without) importing the package; test_one_name pins
+# the two together.
+PRODUCT_NAME = "Vibe Identify"
+
 
 def _backend_log_path() -> str:
     """Where the backend's startup log (incl. the 'execution provider: ...' line) is
     written, truncated per launch. In a packaged/installed build the exe sits in a
     read-only Program Files folder, so the log goes to a user-writable
-    %LOCALAPPDATA%\\Vibenative\\ instead of beside the exe; in dev it's the project root."""
+    %LOCALAPPDATA%\\Vibe Identify\\ instead of beside the exe; in dev it's the project
+    root. (Builds before the rename logged to %LOCALAPPDATA%\\Vibenative\\; those old
+    logs are left where they are, and the uninstaller removes both folders.)"""
     if getattr(sys, "frozen", False):
         base = os.environ.get("LOCALAPPDATA") or os.path.dirname(os.path.abspath(sys.executable))
-        d = os.path.join(base, "Vibenative")
+        d = os.path.join(base, PRODUCT_NAME)
     else:
         d = WIN_PROJECT
     try:
@@ -103,8 +111,10 @@ def _webview_storage_path():
     private_mode=True (an ephemeral profile), which wipes IndexedDB on every
     launch — and with it the File System Access handles the app stores so
     dropped/browsed tracks stay playable across restarts. A stable profile keeps
-    that data. Mirrors the backend-log location: %LOCALAPPDATA%\\Vibenative\\ when
-    frozen, the project root in dev."""
+    that data. %LOCALAPPDATA%\\Vibenative\\webview when frozen, the project root in
+    dev. It keeps the pre-rename folder on purpose: moving a WebView2 profile would
+    drop every stored file handle and remembered setting, so the log folder took
+    the new name and this did not."""
     if getattr(sys, "frozen", False):
         base = os.environ.get("LOCALAPPDATA") or os.path.dirname(os.path.abspath(sys.executable))
         d = os.path.join(base, "Vibenative", "webview")
@@ -165,11 +175,11 @@ def configure():
 
 
 def _probe() -> str:
-    """Who is on the app's port: "ours" (answers /status with THIS launch's token),
+    """Who is on the app's port: "ours" (answers /api/v1/status with THIS launch's token),
     "foreign" (answers, but not to our token -- someone else's server, e.g. a stale
     dev server left running), or "down" (nothing answers)."""
     try:
-        with urllib.request.urlopen(f"{BASE_URL}/status?k={TOKEN}", timeout=2) as r:  # nosec B310  # fixed 127.0.0.1 loopback probe
+        with urllib.request.urlopen(f"{BASE_URL}/api/v1/status?k={TOKEN}", timeout=2) as r:  # nosec B310  # fixed 127.0.0.1 loopback probe
             return "ours" if r.status == 200 else "foreign"
     except urllib.error.HTTPError:
         return "foreign"  # 403 = not our token; anything else = not our app either
@@ -332,14 +342,13 @@ def _setup_inprocess_logging():
 def _start_inprocess() -> threading.Thread:
     """Create the Flask app and serve it on this launch's port in a daemon thread.
 
-    The pinned port/token/FAKE flag are pushed into the environment BEFORE importing
-    vibenative: config.py and db.py read theirs at import time, and create_app()
-    reads GENRE_TOKEN when it builds the app (vibenative/auth.py) -- so this
-    launch's token is the one every request must carry. The daemon thread dies
+    The pinned port/token/FAKE flag are pushed into the environment BEFORE
+    create_app(), whose Settings.from_env() reads them (vibenative/settings.py) --
+    so this launch's token is the one every request must carry. The daemon thread dies
     automatically when the window closes."""
     os.environ["GENRE_PORT"] = str(PORT)
     os.environ["GENRE_TOKEN"] = TOKEN
-    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG  # so /status can point users to the log
+    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG  # so /api/v1/status can point users to the log
     if FAKE:
         os.environ["FAKE_ANALYZER"] = "1"
     _ensure_std_streams()
@@ -370,7 +379,7 @@ def _start_inprocess() -> threading.Thread:
         preflight.ensure_port_free("127.0.0.1", PORT)
     except SystemExit as e:
         raise RuntimeError(str(e)) from None
-    log.info("Vibenative running in-process -> %s", BASE_URL)
+    log.info("%s running in-process -> %s", PRODUCT_NAME, BASE_URL)
 
     def _run():
         serve.serve(app, "127.0.0.1", PORT)  # waitress (vibenative/serve.py)
@@ -445,7 +454,7 @@ INJECT_JS = r"""
 # the shell is a single self-contained file.
 LOADING_HTML = """
 <!doctype html><meta charset="utf-8">
-<title>Vibedentify</title>
+<title>Vibe Identify</title>
 <!-- Palette taken from the ACTIVE :root in vibenative/static/app.css — the
      "Neon-DJ" theme whose :root overrides the earlier WINAMP SKIN block: chassis
      --bg #06080D, panel --panel #0C1016, hairline --line #1E2632, text
@@ -472,7 +481,7 @@ LOADING_HTML = """
   @keyframes p{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-5px)}}
 </style>
 <div class="box">
-  <h1>Vibedentify</h1>
+  <h1>Vibe Identify</h1>
   <p id="msg">Starting the analysis engine&hellip;</p>
   <div class="lcd"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
 </div>
@@ -497,7 +506,7 @@ def error_html(detail: str) -> str:
             f"above look wrong.</p>"
         )
     return f"""
-<!doctype html><meta charset="utf-8"><title>Vibedentify — can't start</title>
+<!doctype html><meta charset="utf-8"><title>Vibe Identify — can't start</title>
 <!-- Palette taken from the ACTIVE :root in vibenative/static/app.css — the
      "Neon-DJ" theme whose :root overrides the earlier WINAMP SKIN block: chassis
      --bg #06080D, panel --panel #0C1016, hairline --line #1E2632, text
@@ -520,7 +529,7 @@ def error_html(detail: str) -> str:
 </style>
 <div class="box">
   <h1>Couldn't reach the analysis engine</h1>
-  <p>The desktop window is fine, but the Vibedentify backend on
+  <p>The desktop window is fine, but the Vibe Identify backend on
      <code>{BASE_URL}</code> didn't come up within {BOOT_TIMEOUT_S}s.</p>
   <p>{detail}</p>
   {manual}
@@ -543,7 +552,7 @@ class Api:
     def pick_folder(self):
         """Native Windows folder dialog -> Windows path string ('' if cancelled).
 
-        The native /batch route reads ``C:\\...`` paths directly, so the picked path
+        The native /api/v1/batch route reads ``C:\\...`` paths directly, so the picked path
         is handed through unchanged (no WSL /mnt translation anymore)."""
         import webview
 
@@ -607,7 +616,7 @@ ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe.ico")
 
 
 def _own_taskbar_identity():
-    """Tell Windows this process is Vibedentify, not python.
+    """Tell Windows this process is Vibe Identify, not python.
 
     Without an explicit AppUserModelID the taskbar groups the window under the
     host interpreter (pythonw.exe) and shows its icon, and pinning it pins
@@ -619,7 +628,7 @@ def _own_taskbar_identity():
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Vibedentify.App")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("VibeIdentify.App")
     except Exception:
         pass
 
@@ -632,7 +641,7 @@ def main():
     configure()  # pick this launch's port + token before anything uses BASE_URL
     api = Api()
     window = webview.create_window(
-        "Vibedentify",
+        PRODUCT_NAME,
         html=LOADING_HTML,
         js_api=api,
         width=1280,

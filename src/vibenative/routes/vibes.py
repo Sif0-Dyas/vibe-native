@@ -3,23 +3,20 @@ export/import, and similarity (match a track / rank the library) over the cached
 1280-d track embeddings."""
 
 import json
-import sqlite3
-from contextlib import closing
 
+import numpy as np
 from flask import jsonify, request
 
-from ..db import _db_lock, cosine, db, track_embedding, vibe_centroid
+from ..repo import tracks as tracks_repo
+from ..repo import vibes as vibes_repo
+from ..repo.tracks import cosine, track_embedding
+from ..repo.vibes import vibe_centroid
 from ._shared import bp
 
 
 @bp.get("/vibes")
 def vibes_list():
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT v.id, v.name, COUNT(t.hash), COALESCE(v.description, '') FROM vibes v "
-            "LEFT JOIN vibe_tracks t ON t.vibe_id = v.id "
-            "GROUP BY v.id ORDER BY v.name"
-        ).fetchall()
+    rows = vibes_repo.all_with_counts()
     return jsonify([{"id": r[0], "name": r[1], "count": r[2], "description": r[3]} for r in rows])
 
 
@@ -30,22 +27,10 @@ def vibes_create():
     if not name:
         return jsonify({"error": "name required"}), 400
     try:
-        with _db_lock, closing(db()) as conn, conn as c:
-            cur = c.execute("INSERT INTO vibes(name) VALUES(?)", (name,))
-            vid = cur.lastrowid
-        return jsonify({"id": vid, "name": name})
-    except sqlite3.IntegrityError:
+        vid = vibes_repo.create(name)
+    except vibes_repo.NameTaken:
         return jsonify({"error": "a vibe with that name already exists"}), 409
-
-
-def _upsert_vibe_weight(vid, h, weight):
-    """Insert or update a track's weight within a vibe (shared by add + weight)."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute(
-            "INSERT INTO vibe_tracks(vibe_id, hash, weight) VALUES(?,?,?) "
-            "ON CONFLICT(vibe_id, hash) DO UPDATE SET weight=excluded.weight",
-            (vid, h, weight),
-        )
+    return jsonify({"id": vid, "name": name})
 
 
 @bp.post("/vibes/add")
@@ -55,7 +40,7 @@ def vibes_add():
     if not vid or not h:
         return jsonify({"error": "vibe_id and hash required"}), 400
     weight = max(-1.0, min(1.0, float(data.get("weight", 1.0))))
-    _upsert_vibe_weight(vid, h, weight)
+    vibes_repo.set_weight(vid, h, weight)
     return jsonify({"added": True, "weight": weight})
 
 
@@ -73,19 +58,14 @@ def vibes_weight():
     except (TypeError, ValueError):
         return jsonify({"error": "weight must be a number"}), 400
     weight = max(-1.0, min(1.0, weight))
-    _upsert_vibe_weight(vid, h, weight)
+    vibes_repo.set_weight(vid, h, weight)
     return jsonify({"vibe_id": vid, "hash": h, "weight": weight})
 
 
-@bp.post("/vibes/remove")
-def vibes_remove():
+@bp.delete("/vibes/<int:vid>/tracks/<h>")
+def vibes_remove(vid, h):
     """Remove a track from a vibe entirely (drop the membership link)."""
-    data = request.get_json(silent=True) or {}
-    vid, h = data.get("vibe_id"), data.get("hash")
-    if not vid or not h:
-        return jsonify({"error": "vibe_id and hash required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute("DELETE FROM vibe_tracks WHERE vibe_id=? AND hash=?", (vid, h))
+    vibes_repo.remove(vid, h)
     return jsonify({"removed": True})
 
 
@@ -98,9 +78,8 @@ def vibes_rename():
     if not vid or not name:
         return jsonify({"error": "vibe_id and name required"}), 400
     try:
-        with _db_lock, closing(db()) as conn, conn as c:
-            n = c.execute("UPDATE vibes SET name=? WHERE id=?", (name, vid)).rowcount
-    except sqlite3.IntegrityError:
+        n = vibes_repo.rename(vid, name)
+    except vibes_repo.NameTaken:
         return jsonify({"error": "a vibe with that name already exists"}), 409
     if not n:
         return jsonify({"error": "vibe not found"}), 404
@@ -115,53 +94,34 @@ def vibes_reset():
     vid = data.get("vibe_id")
     if not vid:
         return jsonify({"error": "vibe_id required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        n = c.execute("UPDATE vibe_tracks SET weight=1.0 WHERE vibe_id=?", (vid,)).rowcount
+    n = vibes_repo.reset_weights(vid)
     return jsonify({"reset": True, "tracks": n})
 
 
-@bp.post("/vibes/clear")
-def vibes_clear():
+@bp.delete("/vibes/<int:vid>/tracks")
+def vibes_clear(vid):
     """Remove ALL tracks from a vibe (keeps the empty vibe itself)."""
-    data = request.get_json(silent=True) or {}
-    vid = data.get("vibe_id")
-    if not vid:
-        return jsonify({"error": "vibe_id required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        n = c.execute("DELETE FROM vibe_tracks WHERE vibe_id=?", (vid,)).rowcount
+    n = vibes_repo.clear(vid)
     return jsonify({"cleared": True, "removed": n})
 
 
-@bp.post("/vibes/delete")
-def vibes_delete():
+@bp.delete("/vibes/<int:vid>")
+def vibes_delete(vid):
     """Delete a vibe entirely, along with all of its membership links."""
-    data = request.get_json(silent=True) or {}
-    vid = data.get("vibe_id")
-    if not vid:
-        return jsonify({"error": "vibe_id required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        c.execute("DELETE FROM vibe_tracks WHERE vibe_id=?", (vid,))
-        n = c.execute("DELETE FROM vibes WHERE id=?", (vid,)).rowcount
-    return jsonify({"deleted": bool(n)})
+    return jsonify({"deleted": vibes_repo.delete(vid)})
 
 
 @bp.get("/vibes/export")
 def vibes_export():
     """Export every vibe + its member tracks (content hash + weight) as JSON, for
     backup, sharing, or moving to another machine."""
-    with closing(db()) as conn, conn as c:
-        vibes = c.execute("SELECT id, name FROM vibes ORDER BY name").fetchall()
-        out = []
-        for vid, name in vibes:
-            members = c.execute(
-                "SELECT hash, weight FROM vibe_tracks WHERE vibe_id=?", (vid,)
-            ).fetchall()
-            out.append(
-                {
-                    "name": name,
-                    "tracks": [{"hash": h, "weight": 1.0 if w is None else w} for h, w in members],
-                }
-            )
+    out = [
+        {
+            "name": name,
+            "tracks": [{"hash": h, "weight": 1.0 if w is None else w} for h, w in members],
+        }
+        for name, members in vibes_repo.export()
+    ]
     return jsonify({"kind": "vibenative-vibes", "version": 1, "vibes": out})
 
 
@@ -175,33 +135,24 @@ def vibes_import():
     vibes = data.get("vibes")
     if not isinstance(vibes, list):
         return jsonify({"error": "expected a vibenative vibes export (a 'vibes' list)"}), 400
-    created = merged = links = 0
-    with _db_lock, closing(db()) as conn, conn as c:
-        for v in vibes:
-            name = (v.get("name") or "").strip() if isinstance(v, dict) else ""
-            if not name:
+    # Validate the file first; the repo then merges it under one lock.
+    clean = []
+    for v in vibes:
+        name = (v.get("name") or "").strip() if isinstance(v, dict) else ""
+        if not name:
+            continue
+        tracks = []
+        for t in v.get("tracks") or []:
+            h = t.get("hash") if isinstance(t, dict) else None
+            if not h:
                 continue
-            row = c.execute("SELECT id FROM vibes WHERE name=?", (name,)).fetchone()
-            if row:
-                vid = row[0]
-                merged += 1
-            else:
-                vid = c.execute("INSERT INTO vibes(name) VALUES(?)", (name,)).lastrowid
-                created += 1
-            for t in v.get("tracks") or []:
-                h = t.get("hash") if isinstance(t, dict) else None
-                if not h:
-                    continue
-                try:
-                    w = max(-1.0, min(1.0, float(t.get("weight", 1.0))))
-                except (TypeError, ValueError):
-                    w = 1.0
-                c.execute(
-                    "INSERT INTO vibe_tracks(vibe_id, hash, weight) VALUES(?,?,?) "
-                    "ON CONFLICT(vibe_id, hash) DO UPDATE SET weight=excluded.weight",
-                    (vid, h, w),
-                )
-                links += 1
+            try:
+                w = max(-1.0, min(1.0, float(t.get("weight", 1.0))))
+            except (TypeError, ValueError):
+                w = 1.0
+            tracks.append((h, w))
+        clean.append((name, tracks))
+    created, merged, links = vibes_repo.import_(clean)
     return jsonify({"ok": True, "created": created, "merged": merged, "tracks": links})
 
 
@@ -209,13 +160,7 @@ def vibes_import():
 def vibes_members(vid):
     """Member tracks of a vibe with their current weights, for the weight editor.
     Ordered strongest-pull first."""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT vt.hash, vt.weight, t.title, t.filename FROM vibe_tracks vt "
-            "LEFT JOIN tracks t ON t.hash=vt.hash WHERE vt.vibe_id=? "
-            "ORDER BY vt.weight DESC",
-            (vid,),
-        ).fetchall()
+    rows = vibes_repo.members(vid)
     return jsonify(
         [
             {
@@ -242,11 +187,7 @@ def vibes_membership():
     track it draws and looks them up by hash, so anything more would be payload
     it throws away.
     """
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT v.id, v.name, vt.hash FROM vibes v "
-            "LEFT JOIN vibe_tracks vt ON vt.vibe_id = v.id ORDER BY v.name"
-        ).fetchall()
+    rows = vibes_repo.membership()
     out = {}
     for vid, name, h in rows:
         if vid not in out:
@@ -260,10 +201,8 @@ def _vibe_centroids():
     """[(id, name, centroid)] for every vibe that has one. Computed once per
     request: a centroid is a pass over the vibe's members, and asking for it
     per track would repeat that for every row on screen."""
-    with closing(db()) as conn, conn as c:
-        vibes = c.execute("SELECT id, name FROM vibes").fetchall()
     out = []
-    for vid, name in vibes:
+    for vid, name in vibes_repo.ids_and_names():
         cen = vibe_centroid(vid)
         if cen is not None:
             out.append((vid, name, cen))
@@ -295,25 +234,16 @@ def vibes_match_batch():
     request, the centroids computed once, and a track with no embedding is
     simply absent from the answer rather than a 404 for the lot.
     """
-    import numpy as np
-
     from .tags import _hashes_arg
 
     hashes = _hashes_arg()
     if not hashes:
         return jsonify({})
     centroids = _vibe_centroids()
-    out = {}
-    with closing(db()) as conn, conn as c:
-        for i in range(0, len(hashes), 500):
-            chunk = hashes[i : i + 500]
-            q = ",".join("?" * len(chunk))
-            for h, blob in c.execute(
-                f"SELECT hash, embedding FROM tracks WHERE hash IN ({q})",  # nosec B608
-                chunk,
-            ):
-                if blob is not None:
-                    out[h] = _matches(np.frombuffer(blob, dtype=np.float32), centroids)
+    out = {
+        h: _matches(np.frombuffer(blob, dtype=np.float32), centroids)
+        for h, blob in tracks_repo.embeddings_for(hashes).items()
+    }
     return jsonify(out)
 
 
@@ -324,17 +254,8 @@ def vibes_playlist(vid):
     if cen is None:
         return jsonify({"error": "vibe has no member tracks yet"}), 404
     threshold = float(request.args.get("threshold", 0.60))
-    import numpy as np
-
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, filename, payload, embedding FROM tracks "
-            "WHERE embedding IS NOT NULL"
-        ).fetchall()
-        members = {
-            r[0]
-            for r in c.execute("SELECT hash FROM vibe_tracks WHERE vibe_id=?", (vid,)).fetchall()
-        }
+    rows = tracks_repo.embedded_rows()
+    members = vibes_repo.member_hashes(vid)
     out = []
     for h, title, filename, payload, blob in rows:
         emb = np.frombuffer(blob, dtype=np.float32)
@@ -371,8 +292,6 @@ def vibes_description(vid):
     if "description" not in data:
         return jsonify({"error": "description required"}), 400
     text = str(data.get("description") or "").strip()
-    with _db_lock, closing(db()) as conn, conn as c:
-        n = c.execute("UPDATE vibes SET description=? WHERE id=?", (text, vid)).rowcount
-    if not n:
+    if not vibes_repo.set_description(vid, text):
         return jsonify({"error": "vibe not found"}), 404
     return jsonify({"ok": True, "id": vid, "description": text, "length": len(text)})

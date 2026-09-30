@@ -17,11 +17,11 @@ and it never re-analyses anything or changes a genre.
 """
 
 import os
-from contextlib import closing
 from pathlib import Path
 
 from .config import AUDIO_EXTS, log
-from .db import _db_lock, db, file_hash
+from .hashing import file_hash
+from .repo import tracks as tracks_repo
 
 
 def _is_sidecar(path) -> bool:
@@ -40,8 +40,7 @@ def audit(check_exists=True):
     files live on a slow or disconnected network/USB volume: without it an audit
     of a detached drive would report every track as broken after a long stall.
     """
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, title, filename, filepath FROM tracks").fetchall()
+    rows = tracks_repo.path_rows()
     ok, broken, missing = [], [], []
     for h, title, filename, fp in rows:
         name = title or filename or h[:8]
@@ -134,8 +133,7 @@ def repair(folder, dry_run=True, overwrite_broken=True):
     """
     scan = scan_folder(folder)
     found = scan["found"]
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, filepath FROM tracks").fetchall()
+    rows = tracks_repo.hash_filepaths()
 
     fills, fixes, already = [], [], 0
     for h, fp in rows:
@@ -151,8 +149,7 @@ def repair(folder, dry_run=True, overwrite_broken=True):
             already += 1
 
     if not dry_run and (fills or fixes):
-        with _db_lock, closing(db()) as conn, conn as c:
-            c.executemany("UPDATE tracks SET filepath=? WHERE hash=?", fills + fixes)
+        tracks_repo.set_filepaths(fills + fixes)
         log.info("filepaths: %d filled, %d re-pointed from %s", len(fills), len(fixes), folder)
 
     return {

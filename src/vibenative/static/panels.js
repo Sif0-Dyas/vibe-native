@@ -2,15 +2,14 @@
    the sibling-group editor, per-row tags, the external-lookup results panel, the
    vibes panel (+ per-row match holders), and the label-propagation queue.
 
-   LOAD ORDER: load AFTER app.js and player.js (see index.html). These panels call
-   shared helpers from app.js (escapeHtml, styleInfo, colorFor, fmtTime, …) and
+   These panels import shared helpers from app.js (escapeHtml, styleInfo, …) and
    read app.js row state (results, GLOBAL, SIBLING_MAP, SIBLING_GROUPS); the label
    queue drives the shared PLAYER from player.js. In turn app.js's row builder
-   (finishRow) calls renderTags / renderLookup / renderVibeMatches defined here — a
-   normal cross-file reference in the shared <script> scope, declared as globals in
-   eslint.config.js. */
+   (finishRow) imports renderTags / renderLookup / renderVibeMatches from here. */
 
-/* exported renderTags, renderLookup, renderVibeMatches */ // defined here, called from app.js's finishRow (shared scope)
+import { GLOBAL, SIBLING_GROUPS, SIBLING_MAP, escapeHtml, results, styleInfo } from './app.js';
+import { PLAYER } from './player.js';
+
 
 /* ---- Sibling editor ---- */
 const sibPanel = document.getElementById('sib-panel');
@@ -92,7 +91,7 @@ function renderSibEditor(){
 let _allTags = null;   // session cache; invalidated on create
 async function fetchTags(force){
   if (_allTags && !force) return _allTags;
-  const r = await fetch('/tags');
+  const r = await fetch('/api/v1/tags');
   _allTags = r.ok ? await r.json() : [];
   return _allTags;
 }
@@ -102,7 +101,7 @@ async function fetchTags(force){
 async function renderTags(row, hash, mine){
   try {
     const [all, got] = await Promise.all([
-      fetchTags(), mine || fetch(`/tags/for/${hash}`).then(r => r.ok ? r.json() : [])
+      fetchTags(), mine || fetch(`/api/v1/tags/for/${hash}`).then(r => r.ok ? r.json() : [])
     ]);
     mine = got;
     const mineIds = new Set(mine.map(t => t.id));
@@ -124,7 +123,7 @@ async function renderTags(row, hash, mine){
       chip.textContent = t.name;
       chip.title = mineIds.has(t.id) ? 'click to remove' : 'click to add';
       chip.addEventListener('click', async () => {
-        const r = await fetch('/tags/toggle', {method:'POST',
+        const r = await fetch('/api/v1/tags/toggle', {method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({tag_id: t.id, hash})});
         if (r.ok){
@@ -155,12 +154,12 @@ async function renderTags(row, hash, mine){
         const name = inp.value.trim();
         if (!name){ cancel(); return; }
         done = true;
-        const r = await fetch('/tags', {method:'POST',
+        const r = await fetch('/api/v1/tags', {method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({name})});
         if (r.ok){
           const t = await r.json();
-          await fetch('/tags/toggle', {method:'POST',
+          await fetch('/api/v1/tags/toggle', {method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({tag_id: t.id, hash})});
           await fetchTags(true);         // refresh the session tag list
@@ -180,13 +179,13 @@ async function renderTags(row, hash, mine){
 /* Apply a tag by NAME idempotently: create it if new, then toggle it ON only if
    it isn't already on the track (so re-applying never removes it). */
 async function applyTagByName(hash, name){
-  const cr = await fetch('/tags', {method:'POST',
+  const cr = await fetch('/api/v1/tags', {method:'POST',
     headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})});
   if (!cr.ok) return false;
   const t = await cr.json();
-  const mine = await fetch(`/tags/for/${hash}`).then(r => r.ok ? r.json() : []);
+  const mine = await fetch(`/api/v1/tags/for/${hash}`).then(r => r.ok ? r.json() : []);
   if (!mine.some(x => x.id === t.id)){
-    await fetch('/tags/toggle', {method:'POST',
+    await fetch('/api/v1/tags/toggle', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify({tag_id: t.id, hash})});
   }
   await fetchTags(true);
@@ -227,7 +226,7 @@ function renderLookup(panel, row, hash, j){
       chip.querySelector('.lk-train').addEventListener('click', async e => {
         const b = e.target; b.disabled = true;
         try {
-          const r = await fetch('/training/confirm', {method:'POST',
+          const r = await fetch('/api/v1/training/confirm', {method:'POST',
             headers:{'Content-Type':'application/json'}, body: JSON.stringify({hash, genre: it.name})});
           b.textContent = r.ok ? 'trained ✓' : 'failed';
         } catch(_){ b.textContent = 'failed'; }
@@ -253,7 +252,7 @@ document.getElementById('vibe-close').addEventListener('click',
   () => vibePanel.classList.remove('open'));
 
 async function fetchVibes(){
-  const r = await fetch('/vibes');
+  const r = await fetch('/api/v1/vibes');
   return r.ok ? r.json() : [];
 }
 
@@ -270,7 +269,7 @@ async function renderVibePanel(){
   create.querySelector('button').addEventListener('click', async () => {
     const name = inp.value.trim();
     if (!name) return;
-    const r = await fetch('/vibes', {method:'POST',
+    const r = await fetch('/api/v1/vibes', {method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({name})});
     if (r.ok) renderVibePanel();
@@ -290,10 +289,10 @@ async function renderVibePanel(){
   const fileInp = io.querySelector('input');
   io.querySelector('.vibe-export').addEventListener('click', async () => {
     try {
-      const data = await fetch('/vibes/export').then(r => r.json());
+      const data = await fetch('/api/v1/vibes/export').then(r => r.json());
       const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'vibenative-vibes.json'; a.click();
+      a.href = URL.createObjectURL(blob); a.download = 'vibe-identify-vibes.json'; a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } catch (_) { alert('export failed'); }
   });
@@ -303,7 +302,7 @@ async function renderVibePanel(){
     let data;
     try { data = JSON.parse(await f.text()); } catch (_) { alert('That is not a valid JSON file.'); return; }
     try {
-      const r = await fetch('/vibes/import', {method:'POST',
+      const r = await fetch('/api/v1/vibes/import', {method:'POST',
         headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
       const j = await r.json();
       if (!r.ok) { alert(j.error || 'import failed'); return; }
@@ -362,7 +361,7 @@ async function renderVibePanel(){
     });
     noteIn.addEventListener('input', grow);
     rowEl.querySelector('.vibe-note-save').addEventListener('click', async () => {
-      const r = await vpost(`/vibes/${v.id}/description`, {description: noteIn.value});
+      const r = await vpost(`/api/v1/vibes/${v.id}/description`, {description: noteIn.value});
       if (r.ok) {
         const j = await r.json();
         v.description = j.description;
@@ -374,20 +373,20 @@ async function renderVibePanel(){
       const name = window.prompt('Rename vibe:', v.name);
       if (name === null) return;
       const n = name.trim(); if (!n || n === v.name) return;
-      const r = await vpost('/vibes/rename', {vibe_id: v.id, name: n});
+      const r = await vpost('/api/v1/vibes/rename', {vibe_id: v.id, name: n});
       if (r.ok) renderVibePanel(); else { const j = await r.json(); alert(j.error || 'rename failed'); }
     });
     rowEl.querySelector('.vibe-reset').addEventListener('click', async () => {
       if (!window.confirm(`Reset all track weights in "${v.name}" to 1.0?`)) return;
-      await vpost('/vibes/reset', {vibe_id: v.id}); renderVibePanel();
+      await vpost('/api/v1/vibes/reset', {vibe_id: v.id}); renderVibePanel();
     });
     rowEl.querySelector('.vibe-clear').addEventListener('click', async () => {
       if (!window.confirm(`Remove ALL ${v.count} track${v.count===1?'':'s'} from "${v.name}"?\n\nThe vibe stays; the tracks are just unlinked from it.`)) return;
-      await vpost('/vibes/clear', {vibe_id: v.id}); renderVibePanel();
+      await fetch(`/api/v1/vibes/${v.id}/tracks`, {method:'DELETE'}); renderVibePanel();
     });
     rowEl.querySelector('.vibe-del').addEventListener('click', async () => {
       if (!window.confirm(`Delete the vibe "${v.name}" entirely?\n\nThis removes the vibe and its membership. Your tracks and their analyses are untouched.`)) return;
-      await vpost('/vibes/delete', {vibe_id: v.id}); renderVibePanel();
+      await fetch(`/api/v1/vibes/${v.id}`, {method:'DELETE'}); renderVibePanel();
     });
 
     // weight editor: a -1..+1 slider per member track (Rocchio feedback)
@@ -398,7 +397,7 @@ async function renderVibePanel(){
       if (vwWrap.style.display !== 'none'){ vwWrap.style.display = 'none'; return; }
       vwWrap.style.display = '';
       vwWrap.innerHTML = '<div class="vw-track">loading members…</div>';
-      const r = await fetch(`/vibes/${v.id}/members`);
+      const r = await fetch(`/api/v1/vibes/${v.id}/members`);
       const members = r.ok ? await r.json() : [];
       if (!members.length){
         vwWrap.innerHTML = '<div class="vw-track">no tracks yet — add some with “+ vibe” on a track.</div>';
@@ -423,13 +422,11 @@ async function renderVibePanel(){
         };
         paint();
         slider.addEventListener('input', paint);
-        slider.addEventListener('change', () => fetch('/vibes/weight', {method:'POST',
+        slider.addEventListener('change', () => fetch('/api/v1/vibes/weight', {method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({vibe_id: v.id, hash: t.hash, weight: parseFloat(slider.value)})}));
         d.querySelector('.vw-rm').addEventListener('click', async () => {
-          await fetch('/vibes/remove', {method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({vibe_id: v.id, hash: t.hash})});
+          await fetch(`/api/v1/vibes/${v.id}/tracks/${t.hash}`, {method:'DELETE'});
           d.remove();
         });
         vwWrap.appendChild(d);
@@ -443,7 +440,7 @@ async function renderVibePanel(){
       if (plWrap.style.display === 'none'){
         plWrap.style.display = '';
         plWrap.innerHTML = '<div class="pl-track">scanning database…</div>';
-        const r = await fetch(`/vibes/${v.id}/playlist?threshold=0.60`);
+        const r = await fetch(`/api/v1/vibes/${v.id}/playlist?threshold=0.60`);
         if (!r.ok){ const j = await r.json(); plWrap.innerHTML =
           `<div class="pl-track">${escapeHtml(j.error||'failed')}</div>`; return; }
         const tracks = await r.json();
@@ -501,7 +498,7 @@ async function renderVibeMatches(row, hash, found){
     // position in the `.rowchips` strip is set by finishRow, and rebuilding it
     // dropped the vibes below the tags every time a thumb was pressed.
     if (!found){
-      const r = await fetch(`/vibes/match/${hash}`);
+      const r = await fetch(`/api/v1/vibes/match/${hash}`);
       found = r.ok ? await r.json() : [];
     }
     const holder = row.querySelector('.vibematches') || document.createElement('div');
@@ -510,7 +507,7 @@ async function renderVibeMatches(row, hash, found){
     async function feedback(vid, weight){
       // per-song 👍/👎: sets THIS track's weight inside that vibe (Rocchio),
       // then re-ranks -- 👍 pulls the vibe toward the song, 👎 pushes it away.
-      await fetch('/vibes/weight', {method:'POST',
+      await fetch('/api/v1/vibes/weight', {method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({vibe_id: vid, hash, weight})});
       renderVibeMatches(row, hash);
@@ -543,7 +540,7 @@ async function renderVibeMatches(row, hash, found){
     addBtn.textContent = '+ vibe';
     addBtn.title = 'add this track to a vibe';
     async function addToVibe(vid){
-      await fetch('/vibes/add', {method:'POST',
+      await fetch('/api/v1/vibes/add', {method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({vibe_id: vid, hash})});
       renderVibeMatches(row, hash);      // refresh match % (rebuilds the holder)
@@ -572,7 +569,7 @@ async function renderVibeMatches(row, hash, found){
         if (e.key !== 'Enter') return;
         const name = nv.value.trim();
         if (!name) return;
-        const cr = await fetch('/vibes', {method:'POST',
+        const cr = await fetch('/api/v1/vibes', {method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({name})});
         if (!cr.ok){ const j = await cr.json().catch(() => ({})); nv.title = j.error || 'failed'; nv.classList.add('err'); return; }
@@ -607,7 +604,7 @@ async function renderVibeMatches(row, hash, found){
   async function loadGenreOptions(){
     if (genreOpts) return genreOpts;
     try {
-      const data = await fetch('/map').then(r => r.json());
+      const data = await fetch('/api/v1/map').then(r => r.json());
       const set = new Set();
       for (const n of (data.nodes || [])) if (n.style) set.add(n.style);
       genreOpts = [...set].sort();
@@ -637,7 +634,7 @@ async function renderVibeMatches(row, hash, found){
       if (!isActive()){
         if (PLAYER.ctl) PLAYER.ctl.stopVisual();
         PLAYER.ctl = ctl;
-        PLAYER.audio.src = '/audio/' + hash;
+        PLAYER.audio.src = '/api/v1/audio/' + hash;
       }
       try { await PLAYER.audio.play(); } catch(_){ /* 'error' event drives the UI */ }
       ctl.render();
@@ -669,11 +666,11 @@ async function renderVibeMatches(row, hash, found){
       } catch(_){ yes.disabled = no.disabled = false; return false; }
     };
     yes.addEventListener('click', async () => {
-      if (!await post('/training/confirm')) return;
+      if (!await post('/api/v1/training/confirm')) return;
       confirmed++; updateCount(genre); d.classList.add('done-yes'); setTimeout(() => d.remove(), 180);
     });
     no.addEventListener('click', async () => {
-      if (!await post('/training/reject')) return;
+      if (!await post('/api/v1/training/reject')) return;
       rejected++; updateCount(genre); d.classList.add('done-no'); setTimeout(() => d.remove(), 180);
     });
     acts.appendChild(yes); acts.appendChild(no);
@@ -686,7 +683,7 @@ async function renderVibeMatches(row, hash, found){
     const queue = body.querySelector('#lbl-queue');
     queue.innerHTML = `<div class="flag-note">ranking your library…</div>`;
     let data;
-    try { data = await fetch(`/training/candidates/${encodeURIComponent(genre)}?limit=25`).then(r => r.json()); }
+    try { data = await fetch(`/api/v1/training/candidates/${encodeURIComponent(genre)}?limit=25`).then(r => r.json()); }
     catch(_){ queue.innerHTML = `<div class="flag-note">failed to load candidates</div>`; return; }
     if (data.error){ queue.innerHTML = `<div class="flag-note">${escapeHtml(data.error)}</div>`; return; }
     if (data.message){ queue.innerHTML = `<div class="flag-note">${escapeHtml(data.message)}</div>`; return; }
@@ -769,3 +766,5 @@ async function renderVibeMatches(row, hash, found){
     for (const p of open) p.classList.remove('open');
   });
 })();
+
+export { renderLookup, renderTags, renderVibeMatches };

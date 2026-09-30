@@ -160,19 +160,19 @@ def test_read_with_steps_nudges_the_read_that_is_actually_in_effect():
 
 
 def test_adjustments_outrank_automatic_reads_but_not_an_override():
-    from vibenative.routes._shared import _dominant_style
+    from vibenative.style import dominant_style
 
     base = {"salience": REAL}
-    assert _dominant_style(base)[0] == "Techno"
+    assert dominant_style(base) == "Techno"
     adjusted = dict(base, weights={"House": 3})
-    assert _dominant_style(adjusted)[0] == "House"
-    assert _dominant_style(dict(adjusted, override="Trance"))[0] == "Trance"
+    assert dominant_style(adjusted) == "House"
+    assert dominant_style(dict(adjusted, override="Trance")) == "Trance"
 
 
 def test_keystone_follows_the_adjustment_too():
     """The map and the label must agree about a track you just adjusted -- and
     the keystone has to roll up, so pushing Deep House reads as House."""
-    from vibenative import keystone as K
+    from vibenative.taxonomy import classify as K
 
     p = {"salience": [{"style": "Techno", "score": 0.7}, {"style": "Deep House", "score": 0.3}]}
     assert K.classify(p)["keystones"][0] == "Techno"
@@ -195,7 +195,7 @@ def seed(payload, h="wt1"):
 
 def test_get_returns_the_read_and_the_vocabulary(client):
     h = seed({"salience": REAL})
-    body = client.get(f"/weights/{h}").get_json()
+    body = client.get(f"/api/v1/weights/{h}").get_json()
     assert body["steps"] == {}
     assert body["adjusted"] == body["base"]  # untouched track: nothing bent
     # The UI must not hardcode the scale or the wording.
@@ -205,24 +205,24 @@ def test_get_returns_the_read_and_the_vocabulary(client):
 
 def test_post_stores_steps_and_returns_the_new_blend(client):
     h = seed({"salience": REAL})
-    body = client.post(f"/weights/{h}", json={"steps": {"House": 3}}).get_json()
+    body = client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 3}}).get_json()
     assert body["steps"] == {"House": 3}
     assert body["adjusted"][0]["style"] == "House"
-    assert client.get(f"/weights/{h}").get_json()["steps"] == {"House": 3}
+    assert client.get(f"/api/v1/weights/{h}").get_json()["steps"] == {"House": 3}
 
 
 def test_the_analysed_read_survives_underneath(client):
     """Adjusting must be undoable, which means never writing over salience."""
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"steps": {"House": 3}})
-    assert client.get(f"/weights/{h}").get_json()["base"] == REAL
+    client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 3}})
+    assert client.get(f"/api/v1/weights/{h}").get_json()["base"] == REAL
 
 
 def test_clearing_restores_the_model_read(client):
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"steps": {"House": 3}})
-    client.post(f"/weights/{h}", json={"steps": {}})
-    body = client.get(f"/weights/{h}").get_json()
+    client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 3}})
+    client.post(f"/api/v1/weights/{h}", json={"steps": {}})
+    body = client.get(f"/api/v1/weights/{h}").get_json()
     assert body["steps"] == {}
     assert body["adjusted"] == REAL
 
@@ -231,34 +231,36 @@ def test_zero_steps_are_dropped_not_stored(client):
     """ "No opinion" and "explicitly neutral" are the same thing, so the payload
     must not accumulate dead entries as the user toggles."""
     h = seed({"salience": REAL})
-    body = client.post(f"/weights/{h}", json={"steps": {"House": 0, "Techno": 2}}).get_json()
+    body = client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 0, "Techno": 2}}).get_json()
     assert body["steps"] == {"Techno": 2}
 
 
 def test_out_of_range_and_junk_steps_are_survivable(client):
     h = seed({"salience": REAL})
     body = client.post(
-        f"/weights/{h}", json={"steps": {"House": 99, "Techno": "x", "  ": 3}}
+        f"/api/v1/weights/{h}", json={"steps": {"House": 99, "Techno": "x", "  ": 3}}
     ).get_json()
     assert body["steps"] == {"House": W.MAX_STEP}
 
 
 def test_bad_requests_are_rejected(client):
     h = seed({"salience": REAL})
-    assert client.post(f"/weights/{h}", json={"steps": "House"}).status_code == 400
-    assert client.post(f"/weights/{h}", json={}).status_code == 400
-    assert client.get("/weights/nosuchtrack").status_code == 404
-    assert client.post("/weights/nosuchtrack", json={"steps": {"House": 1}}).status_code == 404
+    assert client.post(f"/api/v1/weights/{h}", json={"steps": "House"}).status_code == 400
+    assert client.post(f"/api/v1/weights/{h}", json={}).status_code == 400
+    assert client.get("/api/v1/weights/nosuchtrack").status_code == 404
+    assert (
+        client.post("/api/v1/weights/nosuchtrack", json={"steps": {"House": 1}}).status_code == 404
+    )
 
 
 def test_the_map_shows_the_adjusted_genre(client):
     """The whole point: the adjustment has to reach the view the user is looking
     at, not just the endpoint that stored it."""
     h = seed({"salience": REAL})
-    node = next(n for n in client.get("/map").get_json()["nodes"] if n["hash"] == h)
+    node = next(n for n in client.get("/api/v1/map").get_json()["nodes"] if n["hash"] == h)
     assert node["style"] == "Techno"
-    client.post(f"/weights/{h}", json={"steps": {"House": 3}})
-    node = next(n for n in client.get("/map").get_json()["nodes"] if n["hash"] == h)
+    client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 3}})
+    node = next(n for n in client.get("/api/v1/map").get_json()["nodes"] if n["hash"] == h)
     assert node["style"] == "House"
 
 
@@ -335,35 +337,35 @@ def test_read_with_steps_applies_a_drop_with_no_steps_at_all():
 
 
 def test_a_dropped_top_read_changes_what_the_track_is():
-    from vibenative.routes._shared import _dominant_style
+    from vibenative.style import dominant_style
 
     p = {"salience": REAL}
-    assert _dominant_style(p)[0] == "Techno"
-    assert _dominant_style(dict(p, drops=["Techno"]))[0] == "House"
+    assert dominant_style(p) == "Techno"
+    assert dominant_style(dict(p, drops=["Techno"])) == "House"
 
 
 # --- the HTTP surface ----------------------------------------------------------
 def test_post_stores_drops_and_returns_the_new_blend(client):
     h = seed({"salience": REAL})
-    body = client.post(f"/weights/{h}", json={"drops": ["Techno"]}).get_json()
+    body = client.post(f"/api/v1/weights/{h}", json={"drops": ["Techno"]}).get_json()
     assert body["drops"] == ["Techno"]
     assert body["adjusted"][0]["style"] == "House"
-    assert client.get(f"/weights/{h}").get_json()["drops"] == ["Techno"]
+    assert client.get(f"/api/v1/weights/{h}").get_json()["drops"] == ["Techno"]
 
 
 def test_the_removed_genre_is_still_named_in_base_so_it_can_come_back(client):
     """Hiding it from `base` too would make a removal the one edit with no way
     back -- the panel needs the name to offer it."""
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
-    assert "Techno" in [e["style"] for e in client.get(f"/weights/{h}").get_json()["base"]]
+    client.post(f"/api/v1/weights/{h}", json={"drops": ["Techno"]})
+    assert "Techno" in [e["style"] for e in client.get(f"/api/v1/weights/{h}").get_json()["base"]]
 
 
 def test_restoring_a_drop_restores_the_model_read(client):
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
-    client.post(f"/weights/{h}", json={"drops": []})
-    body = client.get(f"/weights/{h}").get_json()
+    client.post(f"/api/v1/weights/{h}", json={"drops": ["Techno"]})
+    client.post(f"/api/v1/weights/{h}", json={"drops": []})
+    body = client.get(f"/api/v1/weights/{h}").get_json()
     assert body["drops"] == []
     assert body["adjusted"] == REAL
 
@@ -372,9 +374,9 @@ def test_each_kind_of_edit_survives_the_other_being_sent(client):
     """Removing a genre must not silently discard the steps set on the others,
     which is what a whole-payload write would have done."""
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"steps": {"House": 2}})
-    client.post(f"/weights/{h}", json={"drops": ["Tech Trance"]})
-    body = client.get(f"/weights/{h}").get_json()
+    client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 2}})
+    client.post(f"/api/v1/weights/{h}", json={"drops": ["Tech Trance"]})
+    body = client.get(f"/api/v1/weights/{h}").get_json()
     assert body["steps"] == {"House": 2}
     assert body["drops"] == ["Tech Trance"]
 
@@ -383,20 +385,20 @@ def test_dropping_a_genre_clears_the_step_already_stored_on_it(client):
     """Otherwise the old judgement comes back the moment it is restored -- one
     the user made before deciding the genre wasn't on the track at all."""
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"steps": {"House": 3}})
-    client.post(f"/weights/{h}", json={"drops": ["House"]})
-    assert client.get(f"/weights/{h}").get_json()["steps"] == {}
+    client.post(f"/api/v1/weights/{h}", json={"steps": {"House": 3}})
+    client.post(f"/api/v1/weights/{h}", json={"drops": ["House"]})
+    assert client.get(f"/api/v1/weights/{h}").get_json()["steps"] == {}
 
 
 def test_drops_only_requests_are_accepted_but_empty_ones_are_not(client):
     h = seed({"salience": REAL})
-    assert client.post(f"/weights/{h}", json={"drops": ["House"]}).status_code == 200
-    assert client.post(f"/weights/{h}", json={"drops": "House"}).status_code == 400
-    assert client.post(f"/weights/{h}", json={}).status_code == 400
+    assert client.post(f"/api/v1/weights/{h}", json={"drops": ["House"]}).status_code == 200
+    assert client.post(f"/api/v1/weights/{h}", json={"drops": "House"}).status_code == 400
+    assert client.post(f"/api/v1/weights/{h}", json={}).status_code == 400
 
 
 def test_the_map_shows_a_track_with_its_top_genre_removed(client):
     h = seed({"salience": REAL})
-    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
-    node = next(n for n in client.get("/map").get_json()["nodes"] if n["hash"] == h)
+    client.post(f"/api/v1/weights/{h}", json={"drops": ["Techno"]})
+    node = next(n for n in client.get("/api/v1/map").get_json()["nodes"] if n["hash"] == h)
     assert node["style"] == "House"

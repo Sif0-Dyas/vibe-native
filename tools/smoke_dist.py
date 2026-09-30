@@ -11,7 +11,7 @@ and finding it out from whoever you sent the build to.
     python tools/smoke_dist.py                 # after tools/build_exe.py
     python tools/smoke_dist.py --timeout 90    # slower machine / cold antivirus scan
 
-Checks: the process stays up, Flask serves on the loopback port, /status reports the
+Checks: the process stays up, Flask serves on the loopback port, /api/v1/status reports the
 packaged version, ffmpeg and ffprobe resolve *from the bundle*, the ONNX providers
 list is non-empty, and the UI page and its static assets are served out of the
 bundle. GPU absence is reported, not failed -- the target may genuinely lack one.
@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import socket
 import subprocess  # nosec B404  # launches the just-built exe with a fixed arg list, no shell
@@ -43,6 +44,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+from version import pyproject_version  # noqa: E402
+
 DIST = ROOT / "dist" / "Vibe Identify"
 EXE = DIST / "Vibe Identify.exe"
 
@@ -97,6 +101,48 @@ def _get(url: str, timeout: float = 5.0):
         return e.code, e.read()
     except (urllib.error.URLError, OSError, TimeoutError) as e:
         return None, str(e)
+
+
+_IMPORT = re.compile(r"""(?:^|\n)\s*import\s+(?:[^'";]*?\s+from\s+)?['"]\./([\w-]+\.js)['"]""")
+
+
+def _check_modules(base: str, token: str, page: bytes) -> None:
+    """The frontend is ES modules: the page loads main.js, which imports the rest.
+    A module the bundle doesn't serve breaks the whole page (and the desktop shell
+    shows a blank window), so every module reachable from main.js is fetched. And
+    every name the shell's INJECT_JS calls on window must be put there by main.js --
+    the only place the page assigns window names -- or the native folder picker
+    silently does nothing."""
+    check(
+        "the page loads main.js as a module",
+        b'type="module" src="/static/main.js"' in page,
+        True,
+    )
+    seen, todo, failed = set(), ["main.js"], []
+    main_js = ""
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        status, body = _get(f"{base}/static/{name}?k={token}")
+        if status != 200:
+            failed.append(f"{name}: {status}")
+            continue
+        text = body.decode("utf-8", "replace")
+        if name == "main.js":
+            main_js = text
+        todo += _IMPORT.findall(text)
+    note("modules served", len(seen))
+    check("every module main.js reaches is served", failed, [])
+    shell = (ROOT / "desktop" / "genre_app.pyw").read_text(encoding="utf-8")
+    inject = re.search(r'INJECT_JS = r"""(.*?)"""', shell, re.S)
+    wanted = sorted(
+        set(re.findall(r"\bwindow\.(\w+)\(", inject.group(1) if inject else "")) - {"pywebview"}
+    )
+    note("window names the shell calls", wanted)
+    missing = [n for n in wanted if not re.search(rf"\bwindow\.{n}\s*=", main_js)]
+    check("main.js puts every one on window", missing, [])
 
 
 def _make_tagged_track(path: Path, title: str, seconds: int = 12) -> bool:
@@ -205,9 +251,16 @@ def main() -> int:
         sorted(p.name for p in models.glob("*.onnx")) if models.is_dir() else [],
         lambda got: len(got) >= 3,
     )
-    # enao.json is excluded in the spec (not ours to ship; nothing reads it at
-    # runtime) -- a stray copy anywhere in the bundle is a release blocker.
+    # enao.json is excluded in the spec (not ours to ship) and the module that read
+    # it no longer exists -- a stray copy of either anywhere in the bundle is a
+    # release blocker.
+    check(
+        "vibenative.enao no longer exists",
+        (ROOT / "src" / "vibenative" / "enao.py").exists(),
+        False,
+    )
     check("enao.json is not in the bundle", [str(p) for p in DIST.rglob("enao.json")], [])
+    check("no enao module in the bundle", [str(p) for p in DIST.rglob("enao.py*")], [])
     genres = next(DIST.rglob("genres_electronic.json"), None)
     check("genres_electronic.json is in the bundle", genres is not None, True)
     if genres is not None:
@@ -252,13 +305,13 @@ def main() -> int:
                         f"before serving a request."
                     )
                     return 1
-                status, body = _get(f"{base}/status?k={token}")
+                status, body = _get(f"{base}/api/v1/status?k={token}")
                 if status == 200:
                     break
                 time.sleep(1.0)
 
             print("backend:")
-            check("answers /status within the timeout", status, 200)
+            check("answers /api/v1/status within the timeout", status, 200)
             if status != 200:
                 print(
                     f"\nFAIL: never answered ({body!r}). The app started but its backend "
@@ -268,8 +321,7 @@ def main() -> int:
 
             s = json.loads(body)
             print("what the bundle provides:")
-            check("reports a version", bool(s.get("version")), True)
-            note("version", s.get("version"))
+            check("reports pyproject.toml's version", s.get("version"), pyproject_version())
             check("ffmpeg resolves with nothing on PATH", s.get("ffmpeg"), True)
             check("ffprobe resolves with nothing on PATH", s.get("ffprobe"), True)
             # and it is the bundled copy, not something the machine happened to have
@@ -307,7 +359,7 @@ def main() -> int:
             # generated track and see its title come back.
             track = Path(tmp) / "smoke track.mp3"
             if _make_tagged_track(track, "Smoke Test Title"):
-                st, resp = _post_file(f"{base}/analyze?k={token}", track, timeout=120)
+                st, resp = _post_file(f"{base}/api/v1/analyze?k={token}", track, timeout=120)
                 check("analyses an uploaded file", st, 200)
                 if st == 200:
                     j = json.loads(resp)
@@ -324,6 +376,7 @@ def main() -> int:
             check("the page is the app", b"Vibe" in (ui or b""), True)
             css_status, _ = _get(f"{base}/static/app.css?k={token}")
             check("serves static assets from the bundle", css_status, 200)
+            _check_modules(base, token, ui or b"")
 
             print(
                 "\n"

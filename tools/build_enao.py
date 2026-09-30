@@ -5,7 +5,8 @@ Every Noise at Once (https://everynoise.com) plots ~6,300 Spotify genres on a
 atmospheric -> spiky and bouncy -- and each genre's colour *is* its position
 encoded as RGB. That gives us a fixed, human-meaningful coordinate system and a
 canonical palette for genre names, which the Discogs-400 label set alone can't
-provide. See ``vibenative.enao`` for how the axes were verified.
+provide. (The app's reader, ``vibenative.enao``, has been removed; the file
+this builds is local reference data only -- see PROVENANCE.md #6.)
 
 The site has no API, no bulk download, and its robots.txt is ``Disallow: /``, so
 this script **never touches the network**. You save the page once from a browser

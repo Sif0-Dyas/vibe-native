@@ -12,6 +12,10 @@
 
    The side panel remains for quick add/remove while working through tracks;
    this tab is the place to sit down and describe them. */
+
+import { applyFolds, nameHue, statRowsHtml, vibeWaveSvg, wireTileToggle } from './app.js';
+let vibeLoadVibes; // assigned below, where the file sets it up
+
 (function () {
   var body;
 
@@ -53,7 +57,7 @@
       '<b>Why the notes matter.</b> In six months you will not remember why a track ' +
       'went into a vibe. The notes box on each card is for exactly that: what belongs, ' +
       'what does not, and when you would play it.<br><br>' +
-      '<b>What Vibedentify does with it.</b> Once a vibe has about ten tracks, it learns ' +
+      '<b>What Vibe Identify does with it.</b> Once a vibe has about ten tracks, it learns ' +
       'the sound they have in common and can go find more of it in your library. That is ' +
       'why a card says <span class="vib-state warn">growing</span> until then &mdash; not ' +
       'a rule, just the point where the suggestions start being worth reading.' +
@@ -68,7 +72,7 @@
     var top = sorted.length ? sorted[0] : null;
     var described = vibes.filter(function (v) { return (v.description || '').trim(); }).length;
 
-    var list = window.statRowsHtml(sorted.map(function (v) {
+    var list = statRowsHtml(sorted.map(function (v) {
       return { name: v.name, count: v.count, color: vibeColor(v.name) };
     }), total);
 
@@ -98,7 +102,7 @@
     return '<div class="gen-key vib-key" data-id="' + v.id + '" style="--gen-col:' + col + '">' +
       '<button class="gen-tile" type="button">' +
         '<span class="gen-wavebox" style="border-color:' + col + '55">' +
-          window.vibeWaveSvg(col, v.name) + '</span>' +
+          vibeWaveSvg(col, v.name) + '</span>' +
         '<span class="gen-titles">' +
           '<span class="gen-name">' + esc(v.name) + '</span>' +
           '<span class="gen-level" title="A category you created yourself">vibe</span>' +
@@ -146,7 +150,7 @@
       'merges rather than replaces: a vibe with a name you already have gains the imported ' +
       'tracks instead of overwriting them.</div>' +
       '<div class="opt-actions">' +
-        '<a class="gen-exp" href="/vibes/export" download="vibes.json">export all vibes</a>' +
+        '<a class="gen-exp" href="/api/v1/vibes/export" download="vibes.json">export all vibes</a>' +
         '<button id="vib-imp">import from a file</button>' +
         '<input type="file" id="vib-imp-file" accept=".json,application/json" hidden>' +
       '</div>' +
@@ -177,7 +181,7 @@
       '<h2 class="gen-sechd">Library actions<span>backups</span></h2>' +
       backupCard();
     wire();
-    window.applyFolds(body);
+    applyFolds(body);
   }
 
   function wire() {
@@ -187,7 +191,7 @@
       var el = document.getElementById('vib-new');
       var name = el.value.trim();
       if (!name) { topMsg.innerHTML = '<b class="opt-bad">Type a name first.</b>'; return; }
-      fetch('/vibes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      fetch('/api/v1/vibes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name: name }) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
@@ -197,7 +201,7 @@
             return;
           }
           el.value = '';
-          window.vibeLoadVibes(name);
+          vibeLoadVibes(name);
         }).catch(function () {
           topMsg.innerHTML = '<b class="opt-bad">could not create</b>';
         });
@@ -214,13 +218,13 @@
         try { m = JSON.parse(txt); } catch (_) {
           impMsg.innerHTML = '<b class="opt-bad">That is not a vibes file.</b>'; return;
         }
-        return fetch('/vibes/import', {
+        return fetch('/api/v1/vibes/import', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m)
         }).then(function (r) { return r.json(); }).then(function (j) {
           if (j.error) { impMsg.innerHTML = '<b class="opt-bad">' + esc(j.error) + '</b>'; return; }
           impMsg.innerHTML = '<b class="opt-good">imported — ' + j.created + ' new, ' +
             j.merged + ' merged, ' + j.tracks + ' track link(s)</b>';
-          window.vibeLoadVibes();
+          vibeLoadVibes();
         });
       }).catch(function () { impMsg.innerHTML = '<b class="opt-bad">import failed</b>'; });
       impFile.value = '';
@@ -228,7 +232,7 @@
 
     // Select a tile to expand it, one at a time, matching the Genres tab
     // (wireTileToggle, app.js).
-    window.wireTileToggle(body, body.querySelectorAll('.vib-key .gen-tile'), openCard);
+    wireTileToggle(body, body.querySelectorAll('.vib-key .gen-tile'), openCard);
   }
 
   /* Everything that needs the card to be visible first: sizing the textarea to
@@ -247,7 +251,7 @@
     ta.oninput = grow;
 
     cardEl.querySelector('.vib-save').onclick = function () {
-      fetch('/vibes/' + id + '/description', {
+      fetch('/api/v1/vibes/' + id + '/description', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: ta.value })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -259,12 +263,12 @@
     cardEl.querySelector('.vib-rename').onclick = function () {
       var next = window.prompt('New name for this vibe:', name);
       if (!next || !next.trim() || next.trim() === name) return;
-      fetch('/vibes/rename', {
+      fetch('/api/v1/vibes/rename', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vibe_id: Number(id), name: next.trim() })
       }).then(function (r) { return r.json(); }).then(function (j) {
         if (j.error) { actMsg.innerHTML = '<b class="opt-bad">' + esc(j.error) + '</b>'; return; }
-        window.vibeLoadVibes(j.name);
+        vibeLoadVibes(j.name);
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">rename failed</b>'; });
     };
 
@@ -272,11 +276,8 @@
       if (!window.confirm('Remove every track from "' + name + '"?\n\nThe vibe itself and its ' +
           'notes are kept, and no music files are touched — only the list of which tracks ' +
           'belong to it.')) return;
-      fetch('/vibes/clear', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vibe_id: Number(id) })
-      }).then(function (r) { return r.json(); }).then(function () {
-        window.vibeLoadVibes(name);
+      fetch('/api/v1/vibes/' + Number(id) + '/tracks', { method: 'DELETE' }).then(function (r) { return r.json(); }).then(function () {
+        vibeLoadVibes(name);
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">could not clear</b>'; });
     };
 
@@ -284,16 +285,13 @@
       if (!window.confirm('Delete the vibe "' + name + '"?\n\nIts notes and its list of tracks ' +
           'are gone for good. Your music files are not touched, and the tracks stay in your ' +
           'library.')) return;
-      fetch('/vibes/delete', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vibe_id: Number(id) })
-      }).then(function (r) { return r.json(); }).then(function () {
-        window.vibeLoadVibes();
+      fetch('/api/v1/vibes/' + Number(id), { method: 'DELETE' }).then(function (r) { return r.json(); }).then(function () {
+        vibeLoadVibes();
       }).catch(function () { actMsg.innerHTML = '<b class="opt-bad">could not delete</b>'; });
     };
 
     var members = cardEl.querySelector('.vib-members');
-    fetch('/vibes/' + id + '/members').then(function (r) { return r.json(); })
+    fetch('/api/v1/vibes/' + id + '/members').then(function (r) { return r.json(); })
       .then(function (list) {
         var items = (list || []).slice(0, 200);
         if (!items.length) {
@@ -314,11 +312,11 @@
 
   /* `keep` re-opens the named card after a reload, so renaming or clearing a
      vibe doesn't drop you back at the top of the page. */
-  window.vibeLoadVibes = function (keep) {
+  vibeLoadVibes = function (keep) {
     body = document.getElementById('vib-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
-    fetch('/vibes').then(function (r) { return r.json(); }).then(function (vibes) {
+    fetch('/api/v1/vibes').then(function (r) { return r.json(); }).then(function (vibes) {
       render(vibes || []);
       if (!keep) return;
       var tiles = body.querySelectorAll('.vib-key');
@@ -334,3 +332,5 @@
     });
   };
 })();
+
+export { vibeLoadVibes };

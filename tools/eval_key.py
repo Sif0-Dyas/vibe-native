@@ -152,7 +152,7 @@ def load_index(dataset: str = "oracle") -> dict:
         return out
     if dataset == "library":
         sys.path.insert(0, str(ROOT / "src"))
-        from vibenative.db import key_labels_all
+        from vibenative.repo.keys import key_labels_all
 
         out = {}
         for h, filepath, key, scale in key_labels_all():

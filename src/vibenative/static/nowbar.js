@@ -7,11 +7,17 @@
    AUDIO whenever a track arrives or leaves -- that is what shows and hides the
    strip's listening switch.
 
-   LOAD ORDER: after app.js (needs fmtTime), player.js (needs PLAYER) and
-   audio.js (needs AUDIO); before map.js, which calls the globals this exposes:
-     window.playHash(hash, meta)  — play a server track by hash (Map / playlist)
-     window.__nowNext             — optional; playlist.js sets it to auto-advance
-     window.nowClearQueue         — hook playlist.js overrides to stop queue play */
+   Imports fmtTime (app.js), PLAYER (player.js) and AUDIO (audio.js). Exports:
+     playHash(hash, meta)  — play a server track by hash (Map / playlist)
+     nowShowQueueControls  — playlist.js shows prev/next while a queue plays
+   and calls the queue hooks playlist.js sets in hooks.js (nowNext / nowPrev /
+   nowClearQueue), when set. */
+
+import { hooks } from './hooks.js';
+import { fmtTime } from './app.js';
+import { FSH, HASH_FILES, OBJ_URLS, PLAYER } from './player.js';
+import { AUDIO, wireGotoTitle } from './audio.js';
+let playHash, nowShowQueueControls; // assigned below, where the file sets it up
 
 (function () {
   const bar = document.getElementById('nowbar');
@@ -44,7 +50,7 @@
   // auto-sample stands down while you are listening to a track, so you arrive
   // at the star still hearing it rather than being cut off by a preview of the
   // thing you already have on.
-  const syncGoto = window.wireGotoTitle(el.title, 'nb-goto', () => PLAYER.now && PLAYER.now.hash);
+  const syncGoto = wireGotoTitle(el.title, 'nb-goto', () => PLAYER.now && PLAYER.now.hash);
   function renderPlay() {
     const playing = !PLAYER.audio.paused && !PLAYER.audio.ended && PLAYER.now;
     el.play.textContent = playing ? '❙❙' : '▶';
@@ -64,7 +70,7 @@
   PLAYER.audio.addEventListener('pause', renderPlay);
   PLAYER.audio.addEventListener('ended', () => {
     renderPlay();
-    if (typeof window.__nowNext === 'function') window.__nowNext();   // playlist auto-advance
+    if (typeof hooks.nowNext === 'function') hooks.nowNext();   // playlist auto-advance
   });
   PLAYER.audio.addEventListener('error', () => {
     if (PLAYER.now) { el.title.textContent = '✕ no audio — re-scan its folder'; el.artist.textContent = ''; }
@@ -82,7 +88,7 @@
   });
   el.close.addEventListener('click', () => {
     PLAYER.audio.pause();
-    if (typeof window.nowClearQueue === 'function') window.nowClearQueue();
+    if (typeof hooks.nowClearQueue === 'function') hooks.nowClearQueue();
     PLAYER.now = null;
     bar.classList.remove('on');
     // No track left to choose between, so the sample is the only thing to hear.
@@ -94,7 +100,7 @@
   // Play a track by hash (used by the Map popup + playlist). Takes over the shared
   // audio, resetting any List row that was playing. Async because a dropped track
   // with no server copy may resolve through a persisted file handle (may prompt).
-  window.playHash = async function (hash, meta) {
+  playHash = async function (hash, meta) {
     if (!hash) return;
     if (PLAYER.ctl && PLAYER.ctl.stopVisual) PLAYER.ctl.stopVisual();
     PLAYER.ctl = { tick() {}, render() {}, stopVisual() {}, error() {} };  // bar owns playback now
@@ -107,13 +113,13 @@
     if (cached) url = keepUrl(URL.createObjectURL(cached));
     else {
       let serverOk = false;
-      try { serverOk = (await fetch('/audio/' + hash, { method: 'HEAD' })).ok; } catch (_) { /* offline */ }
-      if (serverOk) url = '/audio/' + hash;
+      try { serverOk = (await fetch('/api/v1/audio/' + hash, { method: 'HEAD' })).ok; } catch (_) { /* offline */ }
+      if (serverOk) url = '/api/v1/audio/' + hash;
       else if (typeof FSH !== 'undefined' && FSH.supported) {
         const f = await FSH.file(hash);   // reopens the dropped file (may prompt once)
         if (f) { if (typeof HASH_FILES !== 'undefined') HASH_FILES.set(hash, f); url = keepUrl(URL.createObjectURL(f)); }
       }
-      if (!url) url = '/audio/' + hash;   // let it error -> the bar shows the message
+      if (!url) url = '/api/v1/audio/' + hash;   // let it error -> the bar shows the message
     }
     // Always start from the beginning. Re-selecting the SAME track keeps the src,
     // so the element would otherwise resume mid-track — reset currentTime instead.
@@ -124,10 +130,12 @@
   };
 
   // Let playlist.js toggle the prev/next buttons on when a queue is active.
-  window.nowShowQueueControls = function (on) {
+  nowShowQueueControls = function (on) {
     el.prev.hidden = !on;
     el.next.hidden = !on;
   };
-  el.prev.addEventListener('click', () => { if (window.__nowPrev) window.__nowPrev(); });
-  el.next.addEventListener('click', () => { if (window.__nowNext) window.__nowNext(); });
+  el.prev.addEventListener('click', () => { if (hooks.nowPrev) hooks.nowPrev(); });
+  el.next.addEventListener('click', () => { if (hooks.nowNext) hooks.nowNext(); });
 })();
+
+export { nowShowQueueControls, playHash };

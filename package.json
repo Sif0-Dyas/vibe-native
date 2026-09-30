@@ -1,5 +1,5 @@
 {
-  "name": "vibedentify-frontend",
+  "name": "vibe-identify-frontend",
   "version": "0.0.0",
   "private": true,
   "description": "Dev-only tooling for the static frontend JS. No runtime dependencies -- the app ships plain <script>-loaded files served by Flask; this exists solely so ESLint can catch cross-file ReferenceErrors after the app.js/player.js/map.js split.",

@@ -123,7 +123,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 | Group | Delete | Keep / replace with |
 | --- | --- | --- |
 | MAEST | `get_maest`, `maest_genre`, `MAEST_PB`; `/compare` + Compare panel; `MAEST_MODEL`; `models/discogs-maest-*.json` | Nothing — decided 2026-09-23 |
-| Essentia-era config | `MODEL_DIR` default `~/essentia_models`; `CUSTOM_HEAD` default there; `.env.example` `*.pb` lines | `%APPDATA%\Vibe Identify\models\` |
+| Essentia-era config | `MODEL_DIR` default `~/essentia_models`; `CUSTOM_HEAD` default there; `.env.example` `*.pb` lines | `%APPDATA%\Vibe Identify\models\` — done (`<config_dir>/models`); an unmoved `custom_head.npz` is still read from `~/essentia_models` with a WARNING. Delete that fallback (`settings._legacy_model_dir`) once no install needs it |
 | Custom-head trainer | `training/embed_extract.py:44` Essentia import | Port to `onnx_engine`. Feature stays (decided) |
 | WSL legacy | `tools/db_cutover.py`, `tools/make_oracle.py`; `legacy.py` and its 4 route call sites (`routes/analysis.py:550`, `routes/library.py:574, 597`); the "no WSL" selftest assertions | Already isolated in `legacy.py` by design — delete in one piece once no install needs it. `_migration_2` keeps its own copy of the path rewrite |
 | Desktop two-process mode | `GENRE_DESKTOP_MULTIPROC`, `venv_python`, `start_backend`, `_shutdown_backend`, `backend_cmd/env`, `WIN_PROJECT`, `_LAUNCH_WARNING`; both `.bat` launchers; `_selftest` | Single-process only; selftest → `tests/test_desktop_shell.py` |
@@ -170,15 +170,52 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 **Phase 3 — structure (one PR each, in this order)**
 
-- [ ] `Settings` object; delete the conftest reload hack
-- [ ] Repository layer; routes contain no SQL
-- [ ] One `dominant_style()`; one `@bp.errorhandler`; `trainsets` stops importing from `routes`
-  - `/similar`, `/training/candidates` and `insight.check` are waiting on `dominant_style()` before they can drop payload parsing: each needs the override/weights/relabel-aware style, which the v9 `style` column (raw `styles[0]`) is not.
-- [ ] `fake_engine.py`; FAKE branches out of routes and `analysis.py`
-- [ ] Dedupe sanitizer / training root / mel filterbank; drop the 21 lazy numpy imports
-- [ ] `taxonomy/` package
-- [ ] Frontend to ES modules
-- [ ] `/api/v1`; DELETE verbs; one name; one version source
+- [x] `Settings` object; delete the conftest reload hack
+  - Suite time did not move (119.0 s before, 117.5–119.7 s after): the reload hack cost ~1.6 s of fixture setup. ~82 s of the two minutes is three real-engine oracle tests (`test_tonality::test_oracle_agreement`, `test_oracle_match::test_embeddings_match_oracle`, `test_tempo::test_tempo_matches_oracle`) that run whenever the models are present, `FAKE_ANALYZER=1` or not.
+  - `onnx_engine.MODELS` / `tempo.MODELS` stay module constants: they locate the bundled models (`paths.models_dir()`), they are not settings.
+- [x] Repository layer; routes contain no SQL
+  - `vibenative/repo/`: `tracks` (with `segment_overrides`, `lookup_cache`), `tags`, `vibes`, `playlists`, `training`. The write lock is taken only inside repo functions; each read-modify-write keeps its read and write under one lock. `tests/test_no_sql_in_routes.py` fails on `execute(` / `executemany(` / `cursor(` / `_db_lock` / `db()` in `routes/*.py` and `trainsets.py`.
+  - `trainsets.py`'s SQL moved to `repo/training.py`; the module keeps its folder, archive and manifest logic.
+- [x] One `dominant_style()`; one `@bp.errorhandler`; `trainsets` stops importing from `routes`
+  - `vibenative/style.py`: `dominant_style` / `dominant_read` (override → weights → relabel → salience → `styles[0]`). `insight` used to skip weights and relabel; the misread check now sees the style the Map popup shows. `tracks.style` holds it: every payload write recomputes it, migration 11 backfilled it. On the local library 812 of 6,162 rows changed — 779 salience ≠ `styles[0]`, 27 overrides, 6 weight adjustments — the tracks the Library tab had been showing wrong.
+  - Readers of the style: `/similar` and `insight.check` now read `tracks.style` (and `/similar` the v9 `tag_artist`/`bpm`/`camelot` columns) and parse no payload at all — `/similar` on the 6,162-track library went from ~2 s to ~0.2 s. `/training/candidates` never read the style; it still parses every payload, only for `override == genre` (an override has no column). Embeddings are not a reason any of them parse: they are already their own column (`tracks.embedding`). If `/similar` on 10k tracks is ever slow again, the follow-up is to stop scanning every embedding per request — a separate embeddings table/matrix held in memory, or an ANN index — not a payload change.
+  - Errors: `routes/_shared.py` handles `UploadError` and `Exception` (HTTP errors pass through); `tests/test_error_handlers.py`. Layering: `tests/test_layering.py` — nothing outside `routes/` imports it, except `__init__.py`'s `create_app`, which registers the blueprint.
+- [x] `relabel.apply` lost update: it reads payloads unlocked, runs inference, then writes whole payloads back under the lock — an `/override` or `/weights` during that window is lost. Fix: write only the relabel fields per track under the lock, re-reading each payload at write time.
+  - Each track is written through `repo.tracks.update_payload`, setting only `relabel` on the payload as it is at write time; `revert` uses the same path (it never raced — one lock throughout — so that half is consistency). Cost: one transaction per track, ~1.2 ms each — 7.4 s to write all 6,162 tracks, against 0.2 s for the old single executemany. If that matters, write in chunks under one lock, re-reading each payload inside it.
+- [x] `relabel.preview` still has its own style chain (`_current_top`: override → relabel → salience → styles, no weight adjustments) for its "from" column; it should report `style.dominant_style` before and after.
+  - "from" is `style.dominant_read` now; `_current_top` is deleted. "to" is still the new re-label's top read, as before — for a track with hand adjustments the app would show those adjustments applied to the new read.
+  - No other server-side copy of the chain. Two related spellings remain, not changed: `keystone.classify` walks the same tiers but tallies each whole tier into keystones and falls through when a tier maps to none (so `ranked_read` can't replace it without changing it); and the Analyzer (`static/app.js`) renders override → hand adjustments → the chosen identity mode (flat / salience), with no relabel tier, and colours the row from raw `styles[0]` — a frontend follow-up (its comment still points at `routes/_shared.py`).
+- [x] Repo follow-up: move the remaining non-route SQL (ratings 7, snapshots 8, relabel 5, filepaths 3, insight 2, genres 1) once `dominant_style` lands
+  - New `repo/ratings.py`, `repo/snapshots.py` (capture / clear / restore across the training tables and the payload overrides, each one transaction as before), `repo/keys.py` (key_labels); relabel, filepaths, insight and genres read and write through `repo/tracks.py`. The db.py helpers moved too: cache_get/put, forget_track, waveform cache, is_library_filepath, track_embedding and `cosine` → `repo/tracks.py`; key_label_* → `repo/keys.py`; vibe_centroid → `repo/vibes.py`. Not SQL, so not repo: `file_hash` → `hashing.py`, `artist_tag` → `artists.py`. db.py is connections, the write lock, migrations and schema (`TRACK_COLUMNS`, `TRACK_TABLES`).
+  - `tests/test_no_sql_outside_repo.py` now covers every module under `src/vibenative` except `db.py` and `repo/`.
+- [x] `ratings.put` / `artist_put` read the current rating unlocked (to keep the fields not passed) and then upsert under the lock — two partial updates at once (stars from the map, a note from the library) can lose one. Same shape as the relabel fix: do the read and the upsert in one `repo.writing()` block.
+  - `repo.ratings.update(hash, merge)` / `artist_update(key, merge)`: read the row, merge the passed fields, write — one locked transaction, the same shape as `tracks.update_payload`. The clamp / grade / note-cap rules stay in `ratings.py`, inside `merge`.
+- [x] `fake_engine.py`; FAKE branches out of routes and `analysis.py`
+  - The real pipeline runs in fake mode on stand-in engines (decode, the genre engine with the real 400 labels, tempo, key); `fake_engine.engines()` is the one place that chooses. Removed: the branches in `analysis.analyze` (the whole hand-built payload), `analysis.load_samples_for_waveform`, `routes/analysis` `/refine`, and `__main__` (its ffmpeg check is now the real engines' `startup_check`, `decode.warn_if_tools_missing`). By this point the review's "8 + 6 sites" were these 4 branches; the rest were lines inside them.
+  - Changes from the old fake payload: `bpm_confidence` is 0..1 (tempo.estimate's scale; was 0.5-5.0); `styles` has the real top 8 (was 4); `custom` is None without a custom head, as in a real run (was a made-up list); the seed is the file's content hash (was its name). `tests/test_fake_engine.py` pins key set, types against `oracle/index.json`, ranges, determinism, and that nothing outside `fake_engine.py` / `settings.py` branches on the setting.
+- [x] Dedupe sanitizer / training root / mel filterbank; drop the 21 lazy numpy imports
+  - Sanitizer: 9 copies -> `names.safe_name`, each call site's wrapping kept (outputs pinned by `tests/test_names.py`, captured before). Then, as its own commit: the genre routes use `names.genre_folder` (was `trainsets._safe`) and answer 400 "genre name needs at least one letter or digit" for "///"-style names before copying or writing anything.
+  - Training root: 7 copies -> `Settings.training_root` (`VIBE_TRAINING_ROOT`, default `~/genre_training`, what the uninstaller removes); tests get a tmp root.
+  - Mel filterbank: `frontend_mel.slaney_mel_filterbank` for both frontends; matrices bit-identical, full oracle table unchanged (cos min 0.999324 / mean 0.999817, tempo 117/121, key 90/121).
+  - numpy: 17 function-local imports left (the other 4 went with moved/deleted code) -> module level. `test_import_safety` never covered numpy (a hard dependency); it guards that nothing reachable at collection imports onnxruntime at top level -- `onnx_engine` is the only module that needs it at import.
+- [x] `taxonomy/` package
+  - `vibenative/taxonomy/`: `tables.py` and `classify.py` (keystone.py split into data and functions), `overlay.py` (was taxonomy.py), `lexicon.py` (was genrelex.py), `profiles.py` (genres.PROFILES), README with the precedence (overlay -> built-in tables -> lexicon). Callers moved to the new paths; the old modules are deleted. `palette` / `palettes` stay outside as presentation, and no longer import each other: `separation` / `summarise` moved to `palette.py`, so the dependency runs palette -> palettes. `vibenative.enao` deleted.
+  - Then, as its own commit: `static/genre_families.json` (the PulseRoots roll-up, 83 styles -> 14 families that disagreed with the keystone tables on 38) is deleted. The misread check (`insight.family_of`) and the frontend's `familyOf` -- the Analyzer's family lens and the map's family shading -- use the style's keystone with the overlay applied, the frontend through `GET /taxonomy/keystones`. On the local library copy the misread flag changes for 158 tracks (337 -> 369 flagged: 95 newly, 63 no longer).
+- [x] Frontend to ES modules
+  - `index.html` loads one entry, `static/main.js` (type="module"); 32 import statements (70 names), 44 exports replace 28 shared top-level names (43 cross-file uses, the eslint globals list) and 23 `window.*` names. Seven late-bound calls from an earlier-loaded file into a later one go through `static/hooks.js` (reloadLibrary, vibeKeyViewChanged, vibeMapGoto, nowNext, nowPrev, nowClearQueue, audio) so the import graph keeps the old load order. `window` holds one name, `runBatch`, for the desktop shell, assigned in `main.js`; `tools/smoke_dist.py` checks every name the shell's INJECT_JS calls is assigned there and every module is served from the bundle.
+  - The Analyzer shows the server's identity (`style.identity`, sent as `dominant_style` / `dominant_score` / `dominant_source` / `dominant_read` with every row and edit response) and is coloured by it; its own override -> adjustments -> identity-mode chain and the raw `styles[0]` colour are gone. The waveform note names the active lens.
+  - Not changed: the Analyzer assigns palette colours in the order genres are first seen in a session (`styleInfo`), so a genre's colour can differ between sessions.
+- [x] `/api/v1`; DELETE verbs; one name; one version source
+  - Every API route is on `bp`, mounted at `/api/v1`; the page (`/`, its own `pages` blueprint) and `/static/*` stay at the root. No aliases -- the old paths 404 (`test_api_prefix`). Frontend, desktop probe, smoke_dist and tests follow.
+  - Deletes are DELETE on the resource: `/playlists/<id>`, `/tracks/<h>` (was `/forget`), `/override_segment/<id>`, `/vibes/<id>`, `/vibes/<id>/tracks` (clear), `/vibes/<id>/tracks/<h>` (remove). The resets stay POST: they archive / rename / snapshot rather than delete, and two take a confirm word.
+  - "Vibe Identify" is `vibenative.PRODUCT_NAME`: titles, taskbar id, banner, Server header, download names, User-Agent (`VibeIdentify/<version>`), the frozen log folder `%LOCALAPPDATA%\Vibe Identify` (old logs left in `Vibenative`; the WebView2 profile deliberately stays there; the uninstaller removes both). `test_one_name` pins the shell's and installer's copies. `palette.py` -> `keystone_colors.py`, `palettes.py` -> `color_presets.py`.
+  - The version is written once, in `pyproject.toml`: `__version__` via importlib.metadata (the spec bundles the dist-info), `tools/version.py` for build_exe / build_installer / smoke_dist, `installer.iss` has no default and errors without `/DMyAppVersion`. build_exe refuses a venv whose installed metadata is behind pyproject; smoke_dist asserts `/status`'s version equals pyproject's (verified on a real build).
+  - Not changed: `pyproject.toml`'s setuptools `packages` lists only `vibenative` and `vibenative.routes`, not `repo` / `taxonomy`. Editable installs and the PyInstaller build don't care; a built wheel would miss them.
+
+**Content (editorial, not structural)**
+
+- [ ] `taxonomy/profiles.py`: Lo-Fi is a keystone (in `FAMILIES`) with no profile.
+- [ ] `taxonomy/profiles.py`: profiles for Hip Hop, Metal, Punk and Rock, which are not keystones in `FAMILIES` (they group under Other) -- keep, or drop.
 
 **Phase 4 — the license work (parallel with Phase 1; gates any sale)**
 
@@ -190,6 +227,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] Retrain key profiles on owned `key_labels` (PROVENANCE #5)
 - [ ] Counsel confirms `frontend_mel.py` / `tempo.py` provenance (PROVENANCE §3–4); fix the README's AGPL claim accordingly
 - [ ] Settle `enao.json` (PROVENANCE #6): permission, replacement, or stop shipping
+  - The reader is gone (`vibenative.enao` and its test were deleted), so the only remaining question is the local data file's licence.
 - [ ] If no license: permissive embedder + tempo estimator; retrain the genre head on the 400-label taxonomy; retire `tools/convert_models.py`, `requirements-convert.txt`
 - [ ] `pip-licenses --fail-on` in CI
 
@@ -201,7 +239,8 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
   - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.
   - Uninstall's data removal finds the DB through `{app}\settings.ini`, so it misses a database moved in Options.
-  - `db_path=%USERPROFILE%\genre_v2.db` is stored unexpanded. The app expands it on read with `os.path.expandvars` (`db._resolve_db_path`: any `%VAR%`, from the logged-in user's environment). The uninstaller's `ExistingDbPath()` only replaces the literal `%USERPROFILE%`, with `{%USERPROFILE}` from the *elevated* uninstaller process; likewise its fallback `{%USERPROFILE}\genre_v2.db` and the `genre_training` DelTree. Same answer when the user approves their own UAC prompt; the admin's profile, not the user's, when elevated as a different account. (By reasoning, not tested with a second account. `test_userprofile_db_path_resolves_to_the_file_the_app_opens` pins the app side.)
+  - Likewise it removes `%USERPROFILE%\genre_training`, `Settings.training_root`'s default; a root moved with `VIBE_TRAINING_ROOT` is left behind.
+  - `db_path=%USERPROFILE%\genre_v2.db` is stored unexpanded. The app expands it on read with `os.path.expandvars` (`settings._db_path`: any `%VAR%`, from the logged-in user's environment). The uninstaller's `ExistingDbPath()` only replaces the literal `%USERPROFILE%`, with `{%USERPROFILE}` from the *elevated* uninstaller process; likewise its fallback `{%USERPROFILE}\genre_v2.db` and the `genre_training` DelTree. Same answer when the user approves their own UAC prompt; the admin's profile, not the user's, when elevated as a different account. (By reasoning, not tested with a second account. `test_userprofile_db_path_resolves_to_the_file_the_app_opens` pins the app side.)
 
 **Post-release**
 

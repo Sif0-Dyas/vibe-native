@@ -3,27 +3,23 @@ and time-segment), app status, external metadata lookup, and nearest-neighbour
 similarity."""
 
 import json
-import time
-from contextlib import closing
 from pathlib import Path
 
+import numpy as np
 from flask import jsonify, request
 
 from .. import lookup
-from ..db import (
-    _db_lock,
-    cosine,
-    db,
-    forget_track,
-    key_label_delete,
-    key_label_put,
-    key_labels_map,
-    track_embedding,
-)
-from ._shared import _artist_from, _artist_of, _dominant_style, bp
+from ..names import GENRE_NEEDS_ALNUM, genre_folder
+from ..repo import NotFound
+from ..repo import tracks as tracks_repo
+from ..repo.keys import key_label_delete, key_label_put, key_labels_map
+from ..repo.tracks import cosine, forget_track, track_embedding
+from ..settings import current
+from ..style import identity_fields
+from ._shared import _artist_from, bp
 
 
-@bp.post("/forget/<h>")
+@bp.delete("/tracks/<h>")
 def forget_route(h):
     """Delete everything stored about a track by content hash (see
     db.forget_track): analysis, map, vibe/tag membership, overrides, ratings,
@@ -49,11 +45,7 @@ def library_list():
     """A lean listing of EVERY cached track for the Library tab: hash, title, top
     style, BPM, key/scale/camelot, and whether a server-side file exists. Reads the
     denormalized columns (migration 9) -- no payload is parsed."""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, filename, title, filepath, created, style, bpm, key, scale, "
-            "camelot, duration, tag_artist FROM tracks ORDER BY created DESC"
-        ).fetchall()
+    rows = tracks_repo.listing()
     out = []
     corrections = key_labels_map()
     for h, fn, title, filepath, created, style, bpm, k, s, cam, dur, tag_artist in rows:
@@ -100,11 +92,9 @@ def status_route():
     the ONNX engine just to report."""
     import vibenative
 
-    from ..db import DB_PATH
     from ..decode import find_tool
 
-    with closing(db()) as conn, conn as c:
-        n = c.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+    n = tracks_repo.count()
     ffmpeg, ffprobe = find_tool("ffmpeg"), find_tool("ffprobe")
 
     provider, available = None, []
@@ -116,16 +106,15 @@ def status_route():
 
         if onnx_engine._engine:  # only if already built (don't trigger a build here)
             provider = onnx_engine._engine.get("_provider")
-    except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (FAKE/CI) is fine
+    except Exception:  # nosec B110  # status is best-effort; onnxruntime absent (stand-in engines / CI) is fine
         pass
 
-    import os
-
+    settings = current()
     return jsonify(
         {
             "version": vibenative.__version__,
-            "db_path": str(DB_PATH),
-            "log_path": os.environ.get("GENRE_BACKEND_LOG") or None,
+            "db_path": str(settings.db_path),
+            "log_path": settings.backend_log or None,
             "tracks": n,
             "ffmpeg": bool(ffmpeg),
             "ffmpeg_path": ffmpeg,
@@ -147,16 +136,14 @@ def reveal_route():
     capability than the Options tab needs, reachable from any page the browser
     can be talked into loading.
     """
-    import os
     import subprocess  # nosec B404  # fixed arg list, no shell
 
-    from ..db import DB_PATH
     from ..decode import find_tool
 
     what = ((request.get_json(silent=True) or {}).get("what") or "").strip()
     targets = {
-        "db": str(DB_PATH),
-        "log": os.environ.get("GENRE_BACKEND_LOG") or "",
+        "db": str(current().db_path),
+        "log": current().backend_log,
         "ffmpeg": find_tool("ffmpeg") or "",
     }
     target = targets.get(what)
@@ -182,7 +169,7 @@ def db_path_route():
     never the installer's copy beside the exe, which Program Files makes read-only).
 
     Only writes the setting -- it does not move the database or re-point the
-    running process. ``DB_PATH`` is resolved once at import and threaded through
+    running process. ``Settings.db_path`` is resolved once at startup and threaded through
     live connections, so switching underneath a running app would leave open
     handles pointing at the old file. The response says a restart is needed, and
     the Options tab says so too.
@@ -241,29 +228,33 @@ def override_route(h):
     genre = (data.get("genre") or "").strip()
     if not genre:
         return jsonify({"error": "genre required"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath, payload FROM tracks WHERE hash=?", (h,)).fetchone()
-        if not row:
-            return jsonify({"error": "track not in database"}), 404
-        filepath, payload = row
+    safe = genre_folder(genre)
+    if not safe:
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
+
+    def set_override(payload):
         p = json.loads(payload)
         p["override"] = genre
-        c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
-    # INVARIANT: the training-copy file I/O below runs AFTER the _db_lock block
-    # closes -- `filepath` was read inside the lock, but shutil.copy2 must not be
-    # moved back inside it (never hold the DB lock across disk I/O).
+        return p
+
+    try:
+        filepath, p = tracks_repo.update_payload(h, set_override)
+    except NotFound:
+        return jsonify({"error": "track not in database"}), 404
+    # INVARIANT: the training-copy file I/O below runs AFTER the payload write
+    # returns -- `filepath` was read under the write lock, but shutil.copy2 must
+    # not move into the update (never hold the DB lock across disk I/O).
     trained = False
     if filepath:
-        safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
         src = Path(filepath)
         if safe and src.is_file():
-            dest_dir = Path.home() / "genre_training" / safe
+            dest_dir = current().training_root / safe
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / src.name
             if not dest.exists():
                 shutil.copy2(src, dest)
             trained = True
-    return jsonify({"ok": True, "genre": genre, "trained": trained})
+    return jsonify({"ok": True, "genre": genre, "trained": trained, **identity_fields(p)})
 
 
 @bp.post("/key/<h>")
@@ -281,14 +272,14 @@ def key_override_route(h):
 
     data = request.get_json(silent=True) or {}
     raw = data.get("key")
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
-    if not row:
+    try:
+        payload = tracks_repo.payload(h)
+    except NotFound:
         return jsonify({"error": "track not in database"}), 404
 
     if raw is None:  # clear -> the detector's own answer stands again
         key_label_delete(h)
-        p = json.loads(row[0])
+        p = json.loads(payload)
         return jsonify(
             {
                 "ok": True,
@@ -321,14 +312,13 @@ def _remove_segment_clip(h, genre, start, end):
     """Best-effort delete of the training clip an override produced. Reconstructs
     the exact path _extract_segment wrote (same genre folder + <hash>_<s>-<e><ext>,
     ext from the track's source file). Returns True if a file was removed."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     filepath = row[0] if row else None
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
+    safe = genre_folder(genre)
     if not safe:
         return False
     ext = (Path(filepath).suffix.lower() if filepath else "") or ".wav"
-    dest = Path.home() / "genre_training" / safe / f"{h}_{int(round(start))}-{int(round(end))}{ext}"
+    dest = current().training_root / safe / f"{h}_{int(round(start))}-{int(round(end))}{ext}"
     try:
         if dest.is_file():
             dest.unlink()
@@ -350,7 +340,7 @@ def _extract_segment(src, safe_genre, h, start, end):
     ffmpeg = find_tool("ffmpeg")  # PATH or the WinGet Links dir (Windows winget install)
     if not ffmpeg:
         return None, "ffmpeg not found on PATH -- override recorded, clip not extracted"
-    dest_dir = Path.home() / "genre_training" / safe_genre
+    dest_dir = current().training_root / safe_genre
     dest_dir.mkdir(parents=True, exist_ok=True)
     ext = src.suffix.lower() or ".wav"
     dest = dest_dir / f"{h}_{int(round(start))}-{int(round(end))}{ext}"
@@ -394,14 +384,16 @@ def override_segment_route():
     genre = (data.get("genre") or "").strip()
     if not h or not genre:
         return jsonify({"error": "hash and genre required"}), 400
+    safe = genre_folder(genre)
+    if not safe:
+        return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
     try:
         start = float(data.get("start"))
         end = float(data.get("end"))
     except (TypeError, ValueError):
         return jsonify({"error": "start and end must be numbers"}), 400
 
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath, payload FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_and_payload(h)
     if not row:
         return jsonify({"error": "track not in database"}), 404
     filepath, payload = row
@@ -428,15 +420,9 @@ def override_segment_route():
     if not src.is_file():
         return jsonify({"error": "the source file for this track no longer exists on disk"}), 404
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        cur = c.execute(
-            "INSERT INTO segment_overrides(hash, start_s, end_s, genre, created) VALUES(?,?,?,?,?)",
-            (h, start, end, genre, time.time()),
-        )
-        new_id = cur.lastrowid
+    new_id = tracks_repo.add_segment(h, start, end, genre)
     # ffmpeg extraction stays OUTSIDE the DB lock (subprocess + disk I/O)
-    safe = "".join(ch if ch.isalnum() or ch in " _-" else "_" for ch in genre).strip()
-    clip, err = _extract_segment(src, safe, h, start, end) if safe else (None, "invalid genre name")
+    clip, err = _extract_segment(src, safe, h, start, end)
     return jsonify(
         {
             "ok": True,
@@ -451,26 +437,14 @@ def override_segment_route():
     )
 
 
-@bp.post("/override_segment/delete")
-def override_segment_delete():
+@bp.delete("/override_segment/<int:oid>")
+def override_segment_delete(oid):
     """Remove a segment override by id: drops the DB record AND deletes the training
     clip it produced (undoing the override should not leave the clip behind to keep
     training the head). The client gates this behind an explicit confirm."""
-    data = request.get_json(silent=True) or {}
-    oid = data.get("id")
-    if oid is None:
-        return jsonify({"error": "id required"}), 400
-    try:
-        oid = int(oid)
-    except (TypeError, ValueError):
-        return jsonify({"error": "id must be an integer"}), 400
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute(
-            "SELECT hash, start_s, end_s, genre FROM segment_overrides WHERE rowid=?", (oid,)
-        ).fetchone()
-        if not row:
-            return jsonify({"error": "override not found"}), 404
-        c.execute("DELETE FROM segment_overrides WHERE rowid=?", (oid,))
+    row = tracks_repo.pop_segment(oid)
+    if not row:
+        return jsonify({"error": "override not found"}), 404
     h, start, end, genre = row
     # disk I/O stays outside the DB lock
     clip_removed = _remove_segment_clip(h, genre, start, end)
@@ -484,14 +458,10 @@ def lookup_route(h):
     queried (MusicBrainz needs none); each source degrades independently (a timeout
     or failure is reported for that source, never fatal). Successful responses are
     cached PERMANENTLY per (hash, source) so a repeat click never re-queries."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT title, filename, payload FROM tracks WHERE hash=?", (h,)).fetchone()
-        if not row:
-            return jsonify({"error": "track not in database"}), 404
-        cached = {
-            r[0]: json.loads(r[1])
-            for r in c.execute("SELECT source, response_json FROM lookup_cache WHERE hash=?", (h,))
-        }
+    row = tracks_repo.lookup_fields(h)
+    if not row:
+        return jsonify({"error": "track not in database"}), 404
+    cached = tracks_repo.lookups_cached(h)
     title, filename, payload = row
     artist, track_title, remix = lookup.parse_track(
         json.loads(payload) if payload else {}, title, filename
@@ -520,12 +490,7 @@ def lookup_route(h):
             continue
         parsed = parse(raw)
         results[src] = parsed
-        with _db_lock, closing(db()) as conn, conn as c:  # cache the hit permanently
-            c.execute(
-                "INSERT OR REPLACE INTO lookup_cache(hash, source, response_json, fetched) "
-                "VALUES(?,?,?,?)",
-                (h, src, json.dumps(parsed), time.time()),
-            )
+        tracks_repo.cache_lookup(h, src, parsed)  # cache the hit permanently
     return jsonify(
         {
             "query": {"artist": artist, "title": track_title, "remix": remix},
@@ -538,31 +503,24 @@ def lookup_route(h):
 @bp.get("/similar/<h>")
 def similar_route(h):
     """Top-k nearest tracks to <h> by embedding cosine (for the map popup)."""
-    import numpy as np
-
     k = max(1, min(int(request.args.get("k", 8)), 40))
     target = track_embedding(h)
     if target is None:
         return jsonify({"error": "track not in database"}), 404
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks "
-            "WHERE embedding IS NOT NULL AND hash != ?",
-            (h,),
-        ).fetchall()
+    # Every field is a column (tracks.style is style.dominant_style; the rest are
+    # migration 9's), so no payload is read or parsed.
+    rows = tracks_repo.similar_candidates(h)
     out = []
-    for hh, title, filename, filepath, payload, blob in rows:
+    for hh, title, filename, filepath, tag_artist, style, bpm, camelot, blob in rows:
         emb = np.frombuffer(blob, dtype=np.float32)
-        p = json.loads(payload)
-        style, _ = _dominant_style(p)
         out.append(
             {
                 "hash": hh,
                 "title": title or (Path(filename).stem if filename else hh[:8]),
-                "artist": _artist_of(p, title, filename),
+                "artist": _artist_from(tag_artist, title, filename),
                 "style": style,
-                "bpm": p.get("bpm"),
-                "camelot": p.get("camelot"),
+                "bpm": bpm,
+                "camelot": camelot,
                 "sim": round(cosine(target, emb), 4),
                 "a": 1 if (filepath and str(filepath).strip()) else 0,
             }
@@ -628,12 +586,12 @@ def weights_get(h):
     """A track's manual weight adjustments and the blend they produce."""
     from .. import weights as W
 
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
-    if not row:
+    try:
+        payload = tracks_repo.payload(h)
+    except NotFound:
         return jsonify({"error": "track not found"}), 404
     try:
-        p = json.loads(row[0]) if row[0] else {}
+        p = json.loads(payload) if payload else {}
     except ValueError:
         p = {}
     base = W.base_read(p)
@@ -649,6 +607,7 @@ def weights_get(h):
             "adjusted": W.read_with_steps(p) or base[:8],
             "max_step": W.MAX_STEP,
             "words": {str(k): v for k, v in W.STEP_WORDS.items()},
+            **identity_fields(p),
         }
     )
 
@@ -700,12 +659,9 @@ def weights_put(h):
             steps[str(style).strip()] = s
     drops = W.clean_drops(raw_drops)
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
-        if not row:
-            return jsonify({"error": "track not found"}), 404
+    def adjust(payload):
         try:
-            p = json.loads(row[0]) if row[0] else {}
+            p = json.loads(payload) if payload else {}
         except ValueError:
             p = {}
         if raw is not None:
@@ -729,12 +685,18 @@ def weights_put(h):
                     p.pop("weights", None)
             else:
                 p.pop("drops", None)
-        c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+        return p
+
+    try:
+        _filepath, p = tracks_repo.update_payload(h, adjust)
+    except NotFound:
+        return jsonify({"error": "track not found"}), 404
     return jsonify(
         {
             "hash": h,
             "steps": p.get("weights") or {},
             "drops": _effective_drops(p),
             "adjusted": W.read_with_steps(p) or [],
+            **identity_fields(p),
         }
     )

@@ -7,7 +7,7 @@ import tempfile
 import threading
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 
 from flask import Response, jsonify, request, send_file
@@ -23,33 +23,20 @@ from ..analysis import (
     refine_segments,
     waveform_minmax,
 )
-from ..config import AUDIO_EXTS, FAKE, log
-from ..db import (
-    _db_lock,
-    cache_get,
-    cache_put,
-    db,
-    file_hash,
-    waveform_cache_get,
-    waveform_cache_put,
-)
+from ..config import AUDIO_EXTS, log
 from ..decode import UnreadableAudio
+from ..hashing import file_hash
+from ..repo import tracks as tracks_repo
+from ..repo.tracks import cache_get, cache_put, waveform_cache_get, waveform_cache_put
 from ..serve import MAX_BATCH_WORKERS
-from ._shared import bp
+from ..style import dominant_read, identity_fields
+from ._shared import UploadError, bp
 
 
 # ----------------------------------------------------------------------------
 # Upload plumbing shared by /analyze, /refine: validate the audio
 # upload, stage it to a temp file, and always clean up.
 # ----------------------------------------------------------------------------
-class UploadError(Exception):
-    """Bad/missing upload -- carries the HTTP status the route should return."""
-
-    def __init__(self, message, status):
-        super().__init__(message)
-        self.status = status
-
-
 def upload_label(filename):
     """The browser-supplied filename as a display label: the last path component
     only, whichever separator the client used. It is only ever a label (the upload
@@ -90,7 +77,7 @@ def _apply_key_correction(h, payload):
     """Overlay a human-corrected key onto an analysis payload (in place).
     Corrections live outside the payload so re-analysis cannot clobber them, so
     every path that serves a payload has to put them back."""
-    from ..db import key_label_get
+    from ..repo.keys import key_label_get
 
     correction = key_label_get(h)
     if not correction:
@@ -125,7 +112,7 @@ def analyze_route():
             emb = result.pop("emb_mean", None)
             wave = result.pop("wave", None)  # DAW-style min/max/rms -> its own cache
             payload = build_payload(name, None, title, tags, result)
-            nc = insight.check(emb, *insight.dominant(payload)) if emb is not None else None
+            nc = insight.check(emb, *dominant_read(payload)) if emb is not None else None
             if nc:
                 payload["neighbor_check"] = nc  # flag likely misreads
             cache_put(h, name, None, title, payload, emb)
@@ -133,70 +120,24 @@ def analyze_route():
                 waveform_cache_put(h, wave)
             payload["hash"] = h
             payload["cached"] = False
+            payload.update(identity_fields(payload))
             return jsonify(payload)
-    except UploadError as e:
-        return jsonify({"error": str(e)}), e.status
     except UnreadableAudio as e:
         log.warning(
             "analyze: %s is not a readable audio file (%s)", upload_label(f.filename), e.reason
         )
         return jsonify({"error": "not a readable audio file"}), 422
-    except Exception:
-        log.exception("request failed")
-        return jsonify({"error": "internal error"}), 500
 
 
 @bp.post("/refine")
 def refine_route():
     """Re-analyze one track at fine resolution; returns a denser segment list."""
     f = request.files.get("file")
-    try:
-        _check_upload(f)
-        if FAKE:
-            import hashlib
-            import random
+    _check_upload(f)
 
-            seed = hashlib.md5(("fine" + f.filename).encode()).hexdigest()  # nosec B324  # deterministic seed for FAKE-mode data, not security
-            rng = random.Random(seed)  # nosec B311  # deterministic FAKE-mode PRNG, not security
-            pool = [
-                "Drum n Bass",
-                "Trance",
-                "Dubstep",
-                "Hard Techno",
-                "Hardstyle",
-                "House",
-                "Techno",
-                "Jungle",
-                "Breakcore",
-                "Psy-Trance",
-            ]
-            rng.shuffle(pool)
-            seg_styles = [pool[0]] * 4 + pool[1:3]
-            segments = []
-            for _ in range(rng.randint(30, 60)):
-                segments += [rng.choice(seg_styles)] * rng.randint(3, 12)
-            frames = []
-            for s in segments:
-                others = rng.sample([p for p in pool if p != s], 3)
-                top = round(rng.uniform(0.25, 0.6), 3)
-                rest = sorted(
-                    (round(rng.uniform(0.02, top - 0.02), 3) for _ in range(3)), reverse=True
-                )
-                frames.append([[s, top]] + [[others[j], rest[j]] for j in range(3)])
-            return jsonify(
-                {"segments": segments, "frames": frames, "hop_seconds": FINE_HOP_SECONDS}
-            )
-
-        with saved_upload(f) as p:
-            segments, frames = refine_segments(p)  # locks its own inference
-            return jsonify(
-                {"segments": segments, "frames": frames, "hop_seconds": FINE_HOP_SECONDS}
-            )
-    except UploadError as e:
-        return jsonify({"error": str(e)}), e.status
-    except Exception:
-        log.exception("request failed")
-        return jsonify({"error": "internal error"}), 500
+    with saved_upload(f) as p:
+        segments, frames = refine_segments(p)  # locks its own inference
+        return jsonify({"segments": segments, "frames": frames, "hop_seconds": FINE_HOP_SECONDS})
 
 
 def _backfill_filepath(h, path):
@@ -210,24 +151,13 @@ def _backfill_filepath(h, path):
     A stored path that still resolves to a real file is left untouched (so scanning
     a duplicate copy elsewhere doesn't thrash the original). Keeps audio preview,
     on-demand waveform, and section overrides working after a move."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
-        if row is None:
-            return
-        current = row[0] or ""
-        if not current or not Path(current).is_file():  # blank, or stale (moved away)
-            c.execute("UPDATE tracks SET filepath=? WHERE hash=?", (path, h))
+    tracks_repo.backfill_filepath(h, path)
 
 
 def _segment_overrides(h):
     """The persisted segment overrides for a track, oldest span first. Each carries
     its rowid as ``id`` so the client can target it for removal."""
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT rowid, start_s, end_s, genre FROM segment_overrides WHERE hash=? "
-            "ORDER BY start_s",
-            (h,),
-        ).fetchall()
+    rows = tracks_repo.segment_overrides(h)
     return [{"id": r[0], "start_s": r[1], "end_s": r[2], "genre": r[3]} for r in rows]
 
 
@@ -244,8 +174,7 @@ def _backfill_waveform(h, upload):
     """
     if waveform_cache_get(h) is not None:
         return
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     if row and row[0] and Path(row[0]).is_file():
         return  # GET /waveform can decode that itself
     try:
@@ -257,8 +186,9 @@ def _backfill_waveform(h, upload):
 def _cached_response(cached, h, **extra):
     """A cached payload dressed the way every cache hit is returned.
 
-    ``adjusted`` is the blend after the track's manual weight adjustments (or
-    None), sent with every cached payload so a track nudged on the map reads
+    ``dominant_*`` is the track's identity (style.identity_fields) -- what the
+    Analyzer shows and colours a row by. ``adjusted`` is the blend after the
+    track's manual weight adjustments (or None), sent with every cached payload so a track nudged on the map reads
     the same the moment it lands in the Analyzer -- the alternative was a
     second round-trip per row just to find out most rows had nothing to say.
     """
@@ -267,6 +197,7 @@ def _cached_response(cached, h, **extra):
     cached.update({"hash": h, "cached": True, **extra})
     cached["segment_overrides"] = _segment_overrides(h)
     cached["adjusted"] = read_with_steps(cached)
+    cached.update(identity_fields(cached))
     return cached
 
 
@@ -308,8 +239,7 @@ def audio_route(h):
     not an arbitrary-file endpoint). Supports HTTP Range so the browser can seek.
     Browser-dropped files have no server path -- those play client-side via a
     blob URL instead, so a 404 here is expected for them."""
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath, filename FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     if not row or not row[0]:
         return jsonify({"error": "no server-side file for this track"}), 404
     p = Path(row[0])
@@ -330,8 +260,7 @@ def waveform_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
+    row = tracks_repo.file_info(h)
     if not row:
         return jsonify({"error": "track not in database"}), 404
     filepath = row[0]
@@ -365,11 +294,9 @@ def waveform_upload_route(h):
     cached = waveform_cache_get(h)
     if cached:
         return jsonify(cached)  # raced another tab; nothing to do
-    with closing(db()) as conn, conn as c:
-        row = c.execute("SELECT hash FROM tracks WHERE hash=?", (h,)).fetchone()
     # Only for tracks already in the library: this must not become a way to have
     # the server decode arbitrary uploads under an arbitrary key.
-    if not row:
+    if not tracks_repo.exists(h):
         return jsonify({"error": "track not in database"}), 404
     try:
         with saved_upload(request.files.get("file")) as up:
@@ -473,6 +400,7 @@ def batch_route():
             if wave is not None:
                 waveform_cache_put(h, wave)
             payload.update({"ok": True, "hash": h, "cached": False})
+            payload.update(identity_fields(payload))
             log.info("  · OK %s (%.1fs)", path.name, _time.time() - t0)
             return payload
         except UnreadableAudio as e:

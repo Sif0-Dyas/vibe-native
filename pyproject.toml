@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vibenative"
-version = "2.1.0"  # keep in sync with vibenative.__version__
+version = "2.1.0"  # THE version: vibenative.__version__, the builds and the installer read it
 description = "Native-Windows rebuild of Vibe_Identify — Flask + ONNX Runtime music genre / BPM / key analyzer with an interactive genre map."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,6 +38,9 @@ dev = [
     "bandit>=1.7",
     "pip-audit>=2.7",
     "pre-commit>=3.5",
+    # The build backend ([build-system]), so test_wheel can build a wheel in the
+    # dev env; otherwise it only arrives with pyinstaller in the desktop group.
+    "setuptools>=70.1",
 ]
 desktop = [
     "pywebview>=5.0",
@@ -45,10 +48,15 @@ desktop = [
 ]
 
 # The package lives under src/ (standard src-layout). Both the engine modules and
-# the ported app share one importable `vibenative` package.
+# the ported app share one importable `vibenative` package. Its subpackages are
+# discovered, not listed: a hand-kept list left repo/ and taxonomy/ out of the
+# wheel. test_wheel builds one and checks.
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = ["vibenative", "vibenative.routes"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["vibenative*"]
 
 [tool.setuptools.package-data]
 vibenative = ["templates/*", "static/*"]

@@ -16,7 +16,8 @@ from vibenative import analysis, tempo
 from vibenative import tonality as keymod
 
 
-def test_musical_features_happy(monkeypatch):
+def test_musical_features_happy(monkeypatch, use_settings):
+    use_settings(fake=False)  # the real tempo/key engines, patched below
     monkeypatch.setattr(tempo, "estimate", lambda audio, sr: (128.0, 3.0))
     monkeypatch.setattr(keymod, "estimate", lambda audio, sr: ("C", "major", 0.9))
     out = analysis._musical_features(np.ones(44100, dtype=np.float32))
@@ -32,7 +33,9 @@ def test_musical_features_happy(monkeypatch):
     assert out["wave"]["bins"] == analysis.WAVE_MM_BINS
 
 
-def test_musical_features_degrades_on_extractor_error(monkeypatch):
+def test_musical_features_degrades_on_extractor_error(monkeypatch, use_settings):
+    use_settings(fake=False)  # the real tempo/key engines, patched below
+
     def boom(audio, sr):
         raise RuntimeError("extractor unavailable")
 
@@ -48,10 +51,10 @@ def test_musical_features_degrades_on_extractor_error(monkeypatch):
     assert len(out["waveform"]) == analysis.WAVE_BINS
 
 
-def test_assemble_shape_and_values(monkeypatch):
-    # Force "no custom head" deterministically, independent of the dev machine's
-    # ~/essentia_models/custom_head.npz.
-    monkeypatch.setattr(analysis, "_custom", {"checked": True, "head": None})
+def test_assemble_shape_and_values(settings):
+    # No custom head: the test's model_dir is an empty tmp dir, independent of the
+    # dev machine's ~/essentia_models/custom_head.npz.
+    assert not settings.custom_head_path.exists()
 
     labels = ["A---House", "B---Techno", "C---Trance"]
     preds = np.array([[0.7, 0.2, 0.1], [0.1, 0.8, 0.1]], dtype=np.float32)

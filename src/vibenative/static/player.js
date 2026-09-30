@@ -1,12 +1,13 @@
 /* Audio preview for List rows: one <audio>, one track at a time — play /
    pause, seek by clicking the waveform, and the moving playhead.
 
-   LOAD ORDER: load AFTER app.js (attachPlayer uses fmtTime from app.js) and
-   BEFORE audio.js, which wraps this element as the "track" audio source.
-   Exposes the globals PLAYER, OBJ_URLS and attachPlayer(), which app.js's
-   row builder and Clear handler use. See index.html. */
+   Exports PLAYER, OBJ_URLS, HASH_FILES, FSH and attachPlayer(), which app.js's
+   row builder and Clear handler import; audio.js wraps this element as the
+   "track" audio source. attachPlayer uses fmtTime from app.js. */
 
-/* exported attachPlayer */ // defined here, called from app.js's finishRow (shared scope)
+import { hooks } from './hooks.js';
+import { fmtTime } from './app.js';
+
 
 /* ---- shared audio preview player: one track plays at a time. Each row
    registers a controller (PLAYER.ctl) that the audio events drive; starting a
@@ -79,7 +80,7 @@ PLAYER.audio.addEventListener('play',       () => {
   if (PLAYER.ctl) PLAYER.ctl.render();
   // Starting full playback IS choosing the track: take the focus, which pauses
   // any map sample. The choice sticks, so later selections won't cut this off.
-  if (typeof AUDIO !== 'undefined') AUDIO.claim('track');
+  if (hooks.audio) hooks.audio.claim('track');
 });
 PLAYER.audio.addEventListener('pause',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
 PLAYER.audio.addEventListener('ended',      () => { if (PLAYER.ctl) PLAYER.ctl.render(); });
@@ -114,11 +115,11 @@ function attachPlayer(row, container, controls, c, file, data, dur){
     async function resolveSrc(){
       const localFile = file || (data.hash && HASH_FILES.get(data.hash));
       if (localFile) return blobFor(localFile);
-      if (data.hash && data.filepath) return '/audio/' + data.hash;   // server file
+      if (data.hash && data.filepath) return '/api/v1/audio/' + data.hash;   // server file
       if (data.hash){
         const f = await FSH.file(data.hash);          // may prompt (we're in a click)
         if (f){ HASH_FILES.set(data.hash, f); return blobFor(f); }
-        return '/audio/' + data.hash;                 // last resort (404 -> error UI)
+        return '/api/v1/audio/' + data.hash;                 // last resort (404 -> error UI)
       }
       return null;
     }
@@ -193,3 +194,5 @@ function attachPlayer(row, container, controls, c, file, data, dur){
       startPlay((e.clientX - rect.left) / rect.width);
     });
 }
+
+export { FSH, HASH_FILES, OBJ_URLS, PLAYER, attachPlayer };

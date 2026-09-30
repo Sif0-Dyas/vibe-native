@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import TEST_TOKEN, authed
+from conftest import authed
 
 ROOT = Path(__file__).resolve().parent.parent
 ORACLE = ROOT / "oracle"
@@ -42,21 +42,13 @@ _READY, _WHY = _ready()
 
 
 @pytest.mark.skipif(not _READY, reason=_WHY)
-def test_analyze_route_matches_oracle(tmp_path, monkeypatch):
+def test_analyze_route_matches_oracle(tmp_path, use_settings):
     """POST 2-3 oracle tracks to /analyze in real mode; the JSON response's top
     style, key/scale, and BPM must match oracle/index.json."""
-    monkeypatch.delenv("FAKE_ANALYZER", raising=False)  # real engine, not the fake path
-    monkeypatch.setenv("GENRE_DB", str(tmp_path / "integ.db"))
-    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
-
-    # Re-import the package in REAL mode (config.FAKE is read at import time).
-    for name in list(sys.modules):
-        if name == "vibenative" or name.startswith("vibenative."):
-            del sys.modules[name]
     import vibenative
     from vibenative.legacy import wsl_to_windows
 
-    app = vibenative.create_app()
+    app = vibenative.create_app(use_settings(fake=False, db_path=tmp_path / "integ.db"))
     app.config.update(TESTING=True)
     client = authed(app)
 
@@ -68,7 +60,7 @@ def test_analyze_route_matches_oracle(tmp_path, monkeypatch):
         p = Path(wsl_to_windows(m["file"]))
         with open(p, "rb") as fh:
             resp = client.post(
-                "/analyze",
+                "/api/v1/analyze",
                 data={"file": (io.BytesIO(fh.read()), p.name)},
                 content_type="multipart/form-data",
             )

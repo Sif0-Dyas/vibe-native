@@ -10,6 +10,8 @@ import logging
 
 from flask import request
 
+from . import PRODUCT_NAME
+
 # The most analysis workers one /batch may use (the route clamps to this).
 MAX_BATCH_WORKERS = 6
 
@@ -27,7 +29,7 @@ def create_server(app, host: str, port: int):
     """A waitress server for ``app`` (not yet running): ``.run()`` / ``.close()``."""
     from waitress import create_server as _create
 
-    return _create(app, host=host, port=port, threads=THREADS, ident="Vibenative")
+    return _create(app, host=host, port=port, threads=THREADS, ident=PRODUCT_NAME)
 
 
 def serve(app, host: str, port: int) -> None:

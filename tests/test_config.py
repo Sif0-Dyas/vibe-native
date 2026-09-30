@@ -1,7 +1,7 @@
 """Unit tests for the dependency-free .env loader (config._apply_dotenv).
 
 The parser is tested directly against a dict env, so it never touches os.environ
-or the real project .env. The auto-load wrapper (_load_dotenv) is skipped under
+or the real project .env. The auto-load (in Settings.from_env) is skipped under
 pytest by design.
 """
 

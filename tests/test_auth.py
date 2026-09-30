@@ -8,7 +8,7 @@ import pytest
 
 from conftest import TEST_TOKEN
 
-URLS = ["/", "/library", "/static/app.js", "/no-such-page"]
+URLS = ["/", "/api/v1/library", "/static/app.js", "/no-such-page"]
 
 
 @pytest.fixture()
@@ -31,7 +31,7 @@ def test_wrong_token_is_403(anon, url):
 
 def test_the_right_token_opens_everything(client):
     assert client.get("/").status_code == 200
-    assert client.get("/library").status_code == 200
+    assert client.get("/api/v1/library").status_code == 200
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/no-such-page").status_code == 404  # past the guard, then not found
 
@@ -45,10 +45,10 @@ def test_k_on_the_first_load_sets_the_cookie_static_files_need(anon):
     assert "vibe_token=" + TEST_TOKEN in cookie and "HttpOnly" in cookie
     assert "SameSite=Strict" in cookie
     assert anon.get("/static/app.js").status_code == 200
-    assert anon.get("/library").status_code == 200
+    assert anon.get("/api/v1/library").status_code == 200
 
 
-@pytest.mark.parametrize("url", ["/", "/library", "/static/app.js"])
+@pytest.mark.parametrize("url", ["/", "/api/v1/library", "/static/app.js"])
 def test_non_loopback_host_is_403_even_with_the_token(anon, url):
     # DNS rebinding: a page on evil.example resolves to 127.0.0.1 and the browser
     # sends Host: evil.example. The Host check runs unconditionally now.
@@ -60,7 +60,7 @@ def test_non_loopback_host_is_403_even_with_the_token(anon, url):
     assert bad.status_code == 403
 
 
-def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
+def test_dev_token_is_generated_once_and_reused(client, use_settings, tmp_path):
     # Restarting the dev server keeps an open tab signed in: with GENRE_TOKEN unset,
     # the first start writes <config_dir>/dev_token and later starts reuse it.
     import os
@@ -70,9 +70,8 @@ def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
     import vibenative
 
     cfg = tmp_path / "fresh-config"
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(cfg))
-    monkeypatch.delenv("GENRE_TOKEN", raising=False)
-    a, b = vibenative.create_app(), vibenative.create_app()
+    s = use_settings(config_dir=cfg, token="")
+    a, b = vibenative.create_app(s), vibenative.create_app(s)
     token = a.config["AUTH_TOKEN"]
     assert len(token) >= 32 and b.config["AUTH_TOKEN"] == token
     saved = cfg / "dev_token"
@@ -81,27 +80,24 @@ def test_dev_token_is_generated_once_and_reused(client, monkeypatch, tmp_path):
         assert stat.S_IMODE(os.stat(saved).st_mode) == 0o600
 
 
-def test_genre_token_overrides_the_saved_dev_token(client, monkeypatch, tmp_path):
+def test_genre_token_overrides_the_saved_dev_token(client, use_settings, tmp_path):
     import vibenative
 
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(tmp_path / "cfg"))
-    monkeypatch.delenv("GENRE_TOKEN", raising=False)
-    saved = vibenative.create_app().config["AUTH_TOKEN"]
-    monkeypatch.setenv("GENRE_TOKEN", "pinned")
-    assert vibenative.create_app().config["AUTH_TOKEN"] == "pinned"
+    s = use_settings(config_dir=tmp_path / "cfg", token="")
+    saved = vibenative.create_app(s).config["AUTH_TOKEN"]
+    assert vibenative.create_app(use_settings(token="pinned")).config["AUTH_TOKEN"] == "pinned"
     assert (tmp_path / "cfg" / "dev_token").read_text(encoding="ascii").strip() == saved
 
 
-def test_a_packaged_build_never_writes_a_dev_token(client, monkeypatch, tmp_path):
+def test_a_packaged_build_never_writes_a_dev_token(client, monkeypatch, use_settings, tmp_path):
     import sys
 
     import vibenative
 
     cfg = tmp_path / "frozen-config"
-    monkeypatch.setenv("VIBE_CONFIG_DIR", str(cfg))
-    monkeypatch.delenv("GENRE_TOKEN", raising=False)
+    s = use_settings(config_dir=cfg, token="")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    a, b = vibenative.create_app(), vibenative.create_app()
+    a, b = vibenative.create_app(s), vibenative.create_app(s)
     assert a.config["AUTH_TOKEN"] != b.config["AUTH_TOKEN"]  # fresh each start
     assert not (cfg / "dev_token").exists()
 
@@ -110,7 +106,9 @@ def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
     import vibenative.__main__ as entry
 
     served = []
+    # main() is the one path that builds Settings from the environment itself.
     monkeypatch.setenv("GENRE_PORT", "5123")
+    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
     monkeypatch.setattr(entry.serve, "serve", lambda app, host, port: served.append((host, port)))
     entry.main()
     out = capsys.readouterr().out
@@ -131,30 +129,32 @@ def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
 )
 def test_writes_from_another_site_are_refused(client, site, status):
     headers = {"Sec-Fetch-Site": site} if site else {}
-    r = client.post("/vibes", json={"name": f"v-{site}"}, headers=headers)
+    r = client.post("/api/v1/vibes", json={"name": f"v-{site}"}, headers=headers)
     assert r.status_code == status
 
 
 def test_reads_are_not_subject_to_the_fetch_site_check(client):
     # Only writes are refused; a cross-site GET still needs the token like any other.
-    assert client.get("/library", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200
+    assert (
+        client.get("/api/v1/library", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200
+    )
 
 
 def test_the_right_k_wins_over_a_stale_cookie_and_replaces_it(anon):
     # Another Vibe instance on 127.0.0.1 left its cookie behind (cookies ignore the
     # port). The right ?k= must still get in, and fix the cookie for what follows.
     anon.set_cookie("vibe_token", "some-other-instances-token")
-    assert anon.get("/library").status_code == 403  # the stale cookie alone
+    assert anon.get("/api/v1/library").status_code == 403  # the stale cookie alone
     assert anon.get("/", query_string={"k": "wrong"}).status_code == 403
     r = anon.get("/", query_string={"k": TEST_TOKEN})
     assert r.status_code == 200
     assert f"vibe_token={TEST_TOKEN}" in r.headers.get("Set-Cookie", "")
-    assert anon.get("/library").status_code == 200  # the replaced cookie now works
+    assert anon.get("/api/v1/library").status_code == 200  # the replaced cookie now works
 
 
 def test_a_valid_cookie_is_not_undone_by_an_unrelated_k(client):
     # ?k= is also /similar's neighbour count (map.js asks for ?k=12); with a good
     # cookie that must not be read as a wrong token.
     assert (
-        client.get("/similar/deadbeef", query_string={"k": "12"}).status_code == 404
+        client.get("/api/v1/similar/deadbeef", query_string={"k": "12"}).status_code == 404
     )  # past the guard

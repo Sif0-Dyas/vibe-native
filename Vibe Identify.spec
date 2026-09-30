@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller ONE-FOLDER build of the Vibenative desktop shell -> dist/Vibe Identify/.
+"""PyInstaller ONE-FOLDER build of the Vibe Identify desktop shell -> dist/Vibe Identify/.
 
 Why onedir, not onefile:
   * onefile re-extracts the entire bundle (CPython + onnxruntime/DirectML DLLs,
@@ -26,20 +26,24 @@ from PyInstaller.utils.hooks import (
     collect_data_files,
     collect_dynamic_libs,
     collect_submodules,
+    copy_metadata,
 )
 
 PROJECT = os.path.abspath(os.getcwd())  # PyInstaller runs the spec from the repo root
 SRC = os.path.join(PROJECT, "src")  # src-layout: the importable `vibenative` package root
 
 # --- vibenative: Flask templates + static assets must ship as bundle data -------
-# enao.json (the Every Noise at Once snapshot) is excluded: no runtime code reads
-# it -- only the build-time tools/crawl_genres.py does -- and it is not ours to
-# redistribute. genres_electronic.json stays; its attribution ships via notices.py.
+# enao.json (the Every Noise at Once snapshot) is excluded: the app has no reader
+# for it (vibenative.enao was deleted) -- only the build-time tools/crawl_genres.py
+# reads it -- and it is not ours to redistribute. genres_electronic.json stays; its attribution ships via notices.py.
 # tools/smoke_dist.py checks both.
 # templates/*.html + static/* + data/*.json (non-.py files)
 datas = collect_data_files("vibenative", excludes=["data/enao.json"])
 # the in-app Guide reads docs/USAGE.md -> bundle it (resolved via paths.resource_base())
 datas += [(os.path.join(PROJECT, "docs", "USAGE.md"), "docs")]
+# vibenative's dist-info: __version__ is read through importlib.metadata, so
+# without it the frozen app cannot say which version it is.
+datas += copy_metadata("vibenative")
 hiddenimports = collect_submodules("vibenative")  # routes.* / db / engine modules (lazy imports)
 
 # --- onnxruntime native libraries, INCLUDING the DirectML EP --------------------

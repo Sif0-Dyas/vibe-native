@@ -27,231 +27,7 @@ keystones are computed at *read* time and cost no re-scan. Changing the taxonomy
 below re-labels the whole library on the next request.
 """
 
-# Fraction of the keystone weight a runner-up needs before a track is a fusion.
-FUSION_THRESHOLD = 0.35
-
-# --- the electronic split -----------------------------------------------------
-# Discogs files all 106 of these under one "Electronic" parent, which is useless
-# for a dance library: it puts Dubstep and Deep House in the same bucket. This is
-# the DJ-facing split. Everything not listed here falls back to the rules below.
-_ELECTRONIC = {
-    "House": [
-        "house",
-        "deep house",
-        "tech house",
-        "electro house",
-        "progressive house",
-        "garage house",
-        "ghetto house",
-        "ghetto",
-        "tropical house",
-        "italo house",
-        "acid house",
-        "hip-house",
-        "speed garage",
-        "uk garage",
-        "bassline",
-        "tribal house",
-        "tribal",
-        "disco polo",
-        "beatdown",
-        "euro house",
-        "juke",
-    ],
-    "Techno": [
-        "techno",
-        "deep techno",
-        "hard techno",
-        "minimal techno",
-        "dub techno",
-        "schranz",
-        "minimal",
-        "acid",
-        "bleep",
-    ],
-    "Trance": [
-        "trance",
-        "tech trance",
-        "hard trance",
-        "progressive trance",
-        "goa trance",
-        "psy-trance",
-    ],
-    "Dubstep": ["dubstep", "grime"],
-    "Drum n Bass": ["drum n bass", "jungle"],
-    "Halftime": ["halftime"],
-    "Hard Dance": [
-        "hardstyle",
-        "hardcore",
-        "happy hardcore",
-        "gabber",
-        "speedcore",
-        "makina",
-        "jumpstyle",
-        "hands up",
-        "donk",
-        "hard house",
-    ],
-    "Breakbeat": [
-        "breakbeat",
-        "breaks",
-        "big beat",
-        "broken beat",
-        "progressive breaks",
-        "breakcore",
-    ],
-    "Electro": ["electro", "electroclash", "freestyle", "miami bass"],
-    "Ambient": ["ambient", "dark ambient", "drone", "dungeon synth", "new age", "berlin-school"],
-    "Downtempo": [
-        "downtempo",
-        "trip hop",
-        "chillwave",
-        "synthwave",
-        "vaporwave",
-        "illbient",
-        "lounge",
-        "future jazz",
-        "jazzdance",
-        "acid jazz",
-        "dub",
-    ],
-    "Disco": [
-        "disco",
-        "nu-disco",
-        "italo-disco",
-        "euro-disco",
-        "eurobeat",
-        "hi nrg",
-        "italodance",
-        "eurodance",
-    ],
-    "Industrial": [
-        "industrial",
-        "ebm",
-        "new beat",
-        "power electronics",
-        "rhythmic noise",
-        "noise",
-        "darkwave",
-        "coldwave",
-    ],
-    "Experimental": [
-        "experimental",
-        "idm",
-        "glitch",
-        "abstract",
-        "leftfield",
-        "musique concrète",
-        "sound collage",
-        "chiptune",
-    ],
-}
-
-# Styles whose keystone overrides their Discogs parent. Trap sits under Hip Hop
-# in the label set but earns its own keystone here: it's a distinct thing to a
-# DJ and it overlaps the halftime/bass material heavily.
-_OVERRIDES = {
-    "trap": "Trap",
-    "hip hop": "Hip Hop",
-    "new wave": "Rock",
-    "neofolk": "Folk",
-    "modern classical": "Classical",
-    "latin": "Latin",
-    # Discogs files Lo-Fi under Rock, which would send it to the Other family and
-    # out of an electronic library's taxonomy entirely. In practice the label
-    # covers lo-fi hip hop and lofi house -- Chill material, not rock.
-    "lo-fi": "Lo-Fi",
-}
-
-# Discogs' "Rock" parent spans Slowdive and Cannibal Corpse. Split it by
-# substring, which covers the ~30 metal styles without listing each. Substring
-# and not \bword\b: the boundary form misses "metalcore" and "goregrind", where
-# the tell is glued to the next word.
-_METAL_EXTRA = {
-    "thrash",
-    "sludge",
-    "doom",
-    "deathcore",
-    "mathcore",
-    "noisecore",
-    "djent",
-    "stoner rock",
-    "crossover thrash",
-}
-_PUNK_EXTRA = {
-    "emo",
-    "psychobilly",
-    "oi",
-    "crust",
-    "hardcore",
-    "post-hardcore",
-    "melodic hardcore",
-    "screamo",
-    "powerviolence",
-    "power violence",
-}
-
-# Discogs parents that already read as sensible keystones, used verbatim.
-_PARENT_OK = {
-    "Hip Hop",
-    "Jazz",
-    "Funk / Soul",
-    "Pop",
-    "Latin",
-    "Reggae",
-    "Blues",
-    "Classical",
-    "Stage & Screen",
-    "Non-Music",
-    "Brass & Military",
-    "Children's",
-}
-
-# Blends with an established name. Anything not here is joined with " / " rather
-# than invented. Keys are frozensets so order never matters.
-#
-# A fusion name must NOT also be a Discogs style, or the taxonomy contradicts
-# itself: "Tech House" is tempting for House + Techno, but a track the model
-# reads *as* Tech House keystones to House and would display "House" -- so the
-# same blend would carry two different names depending on which path reached it.
-# Tech House, Tech Trance, Hard Trance and Jungle are excluded for that reason
-# and fall back to the slash form. test_keystone.py enforces this.
-FUSION_NAMES = {
-    frozenset({"Dubstep", "Drum n Bass"}): "Drumstep",
-    frozenset({"House", "Disco"}): "Disco House",
-    frozenset({"Dubstep", "Trap"}): "Hybrid Trap",
-    frozenset({"House", "Breakbeat"}): "Breakbeat House",
-}
-
-_STYLE_TO_KEYSTONE = {s: k for k, styles in _ELECTRONIC.items() for s in styles}
-
-# --- the three tiers ----------------------------------------------------------
-# archgenre -> keystone -> subgenre.
-#
-# The archgenre is what you'd call a room at a festival; the keystone is what a
-# track *is*; the subgenre is detail. House is an archgenre, not a member of a
-# "Dance" grouping -- it stands on its own the way Techno and Trance do. Bass
-# stays a grouping because dubstep and drum and bass are genuinely siblings under
-# it, where "dance" was a category so broad it grouped almost everything.
-#
-# Only the archgenres that hold more than one keystone need listing; a keystone
-# with no archgenre above it IS its own archgenre (House, Techno, Trance...).
-# That keeps the table small and stops it drifting from _ELECTRONIC.
-ARCHGENRE_OF = {
-    "Dubstep": "Bass",
-    "Drum n Bass": "Bass",
-    "Halftime": "Bass",
-    "Trap": "Bass",
-    "Breakbeat": "Bass",
-    "Ambient": "Chill",
-    "Downtempo": "Chill",
-    "Lo-Fi": "Chill",
-    "Experimental": "Experimental",
-    "Industrial": "Experimental",
-}
-
-# Where a keystone that stands alone sits in the display order.
-STANDALONE_ARCHGENRES = ["House", "Techno", "Trance", "Hard Dance", "Electro", "Disco"]
+from . import tables as T
 
 
 def archgenre_of(keystone):
@@ -260,28 +36,28 @@ def archgenre_of(keystone):
     A keystone with no entry is its own archgenre -- House is not "a kind of
     Dance", it is the top of its own tree.
     """
-    from .taxonomy import archgenre_override
+    from .overlay import archgenre_override
 
     if not keystone:
-        return OTHER_FAMILY
-    if family_of(keystone) == OTHER_FAMILY:
-        return OTHER_FAMILY
+        return T.OTHER_FAMILY
+    if family_of(keystone) == T.OTHER_FAMILY:
+        return T.OTHER_FAMILY
     # "" is a real answer here -- "I promoted this to stand on its own" -- and
     # has to be distinguishable from "no opinion", or a keystone the shipped
     # table files under something could never be lifted out of it.
     ov = archgenre_override(keystone)
     if ov is not None:
         return ov or keystone
-    return ARCHGENRE_OF.get(keystone, keystone)
+    return T.ARCHGENRE_OF.get(keystone, keystone)
 
 
 def archgenre_order():
     """Archgenres in display order: the standalone ones, then the groupings."""
-    from .taxonomy import load as user_overlay
-    from .taxonomy import order as user_order
+    from .overlay import load as user_overlay
+    from .overlay import order as user_order
 
     groups = []
-    for a in ARCHGENRE_OF.values():
+    for a in T.ARCHGENRE_OF.values():
         if a not in groups:
             groups.append(a)
     # An overlay can name an archgenre the built-in tables have never heard of --
@@ -291,44 +67,13 @@ def archgenre_order():
     for a in user_overlay()["archgenre"].values():
         if a and a not in groups:
             groups.append(a)
-    built_in = STANDALONE_ARCHGENRES + groups + [OTHER_FAMILY]
+    built_in = T.STANDALONE_ARCHGENRES + groups + [T.OTHER_FAMILY]
     # A user ordering leads; anything it doesn't mention keeps its built-in
     # position behind it, so a partial ordering ("I only care that House is
     # first") is a usable thing to write.
-    out = [a for a in user_order() if a not in (OTHER_FAMILY,)]
+    out = [a for a in user_order() if a not in (T.OTHER_FAMILY,)]
     out += [a for a in built_in if a not in out]
     return out
-
-
-# --- families: the tier above keystones ---------------------------------------
-# Three levels, widest first: family -> keystone -> subgenre. The family answers
-# "what kind of set does this belong in", which is the question you're asking
-# when sorting a few thousand unknown files; the keystone answers "what is it";
-# the subgenre is detail.
-#
-# This app is for an electronic library, so everything non-electronic collapses
-# into one family rather than earning its own branch. Those keystones survive as
-# labels (a Metal track still says Metal) but they group under Other and don't
-# consume a palette slot -- 51 tracks here, and none of them are what the tool is
-# for.
-#
-# Measured shape of this library: Dance 50.6%, Bass 42.5%, Other 2.7%,
-# Chill 2.5%, Experimental 1.8%. That 93% in two families is exactly why colour
-# lives on the keystone and not here -- see palette.py.
-FAMILIES = {
-    "Dance": ["House", "Techno", "Trance", "Hard Dance", "Disco", "Electro"],
-    "Bass": ["Dubstep", "Drum n Bass", "Halftime", "Trap", "Breakbeat"],
-    "Chill": ["Ambient", "Downtempo", "Lo-Fi"],
-    "Experimental": ["Experimental", "Industrial"],
-}
-OTHER_FAMILY = "Other"
-
-_KEYSTONE_TO_FAMILY = {k: f for f, ks in FAMILIES.items() for k in ks}
-
-# Family display order: the electronic families in the order a set tends to be
-# built, then Other last. Not by size -- a fixed order keeps the map stable as
-# the library grows.
-FAMILY_ORDER = ["Dance", "Bass", "Chill", "Experimental", OTHER_FAMILY]
 
 
 def family_of(keystone):
@@ -337,9 +82,9 @@ def family_of(keystone):
     A user overlay wins: the shipped table is one library's opinion, and this is
     where the person with the library says otherwise. See ``taxonomy``.
     """
-    from .taxonomy import family_override
+    from .overlay import family_override
 
-    return family_override(keystone) or _KEYSTONE_TO_FAMILY.get(keystone, OTHER_FAMILY)
+    return family_override(keystone) or T._KEYSTONE_TO_FAMILY.get(keystone, T.OTHER_FAMILY)
 
 
 def keystone_of(label):
@@ -363,8 +108,8 @@ def keystone_of(label):
     hit = _overlay_alias(style, parent)
     if hit:
         return hit
-    if style in _OVERRIDES:
-        return _OVERRIDES[style]
+    if style in T._OVERRIDES:
+        return T._OVERRIDES[style]
 
     # The parent decides first when we have one. Several style names live under
     # two parents with unrelated meanings -- Electronic---Hardcore is gabber's
@@ -376,16 +121,16 @@ def keystone_of(label):
         if parent == "Rock":
             return _rock_keystone(style)
         if parent == "Electronic":
-            return _STYLE_TO_KEYSTONE.get(style)
-        return parent if parent in _PARENT_OK else None
+            return T._STYLE_TO_KEYSTONE.get(style)
+        return parent if parent in T._PARENT_OK else None
 
     # A bare style (salience stores these without their parent). The electronic
     # reading wins on collision, which is the right default for a dance library
     # -- payload["styles"] keeps the parent if a caller needs to disambiguate.
-    if style in _STYLE_TO_KEYSTONE:
-        return _STYLE_TO_KEYSTONE[style]
-    if style in _USER_ALIASES:
-        return _USER_ALIASES[style]
+    if style in T._STYLE_TO_KEYSTONE:
+        return T._STYLE_TO_KEYSTONE[style]
+    if style in T._USER_ALIASES:
+        return T._USER_ALIASES[style]
     if _looks_rock(style):
         return _rock_keystone(style)
     # The lexicon before the word heuristic: it carries 1,137 curated aliases,
@@ -411,7 +156,7 @@ def _overlay_alias(style, parent):
     """
     if parent and parent != "Electronic":
         return None
-    from .taxonomy import alias_of
+    from .overlay import alias_of
 
     return alias_of(style)
 
@@ -428,10 +173,10 @@ def _lexicon_keystone(style):
     artefact, so a fresh clone simply has one fewer resolution step.
     """
     try:
-        from . import genrelex
+        from . import lexicon
     except ImportError:  # pragma: no cover -- defensive
         return None
-    return genrelex.resolve_keystone(style, _keystone_no_lexicon)
+    return lexicon.resolve_keystone(style, _keystone_no_lexicon)
 
 
 def _keystone_no_lexicon(label):
@@ -450,55 +195,24 @@ def _keystone_no_lexicon(label):
     hit = _overlay_alias(style, parent)
     if hit:
         return hit
-    if style in _OVERRIDES:
-        return _OVERRIDES[style]
+    if style in T._OVERRIDES:
+        return T._OVERRIDES[style]
     if parent:
         if parent == "Non-Music":
             return None
         if parent == "Rock":
             return _rock_keystone(style)
         if parent == "Electronic":
-            return _STYLE_TO_KEYSTONE.get(style)
-        return parent if parent in _PARENT_OK else None
-    if style in _STYLE_TO_KEYSTONE:
-        return _STYLE_TO_KEYSTONE[style]
-    if style in _USER_ALIASES:
-        return _USER_ALIASES[style]
+            return T._STYLE_TO_KEYSTONE.get(style)
+        return parent if parent in T._PARENT_OK else None
+    if style in T._STYLE_TO_KEYSTONE:
+        return T._STYLE_TO_KEYSTONE[style]
+    if style in T._USER_ALIASES:
+        return T._USER_ALIASES[style]
     if _looks_rock(style):
         return _rock_keystone(style)
     # No lexicon step here -- that's the whole point of this variant.
     return _word_keystone(style)
-
-
-# Genre names that only ever arrive from a *manual override* -- things you typed
-# because the model has no label for them. Kept apart from _OVERRIDES, which maps
-# real Discogs styles: a test asserts every _OVERRIDES key is a label the model
-# can actually emit, and these deliberately aren't.
-_USER_ALIASES = {
-    # Checked before the compound-name heuristic below, which would read the
-    # rightmost word as the head noun and file "Trap Wave" under Downtempo. The
-    # tracks say otherwise: they read as Dubstep/Grime/Trap at a median 140 BPM.
-    "trap wave": "Dubstep",
-    # Phonk is Memphis-rap derived; the model has no label for it at all and
-    # hears breakcore/speedcore underneath, so this is genre knowledge, not a
-    # reading of the audio.
-    "phonk": "Trap",
-    "drift phonk": "Trap",
-    "wave": "Downtempo",
-    "hardwave": "Hard Dance",
-    "colour bass": "Dubstep",
-    "color bass": "Dubstep",
-    "melodic dubstep": "Dubstep",
-    "riddim": "Dubstep",
-    "tearout": "Dubstep",
-    "liquid": "Drum n Bass",
-    "neurofunk": "Drum n Bass",
-    "jump up": "Drum n Bass",
-    "afro house": "House",
-    "amapiano": "House",
-    "melodic techno": "Techno",
-    "chillhop": "Lo-Fi",
-}
 
 
 def _word_keystone(style):
@@ -519,11 +233,11 @@ def _word_keystone(style):
             phrase = " ".join(words[j:i])
             if phrase == style:
                 continue  # already tried as a whole
-            hit = _STYLE_TO_KEYSTONE.get(phrase) or _USER_ALIASES.get(phrase)
+            hit = T._STYLE_TO_KEYSTONE.get(phrase) or T._USER_ALIASES.get(phrase)
             if hit:
                 return hit
-            if phrase in _OVERRIDES:
-                return _OVERRIDES[phrase]
+            if phrase in T._OVERRIDES:
+                return T._OVERRIDES[phrase]
     return None
 
 
@@ -532,15 +246,15 @@ def _looks_rock(style):
         "metal" in style
         or "grind" in style
         or "punk" in style
-        or style in _METAL_EXTRA
-        or style in _PUNK_EXTRA
+        or style in T._METAL_EXTRA
+        or style in T._PUNK_EXTRA
     )
 
 
 def _rock_keystone(style):
-    if "metal" in style or "grind" in style or style in _METAL_EXTRA:
+    if "metal" in style or "grind" in style or style in T._METAL_EXTRA:
         return "Metal"
-    if "punk" in style or style in _PUNK_EXTRA:
+    if "punk" in style or style in T._PUNK_EXTRA:
         return "Punk"
     return "Rock"
 
@@ -598,7 +312,7 @@ def classify(payload):
     result. Returns None when nothing in the read maps to a keystone.
 
     A manual override (POST /override) wins outright, exactly as it does for
-    ``_dominant_style`` -- if you've told the app what a track is, that's what
+    ``style.dominant_style`` -- if you've told the app what a track is, that's what
     it is, and it reports as a single keystone with full confidence.
     """
     payload = payload or {}
@@ -620,14 +334,14 @@ def classify(payload):
             "override": True,
         }
 
-    # Precedence matches routes._shared._dominant_style: a retroactive re-label
+    # Precedence matches style.dominant_style: a retroactive re-label
     # is a newer head's judgement and outranks the original salience read.
     # Salience is otherwise the better signal, but it's energy-weighted and can
     # come back all-zero on a very quiet track, so the flat scores backstop it
     # rather than dropping the track out of the taxonomy entirely.
-    from .weights import read_with_steps
+    from ..weights import read_with_steps
 
-    # Same precedence as routes._shared._dominant_style, or the map and the
+    # Same precedence as style.dominant_style, or the map and the
     # label would disagree about a track you had just adjusted by hand.
     weights, styles = _tally(read_with_steps(payload))
     if not weights:
@@ -643,7 +357,7 @@ def classify(payload):
     order = sorted(weights.items(), key=lambda kv: -kv[1])
     primary, top_w = order[0]
     keystones = [primary]
-    if len(order) > 1 and order[1][1] / total >= FUSION_THRESHOLD:
+    if len(order) > 1 and order[1][1] / total >= T.FUSION_THRESHOLD:
         keystones.append(order[1][0])
 
     subgenres = [
@@ -693,4 +407,49 @@ def label_for(keystones):
         return ""
     if len(keystones) == 1:
         return keystones[0]
-    return FUSION_NAMES.get(frozenset(keystones)) or " / ".join(keystones)
+    return T.FUSION_NAMES.get(frozenset(keystones)) or " / ".join(keystones)
+
+
+_LABELS_JSON = "genre_discogs400-discogs-effnet-1.json"
+
+
+def discogs_labels():
+    """The classifier's 400 ``Parent---Style`` labels, from the label file that
+    ships with the models (paths.models_dir: beside the exe in a packaged build,
+    the repo's models/ in dev). Raises FileNotFoundError if it isn't there."""
+    import json
+
+    from ..paths import models_dir
+
+    path = models_dir() / _LABELS_JSON
+    if not path.is_file():
+        raise FileNotFoundError(_LABELS_JSON)
+    return json.loads(path.read_text(encoding="utf-8"))["classes"]
+
+
+def style_keystones():
+    """{style, lower-cased: keystone} for every style name this taxonomy knows,
+    with the user's overlay applied -- what the frontend resolves a style to.
+
+    Known: the classifier's 400 styles, every name in the built-in tables, the
+    overlay's aliases and the lexicon's genres. A name that resolves to no
+    keystone is left out; the caller falls back to the name itself.
+    """
+    from . import lexicon
+    from .overlay import load as user_overlay
+
+    names = set(T._STYLE_TO_KEYSTONE) | set(T._OVERRIDES) | set(T._USER_ALIASES)
+    try:
+        names |= {lab.rpartition("---")[2] for lab in discogs_labels()}
+    except FileNotFoundError:
+        pass
+    names |= set((user_overlay().get("aliases") or {}).keys())
+    names |= set(lexicon.names())
+    out = {}
+    for name in names:
+        key = str(name).strip().lower()
+        if key and key not in out:
+            k = keystone_of(key)
+            if k:
+                out[key] = k
+    return out

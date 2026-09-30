@@ -2,7 +2,12 @@
    Columns are user-choosable (right-click a header or the "columns" button, Windows-
    style); rows can be grouped into collapsible sections (Genre / Key / Camelot / BPM
    range / Artist). Preferences persist in localStorage. Clicking a row loads that
-   track into the List via window.loadTrackByHash (app.js). Self-contained IIFE. */
+   track into the List via loadTrackByHash (app.js). Sets hooks.reloadLibrary. */
+
+import { hooks } from './hooks.js';
+import { loadTrackByHash } from './app.js';
+let vibeLoadLibrary; // assigned below, where the file sets it up
+
 (function () {
   var LIB = null;                 // cached full library ([] of lean track records)
   var wired = false, colMenu = null;
@@ -179,7 +184,7 @@
   function load(force) {
     if (LIB && !force) { render(); return; }
     els.rows.innerHTML = '<div class="lib-empty">loading library…</div>';
-    fetch('/library').then(function (r) { return r.json(); }).then(function (data) {
+    fetch('/api/v1/library').then(function (r) { return r.json(); }).then(function (data) {
       LIB = data || []; render();
     }).catch(function () { els.rows.innerHTML = '<div class="lib-empty">failed to load the library</div>'; });
   }
@@ -187,7 +192,7 @@
   /* A key corrected in the List tab changes a row here too; app.js calls this
      so the table does not keep showing the detector's old answer. Cheap: it
      only refetches when the Library has already been loaded once. */
-  window.reloadLibrary = function () { if (LIB) load(true); };
+  hooks.reloadLibrary = function () { if (LIB) load(true); };
 
   function exportTxt() {
     if (!LIB) return;
@@ -248,8 +253,8 @@
         persist(); return;
       }
       var row = e.target.closest('.lib-row'); if (!row) return;
-      if (window.loadTrackByHash) {
-        window.loadTrackByHash(row.dataset.hash);
+      if (loadTrackByHash) {
+        loadTrackByHash(row.dataset.hash);
         var listTab = document.querySelector('.tab[data-view="list"]'); if (listTab) listTab.click();
       }
     });
@@ -259,5 +264,7 @@
   }
 
   // Called by map.js's switchTo() when the Library tab is opened.
-  window.vibeLoadLibrary = function () { wire(); load(false); };
+  vibeLoadLibrary = function () { wire(); load(false); };
 })();
+
+export { vibeLoadLibrary };

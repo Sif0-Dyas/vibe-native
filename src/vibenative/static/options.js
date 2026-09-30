@@ -1,5 +1,9 @@
 /* Options tab — app status (version, DB, ffmpeg, GPU) + quick links to the manage
-   panels. Fetches /status and renders it. Self-contained IIFE. */
+   panels. Fetches /status and renders it. */
+
+import { EQ_STYLES, KEYVIEW, PREFS, THEMES, setKeyView, setPref } from './app.js';
+let vibeLoadOptions; // assigned below, where the file sets it up
+
 (function () {
   var body;
 
@@ -182,7 +186,7 @@
   function loadNotices() {
     var host = body.querySelector('#notices');
     if (!host) return;
-    fetch('/notices').then(function (r) { return r.json(); }).then(function (list) {
+    fetch('/api/v1/notices').then(function (r) { return r.json(); }).then(function (list) {
       if (!list || !list.length) { host.textContent = 'none recorded'; return; }
       host.innerHTML = list.map(function (n) {
         return '<div class="notice">' +
@@ -260,7 +264,7 @@
     var apply = document.getElementById('fp-apply');
     if (!folder || !check || !apply) return;
 
-    fetch('/filepaths/audit').then(function (r) { return r.json(); }).then(function (a) {
+    fetch('/api/v1/filepaths/audit').then(function (r) { return r.json(); }).then(function (a) {
       var el = document.getElementById('fp-stat');
       if (!el) return;
       var bits = [a.ok + ' linked'];
@@ -278,7 +282,7 @@
     var confirmedFor = '';
 
     function preflight(v) {
-      return fetch('/filepaths/count', {
+      return fetch('/api/v1/filepaths/count', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder: v })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -306,7 +310,7 @@
 
     function doRun(v, doApply) {
       note('fp-msg', doApply ? 'repairing…' : 'hashing files…');
-      fetch('/filepaths/repair', {
+      fetch('/api/v1/filepaths/repair', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder: v, apply: !!doApply })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -317,7 +321,7 @@
           ' (' + j.already_ok + ' already fine, ' + j.unanalysed_files + ' not in your library)';
         note('fp-msg', msg, false);
         apply.disabled = doApply || todo === 0;
-        if (doApply) window.vibeLoadOptions();     // refresh the status line
+        if (doApply) vibeLoadOptions();     // refresh the status line
       }).catch(function () { note('fp-msg', 'scan failed', true); });
     }
     check.onclick = function () { run(false); };
@@ -332,7 +336,7 @@
   }
 
   function reveal(what) {
-    fetch('/reveal', {
+    fetch('/api/v1/reveal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ what: what })
     }).then(function (r) { return r.json(); }).then(function (j) {
@@ -358,7 +362,7 @@
     document.getElementById('db-edit-save').onclick = function () {
       var v = document.getElementById('db-edit-in').value.trim();
       if (!v) return;
-      fetch('/db-path', {
+      fetch('/api/v1/db-path', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: v })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -373,12 +377,14 @@
   }
 
   // Called by map.js's switchTo() when the Options tab is opened.
-  window.vibeLoadOptions = function () {
+  vibeLoadOptions = function () {
     body = document.getElementById('opt-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
-    fetch('/status').then(function (r) { return r.json(); }).then(render).catch(function () {
+    fetch('/api/v1/status').then(function (r) { return r.json(); }).then(render).catch(function () {
       body.innerHTML = '<div class="opt-card">Could not load status.</div>';
     });
   };
 })();
+
+export { vibeLoadOptions };

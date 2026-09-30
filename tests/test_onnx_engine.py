@@ -73,23 +73,23 @@ def engine(monkeypatch, tmp_path):
                 setattr(pkg, n, attr)
 
 
-def test_tempo_and_genre_engine_share_provider_policy(engine, monkeypatch):
+def test_tempo_and_genre_engine_share_provider_policy(engine, use_settings):
     # TempoCNN used to carry its own DML-first order and ignore VIBE_PROVIDER, so it
     # kept running on the GPU path that faults the NVIDIA driver after the genre
     # engine had moved to CPU. Both now resolve through onnx_engine.
     onnx_engine, tempo, sessions = engine
     dml_first = ["DmlExecutionProvider", "CPUExecutionProvider"]
-    for env, expected in (
+    for provider, expected in (
         ("", ["CPUExecutionProvider"]),
         ("gpu", dml_first),
         ("cpu", ["CPUExecutionProvider"]),
     ):
-        monkeypatch.setenv("VIBE_PROVIDER", env)
+        use_settings(provider=provider)
         sessions.clear()
         tempo._engine.clear()
         onnx_engine._session(onnx_engine.MODELS / "genre400.onnx")
         tempo._session()
-        assert sessions == [("genre400.onnx", expected), ("tempocnn.onnx", expected)], env
+        assert sessions == [("genre400.onnx", expected), ("tempocnn.onnx", expected)], provider
 
 
 def test_get_engine_builds_once_under_concurrency(engine):

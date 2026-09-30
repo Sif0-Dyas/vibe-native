@@ -2,10 +2,13 @@
    managed in a slide-out panel, persisted to localStorage, played through the
    shared Now Playing bar (prev/next), and exportable as .m3u.
 
-   LOAD ORDER: after nowbar.js (uses window.playHash / nowShowQueueControls);
-   before map.js, which calls the globals exposed here:
-     window.playlistAdd(track)   window.playlistHas(hash)
-   plus the queue hooks nowbar.js looks for: __nowNext / __nowPrev / nowClearQueue */
+   Imports playHash / nowShowQueueControls from nowbar.js. Exports
+   playlistAdd(track) and playlistHas(hash), which map.js imports, and sets the
+   queue hooks nowbar.js calls (hooks.js: nowNext / nowPrev / nowClearQueue). */
+
+import { hooks } from './hooks.js';
+import { nowShowQueueControls, playHash } from './nowbar.js';
+let playlistAdd, playlistHas; // assigned below, where the file sets it up
 
 (function () {
   const KEY = 'vibePlaylist';
@@ -26,7 +29,7 @@
     const n = PL.tracks.length;
     document.querySelectorAll('.pl-badge, #pl-count').forEach(e => { e.textContent = n; });
     document.querySelectorAll('.pl-badge').forEach(e => e.classList.toggle('has', n > 0));
-    if (window.nowShowQueueControls) window.nowShowQueueControls(PL.tracks.length > 1 && PL.qi >= 0);
+    if (nowShowQueueControls) nowShowQueueControls(PL.tracks.length > 1 && PL.qi >= 0);
   }
 
   function render() {
@@ -61,7 +64,7 @@
     const t = PL.tracks[i];
     if (!t.a) return;               // no server-side file
     PL.qi = i;
-    if (window.playHash) window.playHash(t.hash, { title: t.title, artist: t.artist, color: t.color });
+    if (playHash) playHash(t.hash, { title: t.title, artist: t.artist, color: t.color });
     render();
   }
   // advance/retreat over PLAYABLE tracks (skip files-missing entries)
@@ -71,9 +74,9 @@
       if (PL.tracks[i].a) { playAt(i); return; }
     }
   }
-  window.__nowNext = () => step(1);
-  window.__nowPrev = () => step(-1);
-  window.nowClearQueue = () => { PL.qi = -1; render(); };
+  hooks.nowNext = () => step(1);
+  hooks.nowPrev = () => step(-1);
+  hooks.nowClearQueue = () => { PL.qi = -1; render(); };
 
   function move(i, d) {
     const j = i + d;
@@ -90,7 +93,7 @@
   }
 
   // ---- public API (called from map.js) ----
-  window.playlistAdd = function (t) {
+  playlistAdd = function (t) {
     if (!t || !t.hash) return false;
     if (PL.tracks.some(x => x.hash === t.hash)) return false;   // dedupe
     PL.tracks.push({ hash: t.hash, title: t.title, artist: t.artist, color: t.color, a: t.a ? 1 : 0 });
@@ -101,7 +104,7 @@
     });
     return true;
   };
-  window.playlistHas = h => PL.tracks.some(x => x.hash === h);
+  playlistHas = h => PL.tracks.some(x => x.hash === h);
 
   // ---- panel open/close + actions ----
   const open = () => { panel.classList.add('open'); render(); };
@@ -130,12 +133,12 @@
     for (const t of PL.tracks) {
       const label = (t.artist ? t.artist + ' - ' : '') + (t.title || 'Track');
       lines.push('#EXTINF:-1,' + label);
-      lines.push(origin + '/audio/' + t.hash);   // streams from the running app
+      lines.push(origin + '/api/v1/audio/' + t.hash);   // streams from the running app
     }
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'audio/x-mpegurl' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'vibedentify-playlist.m3u';
+    a.download = 'vibe-identify-playlist.m3u';
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -157,7 +160,7 @@
     const name = (window.prompt('Save playlist as:') || '').trim();
     if (!name) return;
     try {
-      const r = await fetch('/playlists', {
+      const r = await fetch('/api/v1/playlists', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, tracks: PL.tracks })
       });
@@ -175,14 +178,14 @@
   async function renderSaved() {
     savedList.innerHTML = '<div class="pl-saved-empty">loading…</div>';
     let items;
-    try { items = await fetch('/playlists').then(r => r.json()); }
+    try { items = await fetch('/api/v1/playlists').then(r => r.json()); }
     catch (_) { savedList.innerHTML = '<div class="pl-saved-empty">failed to load</div>'; return; }
     if (!items.length) { savedList.innerHTML = '<div class="pl-saved-empty">no saved playlists yet</div>'; return; }
     savedList.innerHTML = items.map(p =>
       `<div class="pl-saved-item" data-id="${p.id}">` +
       `<button class="pl-saved-load" title="load this playlist">${esc(p.name)}</button>` +
       `<span class="pl-saved-n">${p.count}</span>` +
-      `<a class="pl-saved-rb" href="/playlists/${p.id}/rekordbox" download ` +
+      `<a class="pl-saved-rb" href="/api/v1/playlists/${p.id}/rekordbox" download ` +
       `title="export for Rekordbox — carries star ratings and grade/note comments">&#8681; rb</a>` +
       `<button class="pl-saved-del" title="delete this saved playlist">✕</button></div>`).join('');
     savedList.querySelectorAll('.pl-saved-item').forEach(el => {
@@ -194,7 +197,7 @@
 
   async function loadSaved(id) {
     try {
-      const p = await fetch('/playlists/' + id).then(r => r.json());
+      const p = await fetch('/api/v1/playlists/' + id).then(r => r.json());
       if (!p || p.error || !Array.isArray(p.tracks)) return;
       if (PL.tracks.length && !window.confirm(`Replace the current playlist with “${p.name}”?`)) return;
       PL.tracks = p.tracks; PL.qi = -1; save(); render();
@@ -205,7 +208,7 @@
   async function delSaved(id, el) {
     if (!window.confirm('Delete this saved playlist?')) return;
     try {
-      await fetch('/playlists/' + id + '/delete', { method: 'POST' });
+      await fetch('/api/v1/playlists/' + id, { method: 'DELETE' });
       el.remove(); playlistsChanged();
     } catch (_) { /* ignore */ }
     if (!savedList.querySelector('.pl-saved-item')) {
@@ -216,3 +219,5 @@
   render();   // initial (restores the working playlist)
   if (location.hash === '#playlist') open();   // deep link to the panel
 })();
+
+export { playlistAdd, playlistHas };

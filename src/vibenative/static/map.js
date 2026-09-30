@@ -1,10 +1,22 @@
 /* Genre Map — the 3-D constellation view (scene, camera controls, tree
-   view, popups, search, tab switching). Self-contained IIFE.
+   view, popups, search, tab switching).
 
-   LOAD ORDER: load AFTER app.js — uses shared helpers from app.js
-   (escapeHtml, colorFor, styleInfo, familyOf, fmtTime) and calls
-   window.vibeLoadGuide (defined in app.js). Exposes window.vibeMapGoto,
-   which app.js's review panel calls. See index.html. */
+   Imports shared helpers from app.js (escapeHtml, familyOf, fmtTime, ...) and
+   each tab's loader (vibeLoadGuide, vibeLoadLibrary, ...). Sets
+   hooks.vibeMapGoto, which app.js's review panel and audio.js call, and
+   hooks.vibeKeyViewChanged. */
+
+import { hooks } from './hooks.js';
+import { PREFS, adjustPanelHtml, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, nameHue, vibeLoadGuide, wireAdjustPanel } from './app.js';
+import { FSH } from './player.js';
+import { AUDIO } from './audio.js';
+import { playHash } from './nowbar.js';
+import { playlistAdd, playlistHas } from './playlist.js';
+import { vibeLoadLibrary } from './library.js';
+import { vibeLoadOptions } from './options.js';
+import { vibeLoadGenres } from './genres.js';
+import { vibeLoadVibes } from './vibes.js';
+let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets it up
 
 /* ===================================================================
    Genre Map -- 3D constellation of the whole scanned library.
@@ -1632,7 +1644,7 @@
     // the legend must list the same things the map labels, or clicking a legend
     // row would filter on a name nothing on screen carries.
     //
-    // Each subgenre row also remembers the PulseRoots family (n.fam) its tracks
+    // Each subgenre row also remembers the family (n.fam, the style's keystone) its tracks
     // carry, because that -- not the group -- is what focusStyle() filters on
     // and what the subgenre shade (styleShade / SUB_HUE) is keyed by. In the
     // Universe the group is a keystone or a vibe, and passing that as the
@@ -3019,7 +3031,7 @@
     if (PREFS.sampleFrom === 'start') return 0;
     if (PREFS.sampleFrom === 'middle') return dur ? Math.min(dur * 0.4, cap) : 0;
     try {
-      const mm = await fetch('/waveform/' + hash).then(r => r.ok ? r.json() : null);
+      const mm = await fetch('/api/v1/waveform/' + hash).then(r => r.ok ? r.json() : null);
       const rms = mm && mm.rms;
       if (rms && rms.length && dur){
         let mx = 0; for (const v of rms) if (v > mx) mx = v;
@@ -3074,7 +3086,7 @@
     // resolve a source: the server copy, else a persisted dropped-file handle
     let src = null;
     if (PREV.url){ URL.revokeObjectURL(PREV.url); PREV.url = null; }
-    if (n.a) src = '/audio/' + n.hash;
+    if (n.a) src = '/api/v1/audio/' + n.hash;
     else if (typeof FSH !== 'undefined' && FSH.supported){
       const f = await FSH.file(n.hash);
       if (my !== PREV.token) return;                // a newer selection won
@@ -3218,7 +3230,7 @@
       <div class="pop-actions">${n.a
         ? `<button class="pop-play">▶ play</button>`
         : `<button class="pop-play" disabled title="no file on disk — re-scan this folder (batch) to enable playback">▶ no file</button>`}
-        <button class="pop-add">${(window.playlistHas && window.playlistHas(n.hash)) ? '✓ in playlist' : '＋ playlist'}</button></div>
+        <button class="pop-add">${(playlistHas && playlistHas(n.hash)) ? '✓ in playlist' : '＋ playlist'}</button></div>
       ${n.flag ? `<div class="pop-flag">⚠ low-confidence read — its closest neighbours sound like
         <b>${escapeHtml(n.suggest || '?')}</b></div>` : ''}
       <div id="pop-pick"><div class="pop-bar" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">finding a match…</div></div>
@@ -3268,14 +3280,14 @@
     if (playBtn && n.a) playBtn.onclick = () => {
       // the sample stays CUED -- starting the track claims your ears (audio.js),
       // and the sample strip's switch hands them back without re-selecting.
-      if (window.playHash) window.playHash(n.hash, {
+      if (playHash) playHash(n.hash, {
         title: n.artist ? stripArtist(n.title, n.artist) : n.title,
         artist: n.artist || '', color: famCss(n.fam),
       });
     };
     const addBtn = popEl.querySelector('.pop-add');
     if (addBtn) addBtn.onclick = () => {
-      if (window.playlistAdd) window.playlistAdd({
+      if (playlistAdd) playlistAdd({
         hash: n.hash, title: n.artist ? stripArtist(n.title, n.artist) : n.title,
         artist: n.artist || '', color: famCss(n.fam), a: n.a,
       });
@@ -3284,7 +3296,7 @@
     wireChips(popEl);
     // Keep the map's copies current so "size stars by rating" reacts now rather
     // than at the next full map load.
-    wireRating(popEl.querySelector('.pop-rate-track'), `/ratings/${n.hash}`, j => {
+    wireRating(popEl.querySelector('.pop-rate-track'), `/api/v1/ratings/${n.hash}`, j => {
       TRACK_RATINGS[n.hash] = { stars: j.stars || 0, grade: j.grade || '', note: j.note || '' };
       ratingsChanged();
     });
@@ -3293,7 +3305,7 @@
       // widget is bound to whichever is picked and re-bound when that changes.
       const who = [...popEl.querySelectorAll('.arate-who')];
       const bind = name => wireRating(popEl.querySelector('.pop-rate-artist'),
-        `/artist-ratings/${encodeURIComponent(name)}`,
+        `/api/v1/artist-ratings/${encodeURIComponent(name)}`,
         j => { ARTIST_RATINGS[j.key || artistKey(name)] = j; ratingsChanged(); });
       if (who.length){
         bind(who[0].dataset.a);
@@ -3344,7 +3356,7 @@
       }
     });
     try{
-      simCache = await fetch(`/similar/${n.hash}?k=12`).then(r=>r.ok?r.json():[]);
+      simCache = await fetch(`/api/v1/similar/${n.hash}?k=12`).then(r=>r.ok?r.json():[]);
     }catch(_){ simCache = []; }
     renderPick();
     renderSimilar(simCache);
@@ -3551,7 +3563,7 @@
   async function overrideTrack(n, genre){
     genre = (genre || '').trim(); if (!genre) return;
     try{
-      await fetch(`/override/${n.hash}`, {
+      await fetch(`/api/v1/override/${n.hash}`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ genre }) });
     }catch(_){ /* still relabel locally */ }
@@ -3570,7 +3582,7 @@
       `Remove "${n.title}" from your library?\n\n` +
       `This deletes its analysis (genre, BPM, key) and takes it off the map. ` +
       `Your audio file is NOT touched — re-scanning it will analyze it fresh.`)) return;
-    try{ await fetch(`/forget/${n.hash}`, {method:'POST'}); }catch(_){ /* still drop it locally */ }
+    try{ await fetch(`/api/v1/tracks/${n.hash}`, {method:'DELETE'}); }catch(_){ /* still drop it locally */ }
     NODES = NODES.filter(x => x.hash !== n.hash);
     EDGES = EDGES.filter(e => e.a !== n.hash && e.b !== n.hash);
     closePopup();
@@ -3635,7 +3647,7 @@
         ev.stopPropagation();
         const h = btn.getAttribute('data-h');
         const s = sim.find(x => x.hash === h);
-        if (s && window.playHash) window.playHash(h, {
+        if (s && playHash) playHash(h, {
           title: s.artist ? stripArtist(s.title, s.artist) : s.title,
           artist: s.artist || '', color: famCss(familyOf(s.style || '') || 'Other'),
         });
@@ -3645,8 +3657,8 @@
         ev.stopPropagation();
         const h = btn.getAttribute('data-h');
         const s = sim.find(x => x.hash === h);
-        if (s && window.playlistAdd) {
-          window.playlistAdd({
+        if (s && playlistAdd) {
+          playlistAdd({
             hash: h, title: s.artist ? stripArtist(s.title, s.artist) : s.title,
             artist: s.artist || '', color: famCss(familyOf(s.style || '') || 'Other'), a: s.a,
           });
@@ -3946,7 +3958,7 @@
       await refreshPlaylists();
       syncFilt();
     }
-    window.mapFilterPopulate = populate;
+    mapFilterPopulate = populate;
 
     // let anything outside this block (the popup's tag chips) refresh the panel
     /* The genre list: one row per keystone, with its track count, all ticked
@@ -3960,10 +3972,10 @@
         count[g] = (count[g] || 0) + 1;      // a fusion counts under each parent
         /* `n.family` from the server, NOT `n.fam`.
            They sound interchangeable and are not: `n.fam` is recomputed on this
-           side from the PulseRoots table and comes out as one of ~54 fine
-           families (Metalcore, Alternative Rock, Phonk), so it is almost never
-           the string "Other" -- which is why the electronic filter used to run
-           and hide nothing at all. The server's `family` is the coarse tier the
+           side from the style's keystone (familyOf, GET /taxonomy/keystones)
+           and falls back to the style name itself, so it is almost never the
+           string "Other" -- which is why the electronic filter used to run and
+           hide nothing at all. The server's `family` is the coarse tier the
            taxonomy actually files a track under: Dance, Bass, Chill,
            Experimental, or Other for whatever it could not place. */
         famOf[g] = n.family;
@@ -4001,7 +4013,7 @@
          mostly-electronic library is the metal, punk and hip hop. */
       $f('flt-gen-elec').addEventListener('click', () => setGenres(r => r.fam !== 'Other'));
     }
-    window.mapGenrePopulate = buildGenres;
+    mapGenrePopulate = buildGenres;
 
     syncFilterUI = syncFilt;
     const onFilt = () => { syncFilt(); };
@@ -4028,7 +4040,7 @@
       playlistHashes = null;
       $f('flt-artist').value = ''; $f('flt-key').value = ''; $f('flt-pl').value = '';
       $f('flt-playable').checked = false;
-      if (window.mapGenrePopulate) window.mapGenrePopulate();   // re-tick every genre
+      if (mapGenrePopulate) mapGenrePopulate();   // re-tick every genre
       $f('flt-bpm-lo').value = 0; $f('flt-bpm-hi').value = 100;
       $f('flt-len-lo').value = 0; $f('flt-len-hi').value = 100;
       for (const b of filtPanel.querySelectorAll('.flt-tag.on')) b.classList.remove('on');
@@ -4385,7 +4397,7 @@
   async function loadOverlays(){
     const grab = url => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
     const [mem, tr, ar] = await Promise.all([
-      grab('/vibes/membership'), grab('/ratings'), grab('/artist-ratings'), refreshPlaylists(),
+      grab('/api/v1/vibes/membership'), grab('/api/v1/ratings'), grab('/api/v1/artist-ratings'), refreshPlaylists(),
     ]);
 
     VIBES = Array.isArray(mem) ? mem : [];
@@ -4462,7 +4474,7 @@
      saved beforehand, that reads as "the app only lets me pick this one". */
   async function refreshPlaylists(){
     try{
-      const r = await fetch('/playlists');
+      const r = await fetch('/api/v1/playlists');
       if (!r.ok) return;
       const pls = await r.json();
       PLAYLISTS = Array.isArray(pls) ? pls : (pls && pls.playlists) || [];
@@ -4489,7 +4501,7 @@
      has used (`tracks` of objects, or bare `hashes`). */
   async function playlistHashSet(id){
     try{
-      const r = await fetch(`/playlists/${id}`);
+      const r = await fetch(`/api/v1/playlists/${id}`);
       if (!r.ok) return null;
       const d = await r.json();
       const hs = d.tracks || d.hashes || [];
@@ -4588,7 +4600,7 @@
      server can't say. */
   async function mapStamp(){
     try{
-      const r = await fetch('/map/stamp');
+      const r = await fetch('/api/v1/map/stamp');
       if (!r.ok) return null;
       const j = await r.json();
       return (j && j.stamp) || null;
@@ -4625,7 +4637,7 @@
       // builds the response. Nothing is measurable until it starts sending.
       loading(true, 'Reading and sorting your library…', -1);
       countMap.textContent = 'loading…';
-      const data = await fetchJsonProgress('/map', f => {
+      const data = await fetchJsonProgress('/api/v1/map', f => {
         loading(true, 'Downloading your library… ' + Math.round(f * 100) + '%', f);
       });
       /* NOTHING is published to NODES until layout() can follow immediately.
@@ -4689,11 +4701,11 @@
     if (genView) genView.hidden = viewName !== 'genres';
     const vibView = document.getElementById('vibes-view');
     if (vibView) vibView.hidden = viewName !== 'vibes';
-    if (viewName === 'guide' && window.vibeLoadGuide) window.vibeLoadGuide();
-    if (viewName === 'library' && window.vibeLoadLibrary) window.vibeLoadLibrary();
-    if (viewName === 'options' && window.vibeLoadOptions) window.vibeLoadOptions();
-    if (viewName === 'genres' && window.vibeLoadGenres) window.vibeLoadGenres();
-    if (viewName === 'vibes' && window.vibeLoadVibes) window.vibeLoadVibes();
+    if (viewName === 'guide' && vibeLoadGuide) vibeLoadGuide();
+    if (viewName === 'library' && vibeLoadLibrary) vibeLoadLibrary();
+    if (viewName === 'options' && vibeLoadOptions) vibeLoadOptions();
+    if (viewName === 'genres' && vibeLoadGenres) vibeLoadGenres();
+    if (viewName === 'vibes' && vibeLoadVibes) vibeLoadVibes();
     showMap(viewName === 'map');
     const hash = viewName==='map' ? '#map' : (viewName==='guide' ? '#guide'
                  : (viewName==='library' ? '#library'
@@ -4717,8 +4729,8 @@
         startLoop();
         // the filter choosers are built from the loaded library, so they can only
         // be populated once the nodes exist
-        if (window.mapFilterPopulate) window.mapFilterPopulate();
-        if (window.mapGenrePopulate) window.mapGenrePopulate();
+        if (mapFilterPopulate) mapFilterPopulate();
+        if (mapGenrePopulate) mapGenrePopulate();
         if (want && byHash.has(want[1])) selectNode(want[1], true);   // cut, don't fly
       });
     } else { stopLoop(); }
@@ -4764,12 +4776,12 @@
   // The key notation changed under an open map: the hover label repaints itself
   // every frame, but a popup already on screen would keep the old notation until
   // it was closed and reopened.
-  window.vibeKeyViewChanged = () => {
+  hooks.vibeKeyViewChanged = () => {
     if (popEl && !popEl.hidden && selHash && byHash.has(selHash)) openPopup(byHash.get(selHash));
   };
 
   // let other UI (the review-reads panel) jump to a track on the map
-  window.vibeMapGoto = (hash) => {
+  hooks.vibeMapGoto = (hash) => {
     try{ history.replaceState(null, '', '#map=' + hash); }catch(_){}
     switchTo('map');
   };

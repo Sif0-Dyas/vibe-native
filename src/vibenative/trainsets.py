@@ -23,39 +23,32 @@ also means it survives moving your music or rebuilding the database.
 import json
 import shutil
 import time
-from contextlib import closing
 from pathlib import Path
 
 from .config import log
-from .db import _db_lock, db
+from .names import GENRE_NEEDS_ALNUM, genre_folder
+from .repo import tracks as tracks_repo
+from .repo import training as training_repo
+from .settings import current
+from .style import dominant_read
 
-# Mirrors routes.training: the folder /override and /save_training file into,
-# and the one training/train_head.py consumes.
-ROOT = Path.home() / "genre_training"
-ARCHIVE = ROOT / "_archive"
+
+def _root():
+    """Settings.training_root: the folder /override and /save_training file
+    into, and the one training/train_head.py consumes."""
+    return current().training_root
+
+
+def _archive():
+    return _root() / "_archive"
+
 
 MANIFEST_VERSION = 1
 
 
-def _safe(genre):
-    """The folder name a genre maps to, or None if the name isn't usable.
-
-    Same character substitution as ``/override`` and ``/save_training`` so the
-    three agree on where a genre's audio lives. It adds one rejection those
-    don't: a name with no alphanumeric character at all. "///" sanitises to
-    "___", which would silently create a junk folder and then let a reset claim
-    it had cleared something real.
-    """
-    raw = genre or ""
-    if not any(c.isalnum() for c in raw):
-        return None
-    keep = "".join(c if c.isalnum() or c in " _-" else "_" for c in raw).strip()
-    return keep or None
-
-
 def folder(genre):
-    s = _safe(genre)
-    return (ROOT / s) if s else None
+    s = genre_folder(genre)
+    return (_root() / s) if s else None
 
 
 def _audio_files(d):
@@ -71,29 +64,22 @@ def detail(genre, top_n=10):
     ``tracks`` is what the app believes today -- useful both as "is this genre
     working" and as the pool to pick more training examples from.
     """
-    from . import keystone as K
-    from .routes._shared import _dominant_style
+    from .taxonomy import classify as K
 
     d = folder(genre)
     files = _audio_files(d)
     want = (genre or "").strip().lower()
 
     tracks = []
-    with closing(db()) as conn, conn as c:
-        rows = c.execute("SELECT hash, title, filename, filepath, payload FROM tracks").fetchall()
-        labelled = {
-            r[0]
-            for r in c.execute("SELECT hash FROM training_labels WHERE LOWER(genre)=?", (want,))
-        }
-        rejected = sum(
-            1 for _ in c.execute("SELECT 1 FROM training_rejects WHERE LOWER(genre)=?", (want,))
-        )
+    rows = tracks_repo.payload_rows()
+    labelled = {h for h, _src in training_repo.labels_any_case(genre)}
+    rejected = len(training_repo.rejects_any_case(genre))
     for h, title, filename, filepath, payload in rows:
         try:
             p = json.loads(payload) if isinstance(payload, str) else (payload or {})
         except (TypeError, ValueError):
             continue
-        style, score = _dominant_style(p)
+        style, score = dominant_read(p)
         # Match either the exact style or the keystone it rolls up to, so
         # clicking "House" finds the deep/tech/progressive house tracks too.
         if not style:
@@ -133,19 +119,16 @@ def reset(genre):
     """
     d = folder(genre)
     if not d:
-        raise ValueError("invalid genre name")
-    want = (genre or "").strip().lower()
-
+        raise ValueError(GENRE_NEEDS_ALNUM)
     moved = None
     if d.is_dir() and _audio_files(d):
-        ARCHIVE.mkdir(parents=True, exist_ok=True)
-        dest = ARCHIVE / f"{d.name}-{time.strftime('%Y%m%d-%H%M%S')}"
+        archive = _archive()
+        archive.mkdir(parents=True, exist_ok=True)
+        dest = archive / f"{d.name}-{time.strftime('%Y%m%d-%H%M%S')}"
         shutil.move(str(d), str(dest))
         moved = str(dest)
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        labels = c.execute("DELETE FROM training_labels WHERE LOWER(genre)=?", (want,)).rowcount
-        rejects = c.execute("DELETE FROM training_rejects WHERE LOWER(genre)=?", (want,)).rowcount
+    labels, rejects = training_repo.clear_any_case(genre)
     log.info("trainset reset %r: archived=%s labels=%d rejects=%d", genre, moved, labels, rejects)
     return {
         "genre": genre,
@@ -171,11 +154,10 @@ def export(genre):
     which makes it the source of truth -- exporting from the table alone
     produced a manifest that restored nothing.
     """
-    from .db import file_hash
+    from .hashing import file_hash
 
     d = folder(genre)
     files = _audio_files(d)
-    want = (genre or "").strip().lower()
 
     seen, entries = set(), []
     for f in files:
@@ -188,17 +170,11 @@ def export(genre):
         seen.add(h)
         entries.append({"hash": h, "source": "folder", "name": f.name})
 
-    with closing(db()) as conn, conn as c:
-        for h, src in c.execute(
-            "SELECT hash, source FROM training_labels WHERE LOWER(genre)=?", (want,)
-        ):
-            if h not in seen:
-                seen.add(h)
-                entries.append({"hash": h, "source": src or "label"})
-        rejects = [
-            r[0]
-            for r in c.execute("SELECT hash FROM training_rejects WHERE LOWER(genre)=?", (want,))
-        ]
+    for h, src in training_repo.labels_any_case(genre):
+        if h not in seen:
+            seen.add(h)
+            entries.append({"hash": h, "source": src or "label"})
+    rejects = training_repo.rejects_any_case(genre)
     return {
         "version": MANIFEST_VERSION,
         "genre": genre,
@@ -223,31 +199,16 @@ def import_(manifest, genre=None, copy_audio=True):
     target = (genre or manifest.get("genre") or "").strip()
     if not target:
         raise ValueError("no genre in the manifest and none given")
-    safe = _safe(target)
+    safe = genre_folder(target)
     if not safe:
-        raise ValueError("invalid genre name")
+        raise ValueError(GENRE_NEEDS_ALNUM)
 
     wanted = [entry.get("hash") for entry in (manifest.get("labels") or []) if entry.get("hash")]
     rejects = [h for h in (manifest.get("rejects") or []) if h]
 
-    found, missing, copied = [], [], 0
-    dest = ROOT / safe
-    with _db_lock, closing(db()) as conn, conn as c:
-        for h in wanted:
-            row = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()
-            if row is None:
-                missing.append(h)
-            else:
-                found.append((h, (row[0] or "").strip()))
-        now = time.time()
-        c.executemany(
-            "INSERT OR IGNORE INTO training_labels(hash, genre, source, created) VALUES(?,?,?,?)",
-            [(h, target, "import", now) for h, _ in found],
-        )
-        c.executemany(
-            "INSERT OR IGNORE INTO training_rejects(hash, genre) VALUES(?,?)",
-            [(h, target) for h in rejects],
-        )
+    copied = 0
+    dest = _root() / safe
+    found, missing = training_repo.import_labels(target, wanted, rejects)
 
     no_path = sum(1 for _h, fp in found if not fp)
     if copy_audio:

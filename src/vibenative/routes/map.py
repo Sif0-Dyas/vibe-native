@@ -3,17 +3,18 @@
 import hashlib
 import json
 import os
-from contextlib import closing
 from pathlib import Path
 
-from flask import Response, jsonify, render_template, request
+import numpy as np
+from flask import Response, jsonify, request
 
-from .. import insight, taxonomy
+from .. import insight
 from ..config import log
-from ..db import (
-    db,
-)
-from ._shared import _artist_of, _dominant_style, _ranked_read, _second_style, bp
+from ..repo import tags as tags_repo
+from ..repo import tracks as tracks_repo
+from ..style import dominant_read, ranked_read
+from ..taxonomy import overlay
+from ._shared import _artist_of, _second_style, bp
 
 # A runner-up needs at least this share before it's worth offering as a fix.
 # Measured against the library: at 3% about 91% of tracks still keep at least one
@@ -31,12 +32,12 @@ def _override_candidates(p, top_style, limit=5):
     Sending the weights with the node means correcting it is a click instead of
     remembering how to spell it.
 
-    The same ranked read ``_dominant_style`` decides from (``_ranked_read``), so
+    The same ranked read ``style.dominant_style`` decides from (``ranked_read``), so
     the candidates are the runners-up of the read the label actually came from:
     a relabelled track offers the relabel's runners-up, and a genre you removed
     by hand is not offered back as a one-click correction.
     """
-    ranked = _ranked_read(p)
+    ranked = ranked_read(p)
     out = []
     for entry in ranked:
         style = (entry or {}).get("style")
@@ -51,20 +52,6 @@ def _override_candidates(p, top_style, limit=5):
         out.append({"style": style, "score": score})
         if len(out) >= limit:
             break
-    return out
-
-
-def _tags_by_hash(c):
-    """{hash: [tag, ...]} for the whole library in one query.
-
-    Fetched in bulk rather than per node: the map already reads every track, and
-    a per-track tag lookup would turn one query into thousands.
-    """
-    out = {}
-    for h, name in c.execute(
-        "SELECT tt.hash, t.name FROM track_tags tt JOIN tags t ON t.id = tt.tag_id"
-    ):
-        out.setdefault(h, []).append(name)
     return out
 
 
@@ -90,8 +77,8 @@ def _keystone_fields(p, style, mode="dark"):
     fields, not fallback chains: a node with holes in it meant every consumer
     carried its own guess at what should have been there, and they disagreed.
     """
-    from .. import keystone as K
-    from .. import palette as P
+    from .. import keystone_colors
+    from ..taxonomy import classify as K
 
     cls = K.classify(p)
     if not cls:
@@ -108,7 +95,7 @@ def _keystone_fields(p, style, mode="dark"):
             "rings": [],
             "kcolor": None,
         }
-    paint = P.track_paint(cls, mode) or {}
+    paint = keystone_colors.track_paint(cls, mode) or {}
     return {
         "family": cls["family"],
         "keystones": cls["keystones"],
@@ -125,7 +112,7 @@ def _keystone_fields(p, style, mode="dark"):
 
 def _map_node(h, title, filename, payload, filepath="", tags=(), mode="dark"):
     p = payload if isinstance(payload, dict) else json.loads(payload)
-    style, score = _dominant_style(p)
+    style, score = dominant_read(p)
     return {
         **_keystone_fields(p, style, mode),
         "cands": _override_candidates(p, style),
@@ -189,9 +176,9 @@ NODE_SCHEMA = 3
 
 
 def _map_cache_dir():
-    from ..db import DB_PATH
+    from ..settings import current
 
-    return Path(DB_PATH).parent / "vibe-mapcache"
+    return Path(current().db_path).parent / "vibe-mapcache"
 
 
 def _map_fingerprint(rev, mode):
@@ -207,14 +194,14 @@ def _map_fingerprint(rev, mode):
     map current" costs the same on a six-thousand-track library as on six.
     """
     from .. import __version__
-    from ..db import DB_PATH
-    from ..taxonomy import path as taxonomy_path
+    from ..settings import current
+    from ..taxonomy.overlay import path as taxonomy_path
 
     h = hashlib.blake2b(digest_size=16)
     h.update(__version__.encode("utf-8"))
     h.update(f"schema{NODE_SCHEMA}".encode())
     h.update(mode.encode("utf-8"))
-    h.update(str(DB_PATH).encode("utf-8", "replace"))
+    h.update(str(current().db_path).encode("utf-8", "replace"))
     try:
         st = taxonomy_path().stat()
         h.update(f"{st.st_mtime_ns}:{st.st_size}".encode())
@@ -226,11 +213,7 @@ def _map_fingerprint(rev, mode):
 
 def _map_stamp(mode):
     """The fingerprint the map would be built from right now."""
-    from ..db import library_rev
-
-    with closing(db()) as conn, conn as c:
-        rev = library_rev(c)
-    return _map_fingerprint(rev, mode)
+    return _map_fingerprint(tracks_repo.library_rev(), mode)
 
 
 def _map_cache_read(fp):
@@ -283,20 +266,15 @@ def map_route():
         resp = Response(hit, mimetype="application/json")
         resp.headers["X-Map-Cache"] = "hit"
         return resp
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, filename, filepath, payload, embedding FROM tracks"
-        ).fetchall()
-        tags_by_hash = _tags_by_hash(c)
+    rows = tracks_repo.map_rows()
+    tags_by_hash = tags_repo.names_by_hash()
     # One taxonomy overlay for the whole build: every node classified and
     # painted against the same file, and one stat() instead of one per lookup.
-    with taxonomy.pinned():
+    with overlay.pinned():
         return _build_map(rows, tags_by_hash, mode, fp)
 
 
 def _build_map(rows, tags_by_hash, mode, fp):
-    import numpy as np
-
     nodes, embs, emb_idx = [], [], []
     # Every payload is parsed exactly once here and the parsed form is carried
     # to the audit at the end. _map_node takes a dict as happily as a string.
@@ -410,13 +388,6 @@ def map_stamp_route():
     """
     mode = "light" if request.args.get("mode") == "light" else "dark"
     return jsonify({"stamp": _map_stamp(mode)})
-
-
-@bp.get("/")
-def index():
-    from .. import __version__
-
-    return render_template("index.html", app_version=__version__)
 
 
 @bp.get("/guide")

@@ -8,7 +8,8 @@ Consumes the ``manifest.json`` + ``_cache/*.npy`` written by
 side, so validation measures generalization to unseen tracks, not unseen
 frames of seen tracks).
 
-Saves ``~/essentia_models/custom_head.npz`` in exactly the schema the app's
+Saves ``custom_head.npz`` to the app's ``Settings.custom_head_path`` (by default
+``<config dir>/models/``) in exactly the schema the app's
 ``vibenative.analysis.get_custom_head`` loads: W1, b1, W2, b2, mu, sigma,
 labels, val_acc. Restart the app after training and the "custom" row appears.
 
@@ -197,11 +198,13 @@ def confusion(head: dict, val_tracks: list, labels: list[str]):
 
 
 def main() -> int:
+    from vibenative.settings import current
+
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
         "data_dir",
         nargs="?",
-        default=str(Path.home() / "genre_training"),
+        default=str(current().training_root),
         help="root containing manifest.json + _cache/ (default: ~/genre_training)",
     )
     ap.add_argument("--hidden", type=int, default=256)
@@ -236,9 +239,9 @@ def main() -> int:
     if args.out:
         out = Path(args.out).expanduser()
     else:
-        from vibenative.analysis import CUSTOM_HEAD_PATH
+        from vibenative.settings import current
 
-        out = CUSTOM_HEAD_PATH
+        out = current().custom_head_path
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out, **head)
     print(f"\nsaved -> {out}   (val track acc {acc:.1%})")

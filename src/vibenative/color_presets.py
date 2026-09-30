@@ -1,6 +1,6 @@
 """Preset colour schemes for the keystone palette.
 
-``palette.py`` solves one palette against this library's real fusion pairs and
+``keystone_colors.py`` solves one palette against this library's real fusion pairs and
 guards it with separation tests. That is the right default and the wrong
 straitjacket: which colour House is has no correct answer, and a scheme that
 looks right to the person reading the map beats one that measures well.
@@ -15,7 +15,7 @@ implying every scheme separates equally.
 
 Measured *against the default*, not against an absolute floor. The obvious
 framing -- pass/fail at the ΔE 15 readability line -- was tried and thrown away
-because nothing passes, including the solved default: ``palette.py`` is explicit
+because nothing passes, including the solved default: ``keystone_colors.py`` is explicit
 that past three colours no arrangement separates all pairs, and its ΔE 19.3
 figure covers the pairs the library actually produces, not all 28. A flag that
 failed the shipped palette would be measuring the wrong thing loudly. So the
@@ -35,7 +35,7 @@ Two kinds:
 
 **Why two lightness levels.** The first version of this spread sixteen hues
 evenly at one lightness and measured a worst pair of ΔE 5.0 -- unreadable. That
-is not a tuning miss, it is the same ceiling ``palette.py`` documents: at a fixed
+is not a tuning miss, it is the same ceiling ``keystone_colors.py`` documents: at a fixed
 lightness you are packing points into a chroma-limited disc, and about eight fit
 before they collide. Splitting the same hues across two lightness levels doubles
 the usable count, because two genres sharing a hue are then separated by
@@ -46,12 +46,12 @@ of hand-picking.
 import math
 
 # Below this OKLab ΔE (x100) two colours are hard to tell apart even with full
-# colour vision. Same floor palette.py was validated against.
+# colour vision. Same floor keystone_colors.py was validated against.
 READABLE = 15.0
 
 # Evenly spaced hues stop separating past about this many at one lightness --
 # measured, not assumed: sixteen on one level came out at a worst pair of ΔE 5.0.
-# It is the same eight ``palette.py`` arrived at by hand.
+# It is the same eight ``keystone_colors.py`` arrived at by hand.
 HUES_PER_LEVEL = 8
 
 
@@ -239,17 +239,17 @@ def keystone_order():
 
     Fixed on purpose: a preset that reordered itself as the library grew would
     repaint the whole map every time a new genre appeared, and colour is supposed
-    to follow the entity. Same reasoning as ``palette.KEYSTONE_SLOT``.
+    to follow the entity. Same reasoning as ``keystone_colors.KEYSTONE_SLOT``.
     """
-    from . import keystone as K
+    from .taxonomy import tables as T
 
-    return [k for fam in K.FAMILY_ORDER for k in (K.FAMILIES.get(fam) or [])]
+    return [k for fam in T.FAMILY_ORDER for k in (T.FAMILIES.get(fam) or [])]
 
 
 def colors_for(name, mode="dark", keystones=None):
     """``{keystone: hex}`` for a preset, or ``{}`` for the built-in default.
 
-    An empty result means "fall through to palette.py", which is how ``studio``
+    An empty result means "fall through to keystone_colors.py", which is how ``studio``
     stays the solved assignment rather than a copy of it that could drift.
     """
     spec = PRESETS.get(name)
@@ -261,7 +261,7 @@ def colors_for(name, mode="dark", keystones=None):
     if spec["kind"] == "fixed":
         ramp = spec.get(mode) or spec.get("dark") or []
         # A hand-authored list runs out. Recycling would put two keystones on the
-        # same colour, which palette.py argues is worse than one being grey --
+        # same colour, which keystone_colors.py argues is worse than one being grey --
         # so the tail is simply left for the neutral to cover.
         return {k: ramp[i] for i, k in enumerate(ks) if i < len(ramp)}
     lo, hi = spec["arc"]
@@ -281,77 +281,9 @@ def colors_for(name, mode="dark", keystones=None):
     return out
 
 
-def _worst_pair(cols):
-    vals = sorted(set(cols.values()))
-    if len(vals) < 2:
-        return None, 0
-    worst, close = None, 0
-    for i, a in enumerate(vals):
-        for b in vals[i + 1 :]:
-            d = delta_e(a, b)
-            worst = d if worst is None else min(worst, d)
-            if d < READABLE:
-                close += 1
-    return worst, close
-
-
-def _default_colors(mode, keystones):
-    from . import palette as P
-
-    return {k: P.keystone_color(k, mode) for k in (keystones or keystone_order())}
-
-
-def separation(name, mode="dark", keystones=None):
-    """How well a preset separates, relative to the solved default.
-
-    Reported, never enforced. The user asked for schemes they can change freely,
-    so the honest move is to show what a choice costs and let them make it -- a
-    picker that silently blocked ``sunset`` would be answering a question nobody
-    asked.
-
-    ``verdict`` compares to ``studio`` because an absolute pass/fail is not
-    meaningful here: see the module docstring.
-    """
-    cols = colors_for(name, mode, keystones) or _default_colors(mode, keystones)
-    worst, close = _worst_pair(cols)
-    base, _ = _worst_pair(_default_colors(mode, keystones))
-    verdict = "unknown"
-    if worst is not None and base:
-        ratio = worst / base
-        verdict = "tighter" if ratio >= 1.15 else "looser" if ratio <= 0.85 else "comparable"
-    return {
-        "worst": None if worst is None else round(worst, 1),
-        "close_pairs": close,
-        "default_worst": None if base is None else round(base, 1),
-        "verdict": verdict,
-    }
-
-
-def summarise(mode="dark"):
-    """Every preset with its colours and its measured separation, for the picker."""
-    ks = keystone_order()
-    out = []
-    for name, spec in PRESETS.items():
-        cols = colors_for(name, mode, ks)
-        if not cols:  # the built-in: show what it actually paints
-            from . import palette as P
-
-            cols = {k: P.keystone_color(k, mode) for k in ks}
-        out.append(
-            {
-                "name": name,
-                "label": spec["label"],
-                "blurb": spec["blurb"],
-                "colors": [{"keystone": k, "color": cols[k]} for k in ks if k in cols],
-                "separation": separation(name, mode, ks),
-            }
-        )
-    return out
-
-
 def current():
     """The preset in force, from the taxonomy overlay."""
-    from .taxonomy import load
+    from .taxonomy.overlay import load
 
     name = (load().get("palette") or "").strip()
     return name if name in PRESETS else DEFAULT
@@ -365,7 +297,7 @@ def apply(name):
     and there would be no way to tell a preset from sixteen hand-picked colours.
     Per-genre colours are left alone -- they are the exceptions on top.
     """
-    from .taxonomy import patch
+    from .taxonomy.overlay import patch
 
     if name not in PRESETS:
         raise ValueError(f"unknown palette {name!r}")

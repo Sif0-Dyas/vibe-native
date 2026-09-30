@@ -18,11 +18,16 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from .config import DISCOGS_KEY, DISCOGS_SECRET, DISCOGS_TOKEN, LASTFM_KEY, log
+from . import PRODUCT_NAME, __version__
+from .config import log
+from .settings import current
 
 # MusicBrainz etiquette: a descriptive User-Agent with contact info, and no more
-# than one request per second. Discogs also wants an identifying UA.
-USER_AGENT = "Vibedentify/1.0 (+https://github.com/Sif0-Dyas/Vibe_Identify)"
+# than one request per second. Discogs also wants an identifying UA. Built from the
+# product name (a UA product token has no spaces) and the running version.
+USER_AGENT = (
+    f"{PRODUCT_NAME.replace(' ', '')}/{__version__} (+https://github.com/Sif0-Dyas/vibe-native)"
+)
 TIMEOUT = 5  # seconds, per source
 
 _REMIX_RE = re.compile(
@@ -58,10 +63,11 @@ def _discogs_auth():
     A personal access token wins, else a consumer key+secret -- both in the forms
     Discogs documents for the header. Credentials go ONLY in this header, never in
     the query string: a URL ends up in logs, proxies and exception messages."""
-    if DISCOGS_TOKEN:
-        return f"Discogs token={DISCOGS_TOKEN}"
-    if DISCOGS_KEY and DISCOGS_SECRET:
-        return f"Discogs key={DISCOGS_KEY}, secret={DISCOGS_SECRET}"
+    s = current()
+    if s.discogs_token:
+        return f"Discogs token={s.discogs_token}"
+    if s.discogs_key and s.discogs_secret:
+        return f"Discogs key={s.discogs_key}, secret={s.discogs_secret}"
     return None
 
 
@@ -70,7 +76,7 @@ def configured():
     return {
         "discogs": _discogs_auth() is not None,
         "musicbrainz": True,
-        "lastfm": bool(LASTFM_KEY),
+        "lastfm": bool(current().lastfm_key),
     }
 
 
@@ -185,13 +191,14 @@ def parse_musicbrainz(data):
 # --- Last.fm ---------------------------------------------------------------
 def fetch_lastfm(artist, title):
     """track.getTopTags; returns (raw_json | None, error | None)."""
-    if not LASTFM_KEY:
+    key = current().lastfm_key
+    if not key:
         return None, "no LASTFM_KEY configured"
     params = {
         "method": "track.gettoptags",
         "artist": artist,
         "track": title,
-        "api_key": LASTFM_KEY,
+        "api_key": key,
         "autocorrect": 1,
         "format": "json",
     }

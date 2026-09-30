@@ -21,15 +21,13 @@ user to type it.
 
 import itertools
 import json
-import os
 import shutil
 import time
-from contextlib import closing
-from pathlib import Path
 
-from .analysis import CUSTOM_HEAD_PATH
 from .config import log
-from .db import DB_PATH, _db_lock, db
+from .names import safe_name
+from .repo import snapshots as snapshots_repo
+from .settings import current
 
 # The word a caller must pass to reset(). The UI asks the user to type it.
 CONFIRM_WORD = "RESET"
@@ -37,15 +35,13 @@ CONFIRM_WORD = "RESET"
 # Tables holding learned state. Each is snapshotted whole and cleared on reset.
 _TABLES = ("training_labels", "training_rejects", "segment_overrides")
 
-SNAPSHOT_DIR = Path(os.environ.get("VIBE_SNAPSHOTS", Path(DB_PATH).parent / "vibe_snapshots"))
-
 
 class ConfirmationRequired(ValueError):
     """reset() was called without the exact confirmation word."""
 
 
 def _safe(label):
-    keep = "".join(c if c.isalnum() or c in " _-" else "_" for c in (label or "")).strip()
+    keep = safe_name(label)
     return keep.replace(" ", "-")[:40] or "snapshot"
 
 
@@ -56,20 +52,7 @@ def _capture():
     table, so they're pulled out by hash -- restoring writes them back into the
     payload without disturbing the analysis stored alongside.
     """
-    state = {"tables": {}, "overrides": {}}
-    with closing(db()) as conn, conn as c:
-        for t in _TABLES:
-            cur = c.execute(f"SELECT * FROM {t}")  # nosec B608  # fixed table allow-list
-            cols = [d[0] for d in cur.description]
-            state["tables"][t] = {"columns": cols, "rows": [list(r) for r in cur.fetchall()]}
-        for h, payload in c.execute("SELECT hash, payload FROM tracks"):
-            try:
-                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-            except (TypeError, ValueError):
-                continue
-            if p.get("override"):
-                state["overrides"][h] = p["override"]
-    return state
+    return snapshots_repo.capture(_TABLES)
 
 
 # Windows' wall clock ticks every 15.6 ms (`time.get_clock_info("time").resolution`),
@@ -90,14 +73,15 @@ def create(label="manual"):
     Cheap and side-effect free -- take one whenever you're about to do something
     you might regret.
     """
+    settings = current()
     state = _capture()
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    path = SNAPSHOT_DIR / f"{stamp}-{_safe(label)}"
+    path = settings.snapshots_dir / f"{stamp}-{_safe(label)}"
     path.mkdir(parents=True, exist_ok=True)
 
     head_saved = False
-    if CUSTOM_HEAD_PATH.exists():
-        shutil.copy2(CUSTOM_HEAD_PATH, path / "custom_head.npz")
+    if settings.custom_head_path.exists():
+        shutil.copy2(settings.custom_head_path, path / "custom_head.npz")
         head_saved = True
 
     meta = {
@@ -119,10 +103,11 @@ def create(label="manual"):
 def list_all():
     """Every snapshot on disk, newest first. Unreadable ones are skipped, not
     raised -- a corrupt directory shouldn't make the whole list unavailable."""
-    if not SNAPSHOT_DIR.is_dir():
+    snapshot_dir = current().snapshots_dir
+    if not snapshot_dir.is_dir():
         return []
     out = []
-    for d in SNAPSHOT_DIR.iterdir():
+    for d in snapshot_dir.iterdir():
         if not d.is_dir():
             continue
         try:
@@ -136,17 +121,7 @@ def list_all():
 
 def _clear():
     """Wipe the live learned state. Only ever called after a snapshot exists."""
-    with _db_lock, closing(db()) as conn, conn as c:
-        for t in _TABLES:
-            c.execute(f"DELETE FROM {t}")  # nosec B608  # fixed table allow-list
-        for h, payload in c.execute("SELECT hash, payload FROM tracks").fetchall():
-            try:
-                p = json.loads(payload) if isinstance(payload, str) else (payload or {})
-            except (TypeError, ValueError):
-                continue
-            if p.get("override"):
-                p.pop("override", None)
-                c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+    snapshots_repo.clear(_TABLES)
 
 
 def reset(confirm, label="pre-reset"):
@@ -166,9 +141,10 @@ def reset(confirm, label="pre-reset"):
     _clear()
 
     head_moved = None
-    if CUSTOM_HEAD_PATH.exists():
-        aside = CUSTOM_HEAD_PATH.with_name(f"{CUSTOM_HEAD_PATH.stem}.{snap['id']}.npz")
-        CUSTOM_HEAD_PATH.rename(aside)
+    head_path = current().custom_head_path
+    if head_path.exists():
+        aside = head_path.with_name(f"{head_path.stem}.{snap['id']}.npz")
+        head_path.rename(aside)
         head_moved = str(aside)
 
     log.info("genre state reset; recoverable from snapshot %s", snap["id"])
@@ -187,7 +163,8 @@ def restore(snapshot_id):
     Takes its own snapshot of the current state first, so restoring is itself
     undoable and you can never strand yourself between two states.
     """
-    path = SNAPSHOT_DIR / snapshot_id
+    settings = current()
+    path = settings.snapshots_dir / snapshot_id
     if not (path / "state.json").is_file():
         raise FileNotFoundError(f"no snapshot {snapshot_id!r}")
     state = json.loads((path / "state.json").read_text(encoding="utf-8"))
@@ -195,34 +172,12 @@ def restore(snapshot_id):
     before = create(f"pre-restore-{snapshot_id}")
     _clear()
 
-    with _db_lock, closing(db()) as conn, conn as c:
-        for t, blob in state.get("tables", {}).items():
-            if t not in _TABLES:
-                continue  # ignore anything not on the allow-list
-            cols, rows = blob.get("columns") or [], blob.get("rows") or []
-            if not cols or not rows:
-                continue
-            ph = ",".join("?" * len(cols))
-            names = ",".join(cols)
-            c.executemany(
-                f"INSERT OR REPLACE INTO {t} ({names}) VALUES ({ph})",  # nosec B608
-                [tuple(r) for r in rows],
-            )
-        for h, override in (state.get("overrides") or {}).items():
-            row = c.execute("SELECT payload FROM tracks WHERE hash=?", (h,)).fetchone()
-            if not row:
-                continue  # the track is gone; its override has nowhere to land
-            try:
-                p = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})
-            except (TypeError, ValueError):
-                continue
-            p["override"] = override
-            c.execute("UPDATE tracks SET payload=? WHERE hash=?", (json.dumps(p), h))
+    snapshots_repo.restore(state, _TABLES)
 
     head = path / "custom_head.npz"
     if head.is_file():
-        CUSTOM_HEAD_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(head, CUSTOM_HEAD_PATH)
+        settings.custom_head_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(head, settings.custom_head_path)
 
     log.info("restored snapshot %s (previous state saved as %s)", snapshot_id, before["id"])
     return {"restored": snapshot_id, "previous_state_saved_as": before["id"]}

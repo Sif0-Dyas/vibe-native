@@ -1,10 +1,12 @@
-"""Configuration & constants derived from environment variables.
-This module has no project-internal imports -- it is the base of the graph.
+"""The package logger, the audio extensions, and the .env parser.
+
+Settings read from the environment live in settings.py; nothing here reads the
+environment at import. This module has no project-internal imports -- it is the
+base of the graph.
 """
 
 import logging
 import os
-import sys
 from pathlib import Path
 
 log = logging.getLogger("vibenative")
@@ -39,23 +41,6 @@ def _apply_dotenv(path, env=None):
     return applied
 
 
-def _load_dotenv():
-    """Auto-load the project-root .env at startup (dependency-free) so the dev
-    server picks up secrets/config without a manual ``source``. Skipped under
-    pytest so a developer's local .env never leaks into the test run -- the parser
-    itself is unit-tested directly via _apply_dotenv."""
-    if "pytest" not in sys.modules:
-        _apply_dotenv(
-            Path(__file__).resolve().parent.parent.parent / ".env"
-        )  # src/vibenative -> src -> root
-
-
-_load_dotenv()  # must run BEFORE the env-derived constants below
-
-# User-artifact dir for the optional custom head. The genre ONNX models the engine actually runs live in the repo's models/ (see
-# onnx_engine.py / tempo.py); this dir is only for user-supplied extras. Path.home()
-# resolves to %USERPROFILE% on Windows, so the default needs no /mnt assumptions.
-MODEL_DIR = Path(os.environ.get("MODEL_DIR", Path.home() / "essentia_models"))
 AUDIO_EXTS = {
     ".mp3",
     ".flac",
@@ -76,13 +61,3 @@ AUDIO_EXTS = {
     ".mpc",
     ".dsf",
 }
-FAKE = os.environ.get("FAKE_ANALYZER") == "1"
-
-# Optional external metadata-lookup API credentials (the 🔎 per-row lookup).
-# Absent -> that source is simply skipped; the feature degrades per-source.
-# Discogs auth: a personal access token OR a consumer key + secret (either works
-# for /database/search); the token wins if both are set.
-DISCOGS_TOKEN = os.environ.get("DISCOGS_TOKEN", "").strip()
-DISCOGS_KEY = os.environ.get("DISCOGS_KEY", "").strip()
-DISCOGS_SECRET = os.environ.get("DISCOGS_SECRET", "").strip()
-LASTFM_KEY = os.environ.get("LASTFM_KEY", "").strip()

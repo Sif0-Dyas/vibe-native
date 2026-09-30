@@ -9,12 +9,12 @@ library dominated by one genre, auto-correcting would create an echo chamber).
 """
 
 import json
-from contextlib import closing
 
 import numpy as np
 
-from .config import log
-from .db import db
+from .repo import tracks as tracks_repo
+from .style import dominant_read, dominant_style
+from .taxonomy.classify import keystone_of
 
 # Thresholds (tuned on the reference library -> ~5% flag rate).
 CONF_MAX = 0.55  # only second-guess a shaky top read
@@ -22,38 +22,12 @@ AGREE_MIN = 0.60  # neighbours must mostly agree on one family
 SIM_MIN = 0.80  # ...and the nearest neighbour must be genuinely close
 K = 8  # neighbours to consult
 
-_FAM = None
-
-
-def _families():
-    global _FAM
-    if _FAM is None:
-        try:
-            from pathlib import Path
-
-            path = Path(__file__).with_name("static") / "genre_families.json"
-            _FAM = json.loads(path.read_text()).get("style_family", {})
-        except Exception:
-            log.warning("could not load genre_families.json for misread detection", exc_info=True)
-            _FAM = {}
-    return _FAM
-
 
 def family_of(style):
-    return _families().get((style or "").lower(), style or "Other")
-
-
-def dominant(payload):
-    """(top_style, confidence) from a stored payload -- manual override, then salience."""
-    if payload.get("override"):
-        return payload["override"], 1.0
-    sal = payload.get("salience") or []
-    if sal:
-        return sal[0].get("style"), float(sal[0].get("score", 0))
-    st = payload.get("styles") or []
-    if st:
-        return st[0].get("style"), float(st[0].get("score", 0))
-    return None, 0.0
+    """What a misread is judged at: the style's keystone (taxonomy.classify,
+    the user's overlay applied), or the style itself when it has none -- the
+    same resolution the map, the labels and the Analyzer's family lens use."""
+    return keystone_of(style) or style or "Other"
 
 
 def _score(top_style, top_conf, neighbours):
@@ -90,19 +64,17 @@ def check(emb, top_style, top_conf, exclude_hash=None):
     Returns a flag/suggestion dict, or None if there isn't enough to judge."""
     if emb is None:
         return None
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
-        ).fetchall()
+    # tracks.style is style.dominant_style(payload), kept current on every write,
+    # so the neighbours' styles come from the column and no payload is parsed.
+    rows = tracks_repo.style_embeddings()
     q = np.asarray(emb, dtype=np.float32)
     q = q / (np.linalg.norm(q) + 1e-9)
     sims = []
-    for h, payload, blob in rows:
+    for h, s, blob in rows:
         if exclude_hash and h == exclude_hash:
             continue
         e = np.frombuffer(blob, dtype=np.float32)
         e = e / (np.linalg.norm(e) + 1e-9)
-        s, _ = dominant(json.loads(payload))
         sims.append((float(q @ e), s))
     if len(sims) < 3:  # cold start: not enough neighbours
         return None
@@ -134,10 +106,7 @@ def audit(prepared=None):
         embs = [r[3] for r in rows]
         return _audit_core(hashes, titles, payloads, embs)
 
-    with closing(db()) as conn, conn as c:
-        rows = c.execute(
-            "SELECT hash, title, payload, embedding FROM tracks WHERE embedding IS NOT NULL"
-        ).fetchall()
+    rows = tracks_repo.audit_rows()
     if len(rows) < 4:
         return []
     hashes, titles, payloads, embs = [], [], [], []
@@ -170,8 +139,8 @@ def _audit_core(hashes, titles, payloads, embs):
             # decisions match the previous argsort()[:K] behaviour exactly.
             nn = np.argpartition(-row, kth)[:K]
             nn = nn[np.argsort(-row[nn])]
-            top_style, top_conf = dominant(payloads[i])
-            neighbours = [(float(row[int(j)]), dominant(payloads[int(j)])[0]) for j in nn]
+            top_style, top_conf = dominant_read(payloads[i])
+            neighbours = [(float(row[int(j)]), dominant_style(payloads[int(j)])) for j in nn]
             res = _score(top_style, top_conf, neighbours)
             if res and res["flag"]:
                 out.append(

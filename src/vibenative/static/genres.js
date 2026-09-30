@@ -10,6 +10,10 @@
 
    Also hosts the two library-wide genre actions, both reversible: re-label
    (re-run the head over stored embeddings) and reset (back to stock). */
+
+import { applyFolds, statRowsHtml, vibeWaveSvg, wireTileToggle } from './app.js';
+let vibeLoadGenres; // assigned below, where the file sets it up
+
 (function () {
   var body;
 
@@ -49,7 +53,7 @@
 
   /* The tile's waveform mark. Lives in app.js so the Vibes tab draws exactly
      the same mark from the same seed -- see vibeWaveSvg there. */
-  var waveSvg = window.vibeWaveSvg;
+  var waveSvg = vibeWaveSvg;
 
   /* The most representative tracks of a card, as list items. */
   function topList(tracks) {
@@ -93,7 +97,7 @@
     patch.archgenre[genre] = box.querySelector('.place-arch').value;
     patch.colors[genre] = box.querySelector('.place-col').value;
     say.textContent = 'saving…'; say.className = 'place-say';
-    fetch('/taxonomy/overlay', {
+    fetch('/api/v1/taxonomy/overlay', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch)
     }).then(function (r) { return r.json(); }).then(function (j) {
@@ -104,7 +108,7 @@
 
   function clearPlacement(box) {
     var genre = box.dataset.g;
-    fetch('/taxonomy/overlay', {
+    fetch('/api/v1/taxonomy/overlay', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ archgenre: (function (o) { o[genre] = null; return o; })({}),
                              colors: (function (o) { o[genre] = null; return o; })({}) })
@@ -252,8 +256,8 @@
   function trainPanel(box, genre) {
     box.innerHTML = '<div class="opt-note">loading…</div>';
     Promise.all([
-      fetch('/training/set/' + encodeURIComponent(genre) + '?top=10').then(function (r) { return r.json(); }),
-      fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+      fetch('/api/v1/training/set/' + encodeURIComponent(genre) + '?top=10').then(function (r) { return r.json(); }),
+      fetch('/api/v1/training/status').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
     ]).then(function (out) {
       var d = out[0], st = out[1] || { thresholds: { ready: 20 } };
       var mine = ((st.genres || []).filter(function (g) { return g.genre === genre; })[0]) || { files: d.files, state: 'sparse', needs: st.thresholds.ready };
@@ -278,7 +282,7 @@
                   '<div class="opt-note">No library tracks read as this genre yet.</div>') +
         '<div class="gen-actions">' +
           '<button class="gen-add">add ticked</button>' +
-          '<a class="gen-exp" href="/training/set/' + encodeURIComponent(genre) + '/export" download>export</a>' +
+          '<a class="gen-exp" href="/api/v1/training/set/' + encodeURIComponent(genre) + '/export" download>export</a>' +
           '<button class="gen-imp">import</button>' +
           '<input type="file" class="gen-imp-file" accept=".json,application/json" hidden>' +
           '<button class="gen-reset">reset this genre</button>' +
@@ -295,7 +299,7 @@
         var picks = [].slice.call(box.querySelectorAll('.gen-pick:checked:not(:disabled)'))
           .map(function (i) { return i.value; });
         if (!picks.length) { say('tick some tracks first', true); return; }
-        fetch('/training/set/' + encodeURIComponent(genre) + '/add', {
+        fetch('/api/v1/training/set/' + encodeURIComponent(genre) + '/add', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ hashes: picks })
         }).then(function (r) { return r.json(); }).then(function (j) {
@@ -311,7 +315,7 @@
         var f = file.files[0]; if (!f) return;
         f.text().then(function (txt) {
           var m; try { m = JSON.parse(txt); } catch (_) { say('not valid JSON', true); return; }
-          return fetch('/training/set/import', {
+          return fetch('/api/v1/training/set/import', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ manifest: m, genre: genre })
           }).then(function (r) { return r.json(); }).then(function (j) {
@@ -328,7 +332,7 @@
         if (!window.confirm('Reset training for "' + genre + '"?\n\nIts audio is archived (not ' +
             'deleted) and only this genre’s labels are cleared. Every other genre keeps its ' +
             'training.')) return;
-        fetch('/training/set/' + encodeURIComponent(genre) + '/reset', { method: 'POST' })
+        fetch('/api/v1/training/set/' + encodeURIComponent(genre) + '/reset', { method: 'POST' })
           .then(function (r) { return r.json(); }).then(function (j) {
             if (j.error) { say(j.error, true); return; }
             say('cleared ' + j.labels_cleared + ' label(s)' +
@@ -344,7 +348,7 @@
   function howCard() {
     return '<div class="opt-card gen-how opt-fold collapsed"><h3>How this works</h3>' +
       '<div class="opt-note">' +
-      'Vibedentify listens to each track and works out what <b>genre</b> it is. ' +
+      'Vibe Identify listens to each track and works out what <b>genre</b> it is. ' +
       'Genres are arranged in a tree, from broadest to most specific:' +
       '<div class="gen-tree-key">' +
         '<span><b>Archgenre</b><i>the widest bucket &mdash; e.g. <em>Bass Music</em></i></span>' +
@@ -390,7 +394,7 @@
       r.title = r.name + ' — ' + r.count + ' track' + (r.count === 1 ? '' : 's') + ', ' +
         (total ? (r.count / total) * 100 : 0).toFixed(1) + '% of your library';
     });
-    var list = window.statRowsHtml(rows, total);
+    var list = statRowsHtml(rows, total);
 
     return '<div class="opt-card opt-fold"><h3>Total genres</h3>' +
       '<div class="gen-bigstats">' +
@@ -422,7 +426,7 @@
     }).join('');
     return '<div class="opt-card"><h3>Training data</h3>' +
       '<div class="opt-note">This is separate from vibes, and it is about '  +
-      '<b>genres</b>. Whenever you correct a track’s genre by hand, Vibedentify keeps ' +
+      '<b>genres</b>. Whenever you correct a track’s genre by hand, Vibe Identify keeps ' +
       'a copy of that audio as an example to learn from. This is what it has so far.</div>' +
       (rows || '<div class="opt-note">Nothing yet. Correcting a track’s genre files its ' +
         'audio here automatically.</div>') +
@@ -477,7 +481,7 @@
       '<div class="opt-card"><h3>Re-label your library</h3>' +
         '<div class="opt-row"><span class="k">Status</span>' +
           '<span class="v" id="gen-rl-stat">—</span></div>' +
-        '<div class="opt-note">When you teach Vibedentify a genre (the <b>train</b> button on ' +
+        '<div class="opt-note">When you teach Vibe Identify a genre (the <b>train</b> button on ' +
         'any genre card), tracks you analysed <i>before</i> that still carry their old genre. ' +
         'Re-labelling re-reads them using what it has learned since. It does not re-scan and ' +
         'it never touches your audio files.<br><br>' +
@@ -509,15 +513,15 @@
     wireActions();
     // one console per keystone card, built on demand -- each is several queries
     // Select a tile to expand it, one at a time (wireTileToggle, app.js).
-    window.wireTileToggle(body, body.querySelectorAll('.gen-tile'));
+    wireTileToggle(body, body.querySelectorAll('.gen-tile'));
     body.querySelectorAll('.gen-reset-top').forEach(function (b) {
       b.onclick = function () {
         var g = b.dataset.g;
         if (!window.confirm('Reset training for "' + g + '"?\n\n' +
             'Its audio is archived (not deleted) and only this genre’s ' +
             'labels are cleared. Every other genre keeps its training.')) return;
-        fetch('/training/set/' + encodeURIComponent(g) + '/reset', { method: 'POST' })
-          .then(function () { window.vibeLoadGenres(); }).catch(function () {});
+        fetch('/api/v1/training/set/' + encodeURIComponent(g) + '/reset', { method: 'POST' })
+          .then(function () { vibeLoadGenres(); }).catch(function () {});
       };
     });
     body.querySelectorAll('.gen-train').forEach(function (b) {
@@ -532,7 +536,7 @@
     body.querySelectorAll('.pal').forEach(function (b2) {
       b2.onclick = function () {
         if (b2.dataset.p === PALETTES.current) return;
-        fetch('/palettes/' + encodeURIComponent(b2.dataset.p), { method: 'POST' })
+        fetch('/api/v1/palettes/' + encodeURIComponent(b2.dataset.p), { method: 'POST' })
           .then(function (r) { return r.json(); }).then(function (j) {
             if (j.current) PALETTES.current = j.current;
             load();
@@ -547,7 +551,7 @@
         '\n\nThe file is renamed, not deleted, so this is recoverable.' +
         '\n\nType RESET to confirm:');
       if (!word) return;
-      fetch('/taxonomy/overlay/reset', {
+      fetch('/api/v1/taxonomy/overlay/reset', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirm: word })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -575,7 +579,7 @@
   }
 
   function refreshRelabelStatus() {
-    fetch('/relabel/status').then(function (r) { return r.json(); }).then(function (s) {
+    fetch('/api/v1/relabel/status').then(function (r) { return r.json(); }).then(function (s) {
       var el = document.getElementById('gen-rl-stat');
       if (!el) return;
       el.textContent = s.relabelled
@@ -590,7 +594,7 @@
 
     document.getElementById('gen-rl-preview').onclick = function () {
       msg('checking…');
-      fetch('/relabel/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      fetch('/api/v1/relabel/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
         .then(function (r) { return r.json(); }).then(function (j) {
           if (j.error) { msg(j.error, true); return; }
           if (!j.changed) { msg('nothing would change — the head agrees with the stored reads'); applyBtn.disabled = true; return; }
@@ -614,26 +618,26 @@
 
     applyBtn.onclick = function () {
       msg('applying…');
-      fetch('/relabel/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      fetch('/api/v1/relabel/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
         .then(function (r) { return r.json(); }).then(function (j) {
           if (j.error) { msg(j.error, true); return; }
           msg('re-labelled ' + j.updated + ' tracks (' + j.skipped_override +
               ' manual overrides left alone). Snapshot taken first.');
           applyBtn.disabled = true;
-          window.vibeLoadGenres();
+          vibeLoadGenres();
         }).catch(function () { msg('apply failed', true); });
     };
 
     document.getElementById('gen-rl-revert').onclick = function () {
-      fetch('/relabel/revert', { method: 'POST' })
+      fetch('/api/v1/relabel/revert', { method: 'POST' })
         .then(function (r) { return r.json(); }).then(function (j) {
           msg('reverted ' + j.reverted + ' tracks to their original reads');
-          window.vibeLoadGenres();
+          vibeLoadGenres();
         }).catch(function () { msg('revert failed', true); });
     };
 
     document.getElementById('gen-snap').onclick = function () {
-      fetch('/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      fetch('/api/v1/snapshots', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ label: 'manual' }) })
         .then(function (r) { return r.json(); }).then(function (j) {
           msg('snapshot ' + j.id + ' — ' + j.overrides + ' overrides captured');
@@ -682,12 +686,12 @@
     if (!body) return;
     body.innerHTML = 'Loading…';
     Promise.all([
-      fetch('/genres?top=5&by=archgenre').then(function (r) { return r.json(); }),
-      fetch('/training/status').then(function (r) { return r.ok ? r.json() : null; })
+      fetch('/api/v1/genres?top=5&by=archgenre').then(function (r) { return r.json(); }),
+      fetch('/api/v1/training/status').then(function (r) { return r.ok ? r.json() : null; })
         .catch(function () { return null; }),
-      fetch('/taxonomy/overlay').then(function (r) { return r.json(); })
+      fetch('/api/v1/taxonomy/overlay').then(function (r) { return r.json(); })
         .catch(function () { return null; }),
-      fetch('/palettes').then(function (r) { return r.json(); })
+      fetch('/api/v1/palettes').then(function (r) { return r.json(); })
         .catch(function () { return null; })
     ]).then(function (out) {
       var groups = out[0] || [], st = out[1], tx = out[2], pal = out[3];
@@ -711,7 +715,7 @@
         });
       });
       render(groups, st);
-      window.applyFolds(body);
+      applyFolds(body);
       if (keep) {
         var card = body.querySelector('.gen-key[data-g="' + keep.replace(/"/g, '\\"') + '"]');
         if (card) {
@@ -725,5 +729,7 @@
     });
   }
 
-  window.vibeLoadGenres = function () { load(); };
+  vibeLoadGenres = function () { load(); };
 })();
+
+export { vibeLoadGenres };

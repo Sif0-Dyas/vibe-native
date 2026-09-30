@@ -1,13 +1,17 @@
-/* Vibedentify front-end — List / analyzer, plus the shared helpers used by
+/* Vibe Identify front-end — List / analyzer, plus the shared helpers used by
    the whole UI.
 
-   LOAD ORDER: app.js loads FIRST (see index.html). It defines the shared
-   helpers — escapeHtml, colorFor, styleInfo, familyOf, fmtTime, the lens
-   functions, etc. — plus the row state (results, GLOBAL, SIBLING_MAP,
-   SIBLING_GROUPS) that panels.js, player.js and map.js reference at runtime.
-   Those files load after this one. The side panels live in panels.js; the row
-   builder here (finishRow) calls its renderTags / renderLookup /
-   renderVibeMatches — a cross-file reference in the shared <script> scope. */
+   An ES module (loaded through main.js). It exports the shared helpers —
+   escapeHtml, styleInfo, familyOf, fmtTime, the lens functions, etc. — plus the
+   row state (results, GLOBAL, SIBLING_MAP, SIBLING_GROUPS) that panels.js,
+   player.js and map.js import. The side panels live in panels.js; the row
+   builder here (finishRow) imports its renderTags / renderLookup /
+   renderVibeMatches. Calls into files that load later go through hooks.js. */
+
+import { hooks } from './hooks.js';
+import { FSH, HASH_FILES, OBJ_URLS, PLAYER, attachPlayer } from './player.js';
+import { renderLookup, renderTags, renderVibeMatches } from './panels.js';
+let vibeLoadGuide; // assigned below, where the file sets it up
 
 /* ---- diagnostics: ship frontend breadcrumbs to the backend log ------------
    The WebView renderer can crash on its own (e.g. OOM during a big batch),
@@ -34,13 +38,11 @@ function vibeWaveSvg(color, seed){
   return '<svg class="gen-wave" viewBox="0 0 58 22" aria-hidden="true" ' +
          'style="color:' + escapeHtml(color == null ? '' : color) + '">' + bars.join('') + '</svg>';
 }
-window.vibeWaveSvg = vibeWaveSvg;
 
 /* A stable hue (0..359) from a name. Anything with no palette entry -- a
    genre family the palette does not slot, a vibe -- is coloured by this, and
    it is one function so a vibe's swatch on the Vibes tab and its galaxy in
    the Universe are the same colour by construction, not by coincidence. */
-/* exported nameHue */ // used by map.js and vibes.js (shared scope)
 function nameHue(name){
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
@@ -66,7 +68,6 @@ function wireTileToggle(body, tiles, onOpen){
     };
   });
 }
-window.wireTileToggle = wireTileToggle;
 
 /* Folding cards. Any .opt-fold card closes and opens from its heading; the
    state is remembered per heading so a tab comes back the way you left it.
@@ -91,7 +92,7 @@ document.addEventListener('click', e => {
   FOLDS[foldKey(card)] = closed;
   try { localStorage.setItem('vibeFolds', JSON.stringify(FOLDS)); } catch (_) { /* private mode */ }
 });
-window.applyFolds = root => {
+const applyFolds = root => {
   for (const card of root.querySelectorAll('.opt-fold')){
     const k = foldKey(card);
     if (k in FOLDS) card.classList.toggle('collapsed', !!FOLDS[k]);
@@ -118,11 +119,10 @@ function statRowsHtml(rows, total){
     '</div>';
   }).join('');
 }
-window.statRowsHtml = statRowsHtml;
 
 function clientLog(msg, level){
   try {
-    fetch('/clientlog', {
+    fetch('/api/v1/clientlog', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({msg: String(msg), level: level || 'info'}),
       keepalive: true,          // still sent if the page is tearing down
@@ -304,14 +304,15 @@ const SIBLING_MAP = (() => {
   return m;
 })();
 
-/* PulseRoots family roll-up: map each Discogs style to a broad family
-   (mendiak.github.io/pulse.roots, MIT-licensed hierarchy). Resolution falls
-   back through the editable sibling groups, then to the style itself, so
-   coverage stays high even where PulseRoots has no direct entry. */
+/* Family roll-up: each style's keystone (House, Drum n Bass, Ambient...), as the
+   server's taxonomy resolves it -- the built-in tables with your overlay applied
+   (GET /taxonomy/keystones) -- so the family lens groups exactly as the map and
+   the labels do. Resolution falls back through the editable sibling groups,
+   then to the style itself, for a name the taxonomy has no keystone for. */
 let STYLE_FAMILY = {};
-fetch('/static/genre_families.json')
+fetch('/api/v1/taxonomy/keystones')
   .then(r => r.ok ? r.json() : null)
-  .then(d => { if (d && d.style_family) STYLE_FAMILY = d.style_family; })
+  .then(d => { if (d && typeof d === 'object') STYLE_FAMILY = d; })
   .catch(() => {});
 function familyOf(style){
   const k = (style || '').toLowerCase();
@@ -320,6 +321,22 @@ function familyOf(style){
   if (canon) return STYLE_FAMILY[canon.toLowerCase()] || canon;
   return style;
 }
+/* The note under a row's waveform names the lens its bands are drawn with --
+   the same words as the "Genre over time" menu. */
+const LENS_NOTES = {
+  raw:          ['raw view', 'Every frame shows its own winner, unsmoothed.'],
+  hysteresis:   ['steady view', 'One-off single-frame genre flickers are ignored, so the bands do not strobe.'],
+  sibling:      ['merged view', 'Near-identical genres are merged into one band.'],
+  family:       ['family view', 'Each band is the keystone its frame\'s genres add up to.'],
+  'hyst+sib':   ['steady + merged view', 'Flickers are ignored and near-identical genres merged.'],
+};
+function paintLensNote(el, mode){
+  if (!el) return;
+  const [text, title] = LENS_NOTES[mode] || [mode + ' view', ''];
+  el.textContent = text;
+  el.title = title;
+}
+
 /* family-merge: pool each frame's scores by family, take the winner */
 function segsFamily(frames){
   return frames.map(f => {
@@ -393,14 +410,14 @@ function refreshFooter(){
 /* Load a cached track into the List by content hash (used by the Library tab's
    click-to-load). Reuses the exact path /batch uses: a stand-in file object + a
    finishRow() call with the cached payload, so no re-analysis and all row actions work. */
-window.loadTrackByHash = async (hash) => {
+const loadTrackByHash = async (hash) => {
   if (results.some(r => r.hash === hash)){          // already in the list -> just reveal it
     const ex = results.find(r => r.hash === hash);
     if (ex && ex.row) ex.row.scrollIntoView({behavior:'smooth', block:'center'});
     return true;
   }
   try{
-    const d = await fetch(`/track/${encodeURIComponent(hash)}`).then(r => r.json());
+    const d = await fetch(`/api/v1/track/${encodeURIComponent(hash)}`).then(r => r.json());
     if (!d || d.error) return false;
     const row = addRow({name: d.filename || d.title || 'track'});
     finishRow(row, d, null);
@@ -476,7 +493,7 @@ function openKeyMenu(anchorEl, track, repaint){
   async function send(body){
     msg.textContent = 'saving\u2026';
     try {
-      const res = await fetch(`/key/${track.hash}`, {
+      const res = await fetch(`/api/v1/key/${track.hash}`, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
       });
       const j = await res.json();
@@ -484,7 +501,7 @@ function openKeyMenu(anchorEl, track, repaint){
       track.key = j.key; track.scale = j.scale; track.camelot = j.camelot; track.key_source = j.key_source;
       closeKeyMenu();
       if (repaint) repaint();
-      if (window.reloadLibrary) window.reloadLibrary();
+      if (hooks.reloadLibrary) hooks.reloadLibrary();
     } catch (_) { msg.textContent = 'could not reach the app'; }
   }
   keyMenu.querySelectorAll('.keypick').forEach(b => b.addEventListener('click', () => {
@@ -500,7 +517,6 @@ function keyText(t){
   return [k.cam, k.mus].filter(Boolean).join(' ');
 }
 
-/* exported setKeyView */ // called from options.js's Appearance card (shared scope)
 /* Change it everywhere at once. The rows re-render in place; the map is told so
    an open popup and the hover label stop disagreeing with the setting. */
 function setKeyView(mode){
@@ -508,7 +524,7 @@ function setKeyView(mode){
   KEYVIEW.mode = mode;
   try { localStorage.setItem('vibeKeyView', mode); } catch (_) { /* private mode */ }
   for (const r of results) if (r.row && r.row._renderKey) r.row._renderKey();
-  if (typeof window.vibeKeyViewChanged === 'function') window.vibeKeyViewChanged();
+  if (typeof hooks.vibeKeyViewChanged === 'function') hooks.vibeKeyViewChanged();
 }
 
 /* Mark a row you were just pointed at. A track that was already analysed does
@@ -716,8 +732,13 @@ function finishRow(row, data, file){
   // (these have no server-side copy — the in-memory File is the only source).
   if (file && data.hash) HASH_FILES.set(data.hash, file);
   const styles = data.styles || [];
-  const primary = styles[0] || {style: '?', score: 0};   // guard: model returned no styles
-  const pcol = colorFor(primary.style);
+  /* What the track IS -- style, score, and the tier it came from (override,
+     hand adjustments, re-label, salience, flat styles) -- is the server's answer
+     (style.identity), sent with every row as dominant_*. The row shows it and
+     is coloured by it; it never works one out for itself, so the Analyzer, the
+     Map and the Library cannot call one track three different things. */
+  row._identity = identityOf(data);
+  const rowColor = () => colorFor(row._identity.style || '?');
   row.querySelector('.title').textContent = data.title;
 
   /* The genre cell is a rendered body plus a fixed strip of controls. They were
@@ -729,16 +750,6 @@ function finishRow(row, data, file){
   const genreBody = document.createElement('div');
   genreBody.className = 'genre-body';
   genreCell.appendChild(genreBody);
-
-  // A blend the user has bent by hand (see wireRowAdjust). Sent with the payload
-  // so a track adjusted on the map already reads adjusted here, with no round-trip.
-  row._adjusted = (data.adjusted && data.adjusted.length) ? data.adjusted : null;
-  // A manual override outranks both, which is the server's own precedence
-  // (routes/_shared.py: override > adjustments > relabel > salience). It was
-  // never read here, so a track you overrode last week came back to the Analyzer
-  // still showing the model's read -- the Map and the Library called it one thing
-  // and this screen called it another.
-  row._override = data.override || null;
 
   /* waveform under the title, painted by per-segment genre, with magnifier */
   let renderGenreCell = () => {};   // assigned below; called on smoothing change
@@ -768,7 +779,7 @@ function finishRow(row, data, file){
     controls.className = 'wavehint';
     controls.innerHTML = `<span class="restag" title="Each coloured band along the waveform covers about two seconds of audio.">2s bands</span>` +
       `<button class="finebtn" type="button" title="Re-read this track in finer slices (~0.5s). Slower, but catches short sections.">\u2295 closer look</button>` +
-      `<span class="smoothnote" title="One-off single-frame genre flickers are ignored, so the bands do not strobe.">steady view</span>`;
+      `<span class="smoothnote"></span>`;
     const resTag = controls.querySelector('.restag');
     const fineBtn = controls.querySelector('.finebtn');
 
@@ -816,6 +827,7 @@ function finishRow(row, data, file){
     function segMode(){ return row._segOverride || GLOBAL.seg; }
 
     function applySmoothing(){
+      paintLensNote(controls.querySelector('.smoothnote'), segMode());
       // 1) segmentation lens turns per-frame top-k into the genre stream
       const lensed = waveState.frames ? segsForMode(waveState.frames, segMode()) : null;
       waveState.raw = lensed || waveState.winners;
@@ -826,7 +838,7 @@ function finishRow(row, data, file){
       waveState.mainSet = mainGenreSet(waveState.segments, waveState.fine);
     }
     function redraw(focus){
-      drawWave(c, waveState.peaks, pcol, waveState.segments, focus ?? null, waveState.mainSet, ovFracs(), waveState.mm);
+      drawWave(c, waveState.peaks, rowColor(), waveState.segments, focus ?? null, waveState.mainSet, ovFracs(), waveState.mm);
     }
     applySmoothing();
     requestAnimationFrame(() => redraw(null));
@@ -843,11 +855,11 @@ function finishRow(row, data, file){
     // row redraws at full detail. Without a file in hand the envelope stands.
     row._fetchWave = async () => {
       try {
-        let r = await fetch(`/waveform/${data.hash}`);
+        let r = await fetch(`/api/v1/waveform/${data.hash}`);
         if (r.status === 404 && file){
           const fd = new FormData();
           fd.append('file', file);
-          r = await fetch(`/waveform/${data.hash}`, {method: 'POST', body: fd});
+          r = await fetch(`/api/v1/waveform/${data.hash}`, {method: 'POST', body: fd});
         }
         if (!r.ok) return;
         const mm = await r.json();
@@ -954,7 +966,7 @@ function finishRow(row, data, file){
         apply.disabled = true; msg.textContent = 'extracting section\u2026';
         let j;
         try {
-          const resp = await fetch('/override_segment', {method:'POST', headers:{'Content-Type':'application/json'},
+          const resp = await fetch('/api/v1/override_segment', {method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({hash: data.hash, start: s, end: e, genre})});
           j = await resp.json();
           if (!resp.ok){ msg.textContent = j.error || 'failed'; apply.disabled = false; return; }
@@ -992,8 +1004,7 @@ function finishRow(row, data, file){
       rm.addEventListener('click', async () => {
         rm.disabled = true; msg.textContent = 'removing…';
         try {
-          const resp = await fetch('/override_segment/delete', {method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({id: o.id})});
+          const resp = await fetch(`/api/v1/override_segment/${o.id}`, {method:'DELETE'});
           const j = await resp.json();
           if (!resp.ok){ msg.textContent = j.error || 'failed'; rm.disabled = false; return; }
         } catch(_){ msg.textContent = 'request failed'; rm.disabled = false; return; }
@@ -1012,7 +1023,7 @@ function finishRow(row, data, file){
       try{
         const fd = new FormData();
         fd.append('file', file);
-        const resp = await fetch('/refine', {method:'POST', body:fd});
+        const resp = await fetch('/api/v1/refine', {method:'POST', body:fd});
         const j = await resp.json();
         if (!resp.ok) throw new Error(j.error || resp.statusText);
         waveState.winners = j.segments;
@@ -1086,53 +1097,54 @@ function finishRow(row, data, file){
   renderGenreCell = () => {
     const ws = row._waveState;
     const useTimeline = ws && ws.segments && ws.segments.length;
-    let shown, srcLabel;
-    if (row._override){
+    const ident = row._identity;
+    if (ident.source === 'override'){
       // One word, by your own hand. No blend to draw: the whole point of an
       // override is that it replaced the read rather than bending it.
-      const oc = colorFor(row._override), oi = styleInfo(row._override);
+      const oc = colorFor(ident.style), oi = styleInfo(ident.style);
       genreBody.innerHTML =
         `<div class="genre-src">manual override</div>` +
         `<span class="chip overridden" style="--c:${oc}" title="manually set">` +
         `<span class="dot ${oi.shape}" style="background:${oc}"></span>` +
-        `${escapeHtml(row._override)}</span>`;
-      row._genreList = [{style: row._override, score: 1}];
+        `${escapeHtml(ident.style)}</span>`;
+      row._genreList = [{style: ident.style, score: 1}];
       return;
     }
+    // The blend under the headline: the read the server's style is the top of.
+    // Only for a salience read does the identity view offer the other way of
+    // looking at it -- the flat share of the track, frame by frame. It changes
+    // the bar, never the headline.
     const idMode = (row._idOverride || GLOBAL.identity);
-    if (row._adjusted && row._adjusted.length){
-      // Hand adjustments outrank every automatic read: they ARE the read now.
-      // Shown whole rather than thresholded -- a genre you pushed down to 1%
-      // disappearing from the list makes the press look like it did nothing.
-      shown = row._adjusted.map(s => ({style:s.style, score:s.score, other:false}));
-      srcLabel = 'genre · adjusted by hand';
-    } else if (idMode === 'v2' && data.salience && data.salience.length){
-      const named = data.salience.filter(s => s.score >= 0.03);
-      const namedSum = named.reduce((a, s) => a + s.score, 0);
-      const otherSum = Math.max(0, 1 - namedSum);
-      shown = named.map(s => ({style:s.style, score:s.score, other:false}));
-      if (otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
-      srcLabel = 'genre · weighted by energy';
-    } else if (useTimeline){
-      // v1: flat % of track by frame count, over the lens-processed stream
+    let shown, srcLabel;
+    if (ident.source === 'salience' && idMode === 'v1' && useTimeline){
       const all = timelinePercents(ws.segments);
       const named = all.filter(s => s.score >= 0.03);
       const otherSum = all.filter(s => s.score < 0.03).reduce((a, s) => a + s.score, 0);
       shown = named.map(s => ({style:s.style, score:s.score, other:false}));
       if (otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
       srcLabel = 'v1 · % of track (flat)';
+    } else if (ident.source === 'weights'){
+      // Shown whole rather than thresholded -- a genre you pushed down to 1%
+      // disappearing from the list makes the press look like it did nothing.
+      shown = ident.read.map(s => ({style:s.style, score:s.score, other:false}));
+      srcLabel = 'genre · adjusted by hand';
     } else {
-      shown = styles.slice(0, 5).filter(s => s.score >= 0.02)
-                    .map(s => ({style:s.style, score:s.score, other:false}));
-      if (!shown.length) shown = styles.slice(0, 1).map(s => ({style:s.style, score:s.score}));
-      srcLabel = 'model confidence';
+      const named = ident.read.filter(s => s.score >= 0.03);
+      shown = named.map(s => ({style:s.style, score:s.score, other:false}));
+      const otherSum = Math.max(0, 1 - named.reduce((a, s) => a + s.score, 0));
+      if (ident.source !== 'styles' && otherSum > 0.005) shown.push({style:'Other', score:otherSum, other:true});
+      if (!shown.length && ident.style) shown = [{style: ident.style, score: ident.score, other:false}];
+      srcLabel = ident.source === 'relabel' ? 'genre · re-labelled'
+               : ident.source === 'styles' ? 'model confidence'
+               : 'genre · weighted by energy';
     }
+    if (!shown.length) shown = [{style: '?', score: 0, other: false}];
     const tot = shown.reduce((a, s) => a + s.score, 0) || 1;
     const pct = v => (v * 100 < 0.5 && v > 0) ? '<1' : (v * 100).toFixed(0);
-    // headline = top non-Other genre (never lead with "Other")
-    const head = shown.find(s => !s.other) || shown[0];
-    const hcol = head.other ? OTHER_COLOR : colorFor(head.style);
-    const hshape = head.other ? 'hx' : styleInfo(head.style).shape;
+    // the headline is the track's identity, whatever view the bar shows
+    const head = {style: ident.style || shown[0].style, score: ident.score, other: false};
+    const hcol = colorFor(head.style);
+    const hshape = styleInfo(head.style).shape;
 
     const segHtml = shown.map(s => {
       const col = s.other ? OTHER_COLOR : colorFor(s.style);
@@ -1167,7 +1179,7 @@ function finishRow(row, data, file){
 
     const headFam = head.other ? null : familyOf(head.style);
     const famHtml = (headFam && headFam.toLowerCase() !== head.style.toLowerCase())
-      ? `<span class="famtag" title="PulseRoots family roll-up">\u25c7 ${escapeHtml(headFam)}</span>` : '';
+      ? `<span class="famtag" title="keystone (family roll-up)">\u25c7 ${escapeHtml(headFam)}</span>` : '';
     genreBody.innerHTML =
       `<div class="genre-src">${srcLabel}</div>` +
       `<span class="chip" style="--c:${hcol}"
@@ -1180,6 +1192,7 @@ function finishRow(row, data, file){
   };
   renderGenreCell();
   row._renderGenre = renderGenreCell;
+  function redrawRow(){ renderGenreCell(); if (row._redrawWave) row._redrawWave(); }
 
   // click a genre swatch to recolor it everywhere (delegated; survives re-renders)
   if (!genreCell._recolorBound){
@@ -1227,7 +1240,7 @@ function finishRow(row, data, file){
       + `Deletes its analysis (genre, BPM, key) and takes it off the map. `
       + `The audio file is untouched.`)) return;
     const res = getResult();
-    if (res && res.hash){ try{ await fetch(`/forget/${res.hash}`, {method:'POST'}); }catch(_){} }
+    if (res && res.hash){ try{ await fetch(`/api/v1/tracks/${res.hash}`, {method:'DELETE'}); }catch(_){} }
     results = results.filter(r => r.row !== row);
     EXTRAS.forget(row); row.remove();
     if (!rowsEl.querySelector('.row')) emptyEl.style.display = '';
@@ -1256,7 +1269,7 @@ function finishRow(row, data, file){
     if (!hash){ lookupPanel.innerHTML = '<div class="lk-note">no hash for this track yet</div>'; return; }
     lookupPanel.innerHTML = '<div class="lk-note">searching Discogs · MusicBrainz · Last.fm…</div>';
     let j;
-    try { j = await fetch(`/lookup/${hash}`).then(r => r.json()); }
+    try { j = await fetch(`/api/v1/lookup/${hash}`).then(r => r.json()); }
     catch(_){ lookupPanel.innerHTML = '<div class="lk-note">lookup failed</div>'; return; }
     lookupLoaded = true;
     renderLookup(lookupPanel, row, hash, j);
@@ -1303,15 +1316,16 @@ function finishRow(row, data, file){
      row gets its hash from the server a moment after the row exists;
      re-rendering the genre cell is what makes the percentages move as you
      press. */
-  const showAdjusted = state => { applyAdjusted(row, state); renderGenreCell(); };
+  // The adjust panel's GET and POST both return the track's identity: take it.
+  const showIdentity = state => {
+    if (state && state.dominant_source !== undefined){ row._identity = identityOf(state); redrawRow(); }
+  };
   wireAdjustPanel(adjBtn, adjBox, {
     hashOf: () => data.hash || ((getResult() || {}).hash || null),
-    // Only redraw the cell when there is actually an adjustment to show.
-    // Merely opening the panel must not repaint a row -- on an overridden
-    // track that would swap the override chip for the model read nobody asked
-    // to see again.
-    onLoaded: state => { if (row._adjusted || adjustHasEdits(state)) showAdjusted(state); },
-    onSaved: showAdjusted,
+    // Opening the panel may repaint the row: it shows the server's identity,
+    // which on an overridden track is still the override.
+    onLoaded: showIdentity,
+    onSaved: showIdentity,
   });
 
   overrideBtn.addEventListener('click', () => {
@@ -1348,15 +1362,12 @@ function finishRow(row, data, file){
     const genre = oInput.value.trim();
     if (!genre) return;
 
-    // 1. show it. Through renderGenreCell like every other read, so a saved
-    //    override and one loaded from the database can't drift apart.
-    row._override = genre;
-    renderGenreCell();
-    // An override supersedes any hand adjustment -- the steps stay on the server,
-    // but this row now reads as the one word you gave it. Only the body is
-    // rewritten, so adjust / omit / lookup stay where they were: changing your
-    // mind afterwards doesn't mean reloading the track to get the controls back.
-    row._adjusted = null;
+    // 1. show it at once (the server's answer, below, replaces this). An override
+    //    supersedes any hand adjustment -- the steps stay on the server, but the
+    //    row reads as the one word you gave it. Only the body is rewritten, so
+    //    adjust / omit / lookup stay where they were.
+    row._identity = {style: genre, score: 1, source: 'override', read: [{style: genre, score: 1}]};
+    redrawRow();
     adjBox.hidden = true;
     editor.style.display = 'none';
     overrideBtn.style.display = '';
@@ -1375,20 +1386,22 @@ function finishRow(row, data, file){
       if (hash){
         // /override sets payload["override"] so the dominant style sticks; it
         // also files the audio for training when the DB has a server-side path.
-        const r = await fetch(`/override/${hash}`, {
+        const r = await fetch(`/api/v1/override/${hash}`, {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({genre}),
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || 'override failed');
         trained = !!j.trained;
+        row._identity = identityOf(j);
+        redrawRow();
       }
       // dropped files have no server-side path -> re-upload the file so the
       // training copy still gets saved (the override above already persisted).
       if (!trained && file){
         const fd = new FormData();
         fd.append('genre', genre); fd.append('file', file);
-        const r = await fetch('/save_training', {method:'POST', body:fd});
+        const r = await fetch('/api/v1/save_training', {method:'POST', body:fd});
         if (r.ok) trained = true;
       }
       trainBadge.textContent = trained
@@ -1477,7 +1490,7 @@ const EXTRAS = (() => {
     if (!batch.length) return;
     const q = encodeURIComponent([...new Set(batch.map(([, h]) => h))].join(','));
     const grab = url => fetch(url).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-    const [tags, vibes] = await Promise.all([grab(`/tags/for?hashes=${q}`), grab(`/vibes/match?hashes=${q}`)]);
+    const [tags, vibes] = await Promise.all([grab(`/api/v1/tags/for?hashes=${q}`), grab(`/api/v1/vibes/match?hashes=${q}`)]);
     for (const [row, h] of batch){
       if (!row.isConnected) continue;
       renderVibeMatches(row, h, vibes[h] || []);
@@ -1516,7 +1529,7 @@ async function fillGenreList(extra){
   if (GENRE_NAMES !== null) return;
   GENRE_NAMES = [];                         // set first: a slow fetch shouldn't
   try {                                     // start a second one on the next click
-    const j = await fetch('/genres?flat=1&top=0').then(r => r.json());
+    const j = await fetch('/api/v1/genres?flat=1&top=0').then(r => r.json());
     if (Array.isArray(j)){
       const set = new Set();
       for (const g of j){
@@ -1529,13 +1542,16 @@ async function fillGenreList(extra){
   paint();
 }
 
-/* Hand a row its adjusted blend, or take it away again. Cleared when no step is
-   left, so undoing every adjustment restores exactly what the model said rather
-   than freezing the last adjusted numbers in place. */
-function applyAdjusted(row, state){
-  row._adjusted = (adjustHasEdits(state) && state.adjusted && state.adjusted.length)
-    ? state.adjusted.map(e => ({style: e.style, score: e.score}))
-    : null;
+/* The track's identity as the server sends it with every row and edit
+   response (style.identity_fields): the style, its score, the tier it came
+   from, and that tier's ranked read. */
+function identityOf(d){
+  return {
+    style: d.dominant_style || null,
+    score: d.dominant_score || 0,
+    source: d.dominant_source || null,
+    read: d.dominant_read || [],
+  };
 }
 
 /* ---- the adjust panel -----------------------------------------------------
@@ -1568,11 +1584,6 @@ function adjustPanelHtml(){
 }
 
 /* Whether a panel state carries any edit at all. */
-function adjustHasEdits(state){
-  return !!(state && ((state.steps && Object.keys(state.steps).length)
-                   || (state.drops && state.drops.length)));
-}
-
 function wireAdjustPanel(btn, box, opts){
   const rowsEl_ = box.querySelector('.adj-rows');
   const addIn = box.querySelector('.adj-add-in');
@@ -1671,7 +1682,7 @@ function wireAdjustPanel(btn, box, opts){
     const drops = state.drops || [];
     saving = (saving || Promise.resolve()).then(async () => {
       try {
-        const r = await fetch(`/weights/${hash}`, {
+        const r = await fetch(`/api/v1/weights/${hash}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({steps, drops})});
         const body = await r.json();
@@ -1697,7 +1708,7 @@ function wireAdjustPanel(btn, box, opts){
     const hash = opts.hashOf();
     if (!hash){ rowsEl_.innerHTML = `<div class="ovr-h">no hash for this track yet</div>`; return; }
     rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`;
-    try { state = await (await fetch(`/weights/${hash}`)).json(); }
+    try { state = await (await fetch(`/api/v1/weights/${hash}`)).json(); }
     catch(_){ rowsEl_.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
     if (state && state.error){
       rowsEl_.innerHTML = `<div class="ovr-h">${escapeHtml(state.error)}</div>`;
@@ -1750,7 +1761,7 @@ async function pump(){
     const fd = new FormData();
     fd.append('file', file);
     try{
-      const resp = await fetch('/analyze', {method:'POST', body:fd});
+      const resp = await fetch('/api/v1/analyze', {method:'POST', body:fd});
       const data = await resp.json();
       // Persist a file handle (drag-drop / native picker) so this track stays
       // playable across restarts — even on a cache hit, which has no other source.
@@ -2010,7 +2021,7 @@ batchCancelBtn.addEventListener('click', async () => {
   batchCancelBtn.disabled = true;
   batchCancelBtn.textContent = 'cancelling…';
   try {
-    await fetch(`/batch/${encodeURIComponent(batchJob)}/cancel`, {method:'POST'});
+    await fetch(`/api/v1/batch/${encodeURIComponent(batchJob)}/cancel`, {method:'POST'});
   } catch(e){
     clientLog('batch cancel failed: ' + (e && e.message), 'error');
   }
@@ -2021,7 +2032,7 @@ batchStartBtn.addEventListener('click', async () => {
   if (!batchJob) return;
   batchStartBtn.disabled = true;
   try {
-    const r = await fetch(`/batch/${encodeURIComponent(batchJob)}/confirm`, {
+    const r = await fetch(`/api/v1/batch/${encodeURIComponent(batchJob)}/confirm`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({confirm: true}),
     });
@@ -2053,7 +2064,8 @@ batchBtn.addEventListener('click', () => {
 });
 
 // The guard lives HERE, not only on the button: the desktop shell's native folder
-// picker calls window.runBatch() directly, and so could anything else.
+// picker calls window.runBatch() directly (main.js puts it there), and so could
+// anything else.
 async function runBatch(folderPath){
   if (batchBusy()) return;
   batchRunning = true;
@@ -2063,7 +2075,7 @@ async function runBatch(folderPath){
   clientLog(`batch start: ${folderPath}  (jsHeap=${jsHeapMB()}MB)`);
 
   try {
-    const resp = await fetch('/batch', {
+    const resp = await fetch('/api/v1/batch', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({path: folderPath, workers: 3})
@@ -2273,7 +2285,7 @@ function escapeHtml(s){
     panel.classList.add('open');
     body.innerHTML = `<div class="flag-note">scanning your library…</div>`;
     let list;
-    try{ list = await fetch('/audit').then(r => r.json()); }
+    try{ list = await fetch('/api/v1/audit').then(r => r.json()); }
     catch(_){ body.innerHTML = `<div class="flag-note">audit failed</div>`; return; }
     if (!list.length){ body.innerHTML = `<div class="flag-note">✓ no likely misreads found.</div>`; return; }
     body.innerHTML =
@@ -2296,10 +2308,10 @@ function escapeHtml(s){
       const h = row.getAttribute('data-h');
       row.querySelector('.flag-go').onclick = () => {
         panel.classList.remove('open');
-        if (window.vibeMapGoto) window.vibeMapGoto(h);
+        if (hooks.vibeMapGoto) hooks.vibeMapGoto(h);
       };
       row.querySelector('.flag-omit').onclick = async () => {
-        try{ await fetch(`/forget/${h}`, {method:'POST'}); }catch(_){}
+        try{ await fetch(`/api/v1/tracks/${h}`, {method:'DELETE'}); }catch(_){}
         row.remove();
       };
     });
@@ -2371,11 +2383,11 @@ function escapeHtml(s){
     return out.join('\n');
   }
 
-  window.vibeLoadGuide = async () => {
+  vibeLoadGuide = async () => {
     if (loaded) return;
     loaded = true;
     try{
-      const md = await fetch('/guide').then(r => r.text());
+      const md = await fetch('/api/v1/guide').then(r => r.text());
       body.innerHTML = mdToHtml(md);
     }catch(_){
       body.innerHTML = '<p>Could not load the guide.</p>';
@@ -2385,5 +2397,7 @@ function escapeHtml(s){
 
   // deep link (#guide) switches the view before this module defines the loader,
   // so kick off the load here too.
-  if (location.hash === '#guide') window.vibeLoadGuide();
+  if (location.hash === '#guide') vibeLoadGuide();
 })();
+
+export { EQ_STYLES, GLOBAL, KEYVIEW, PREFS, SIBLING_GROUPS, SIBLING_MAP, THEMES, adjustPanelHtml, applyFolds, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, loadTrackByHash, nameHue, results, runBatch, setKeyView, setPref, statRowsHtml, styleInfo, vibeLoadGuide, vibeWaveSvg, wireAdjustPanel, wireTileToggle };

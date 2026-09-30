@@ -13,45 +13,45 @@ import wave
 
 import pytest
 
-from conftest import TEST_TOKEN, authed
+from conftest import authed
 
 
 def test_index_serves_page(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert b"Vibedentify" in r.data
+    assert b"Vibe Identify" in r.data
 
 
 def test_map_empty_db(client):
-    r = client.get("/map")
+    r = client.get("/api/v1/map")
     assert r.status_code == 200
     body = r.get_json()
     assert body["nodes"] == []
     assert body["edges"] == []
     # The stamp travels with the map so the client can ask whether the one it is
     # holding is still the current one -- see /map/stamp.
-    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
+    assert body["stamp"] == client.get("/api/v1/map/stamp").get_json()["stamp"]
 
 
 def test_tags_empty(client):
-    r = client.get("/tags")
+    r = client.get("/api/v1/tags")
     assert r.status_code == 200
     assert isinstance(r.get_json(), list)
 
 
 def test_vibes_empty(client):
-    r = client.get("/vibes")
+    r = client.get("/api/v1/vibes")
     assert r.status_code == 200
     assert isinstance(r.get_json(), list)
 
 
 def test_similar_unknown_hash_404(client):
-    r = client.get("/similar/deadbeefdeadbeef")
+    r = client.get("/api/v1/similar/deadbeefdeadbeef")
     assert r.status_code == 404
 
 
 def test_save_training_requires_genre(client):
-    r = client.post("/save_training", data={})
+    r = client.post("/api/v1/save_training", data={})
     assert r.status_code == 400
 
 
@@ -63,18 +63,20 @@ def test_save_training_refuses_a_path_that_is_not_in_the_library(client, tmp_pat
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))  # genre_training lands here
     stray = tmp_path / "not-a-track.mp3"
     stray.write_bytes(b"x")
-    r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
+    r = client.post("/api/v1/save_training", data={"genre": "House", "filepath": str(stray)})
     assert r.status_code == 400
     assert not (tmp_path / "genre_training" / "House" / "not-a-track.mp3").exists()
     # a path that doesn't exist at all gets the same 400 -- no existence oracle
-    r = client.post("/save_training", data={"genre": "House", "filepath": str(tmp_path / "nope")})
+    r = client.post(
+        "/api/v1/save_training", data={"genre": "House", "filepath": str(tmp_path / "nope")}
+    )
     assert r.status_code == 400
 
     # the same file, once it is a library track, is copied
-    from vibenative.db import cache_put
+    from vibenative.repo.tracks import cache_put
 
     cache_put("f" * 40, stray.name, str(stray), "t", {}, None)
-    r = client.post("/save_training", data={"genre": "House", "filepath": str(stray)})
+    r = client.post("/api/v1/save_training", data={"genre": "House", "filepath": str(stray)})
     assert r.status_code == 200, r.get_json()
     assert (tmp_path / "genre_training" / "House" / "not-a-track.mp3").is_file()
 
@@ -92,7 +94,7 @@ def test_save_training_upload_name_is_made_safe(client, tmp_path, monkeypatch, s
 
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     r = client.post(
-        "/save_training",
+        "/api/v1/save_training",
         data={"genre": "House", "file": (io.BytesIO(_tiny_wav_bytes()), sent)},
         content_type="multipart/form-data",
     )
@@ -111,7 +113,7 @@ def test_save_training_upload_must_be_audio(client, tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     r = client.post(
-        "/save_training",
+        "/api/v1/save_training",
         data={"genre": "House", "file": (io.BytesIO(b"MZ"), "tool.exe")},
         content_type="multipart/form-data",
     )
@@ -121,7 +123,7 @@ def test_save_training_upload_must_be_audio(client, tmp_path, monkeypatch):
 def test_analyze_keeps_the_name_but_drops_any_directory(client):
     # The uploaded name is only a label: path parts go, the rest stays readable.
     r = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(_tiny_wav_bytes(sample=7)), "..\\dir/Artist - Song.wav")},
         content_type="multipart/form-data",
     )
@@ -130,7 +132,7 @@ def test_analyze_keeps_the_name_but_drops_any_directory(client):
 
 
 def test_audio_unknown_hash_404(client):
-    r = client.get("/audio/deadbeef")
+    r = client.get("/api/v1/audio/deadbeef")
     assert r.status_code == 404
 
 
@@ -150,7 +152,7 @@ def _tiny_wav_bytes(sample=0):
 
 def test_analyze_fake_returns_full_payload(client):
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "probe.wav")}
-    r = client.post("/analyze", data=data, content_type="multipart/form-data")
+    r = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data")
     assert r.status_code == 200
     body = r.get_json()
     for key in ("styles", "bpm", "hash", "waveform"):
@@ -160,7 +162,7 @@ def test_analyze_fake_returns_full_payload(client):
 def test_refine_fake(client):
     # exercises the FINE_HOP_SECONDS path (was an unimported-name bug after the split)
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "probe.wav")}
-    r = client.post("/refine", data=data, content_type="multipart/form-data")
+    r = client.post("/api/v1/refine", data=data, content_type="multipart/form-data")
     assert r.status_code == 200
     body = r.get_json()
     assert "hop_seconds" in body and "segments" in body
@@ -168,10 +170,10 @@ def test_refine_fake(client):
 
 def test_vibes_create_and_duplicate(client):
     # exercises the sqlite3.IntegrityError path (was an unimported-name bug)
-    r1 = client.post("/vibes", json={"name": "Test Vibe"})
+    r1 = client.post("/api/v1/vibes", json={"name": "Test Vibe"})
     assert r1.status_code == 200
     assert r1.get_json()["name"] == "Test Vibe"
-    r2 = client.post("/vibes", json={"name": "Test Vibe"})
+    r2 = client.post("/api/v1/vibes", json={"name": "Test Vibe"})
     assert r2.status_code == 409
 
 
@@ -181,7 +183,10 @@ def test_forget_clears_every_per_track_table(client):
     # schema, so a new per-track table fails here until forget_track covers it.
     from contextlib import closing
 
-    from vibenative.db import TRACK_TABLES, db, library_rev
+    from vibenative.db import TRACK_TABLES, db
+
+    def library_rev(c):
+        return c.execute("SELECT rev FROM library_rev WHERE id = 1").fetchone()[0]
 
     with closing(db()) as conn, conn as c:
         keyed = {
@@ -206,7 +211,7 @@ def test_forget_clears_every_per_track_table(client):
             c.execute("INSERT INTO key_labels(hash, key, scale) VALUES(?, 'C', 'major')", (h,))
         rev_before = library_rev(c)
 
-    assert client.post(f"/forget/{'A' * 40}").get_json()["deleted"] == 1
+    assert client.delete(f"/api/v1/tracks/{'A' * 40}").get_json()["deleted"] == 1
 
     with closing(db()) as conn, conn as c:
         for t in TRACK_TABLES:
@@ -218,34 +223,38 @@ def test_forget_clears_every_per_track_table(client):
 def test_forget_deletes_track(client):
     # analyze a track, then forget it -> removed from the cache
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "gone.wav")}
-    h = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()["hash"]
-    r1 = client.post(f"/forget/{h}")
+    h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
+        "hash"
+    ]
+    r1 = client.delete(f"/api/v1/tracks/{h}")
     assert r1.status_code == 200
     assert r1.get_json()["deleted"] == 1
     # forgetting again is a harmless no-op (already gone)
-    assert client.post(f"/forget/{h}").get_json()["deleted"] == 0
+    assert client.delete(f"/api/v1/tracks/{h}").get_json()["deleted"] == 0
 
 
 def test_override_sets_genre(client):
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "ov.wav")}
-    h = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()["hash"]
-    r = client.post(f"/override/{h}", json={"genre": "Riddim"})
+    h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
+        "hash"
+    ]
+    r = client.post(f"/api/v1/override/{h}", json={"genre": "Riddim"})
     assert r.status_code == 200
     assert r.get_json()["genre"] == "Riddim"
     # the override wins as the dominant style -> shows on the map
-    node = next(n for n in client.get("/map").get_json()["nodes"] if n["hash"] == h)
+    node = next(n for n in client.get("/api/v1/map").get_json()["nodes"] if n["hash"] == h)
     assert node["style"] == "Riddim"
-    assert client.post(f"/override/{h}", json={}).status_code == 400  # empty rejected
+    assert client.post(f"/api/v1/override/{h}", json={}).status_code == 400  # empty rejected
 
 
 def test_guide_route_serves_markdown(client):
-    r = client.get("/guide")
+    r = client.get("/api/v1/guide")
     assert r.status_code == 200
     assert b"User Guide" in r.data
 
 
 def test_audit_route_returns_list(client):
-    r = client.get("/audit")
+    r = client.get("/api/v1/audit")
     assert r.status_code == 200
     assert isinstance(r.get_json(), list)  # empty on the throwaway DB
 
@@ -272,7 +281,7 @@ def test_batch_analyzes_folder_and_caches(client, tmp_path):
         (tmp_path / name).write_bytes(_tiny_wav_bytes(sample=i + 1))  # distinct content each
 
     def run():
-        r = client.post("/batch", json={"path": str(tmp_path)})
+        r = client.post("/api/v1/batch", json={"path": str(tmp_path)})
         assert r.status_code == 200
         return [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
 
@@ -291,14 +300,15 @@ def test_batch_analyzes_folder_and_caches(client, tmp_path):
 
 
 def test_batch_missing_dir_400(client):
-    assert client.post("/batch", json={"path": "/no/such/dir"}).status_code == 400
+    assert client.post("/api/v1/batch", json={"path": "/no/such/dir"}).status_code == 400
 
 
 def _decode_failing_with(monkeypatch, exc):
     """The REAL analyze() path, with every child process failing as `exc(cmd)`."""
+    import dataclasses
     import subprocess
 
-    from vibenative import analysis, decode, metadata
+    from vibenative import analysis, decode, metadata, settings
 
     def fail(cmd, **kw):
         raise exc(cmd)
@@ -306,7 +316,7 @@ def _decode_failing_with(monkeypatch, exc):
     monkeypatch.setattr(subprocess, "run", fail)
     monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
     monkeypatch.setattr(metadata, "find_tool", lambda name: name)
-    monkeypatch.setattr(analysis, "FAKE", False)
+    settings.use(dataclasses.replace(settings.current(), fake=False))
     monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
 
 
@@ -327,7 +337,7 @@ def test_batch_logs_non_audio_as_one_warning_and_keeps_tracebacks_otherwise(
     bad.write_bytes(b"this is not audio")
 
     with caplog.at_level(logging.INFO, logger="vibenative"):
-        r = client.post("/batch", json={"path": str(bad.parent), "workers": 1})
+        r = client.post("/api/v1/batch", json={"path": str(bad.parent), "workers": 1})
     lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
     result = lines[2]
     assert result["ok"] is False and result["filename"] == "notes.mp3"
@@ -350,7 +360,7 @@ def test_analyze_upload_that_is_not_audio_is_422_and_one_warning(client, monkeyp
     _decode_failing_with(monkeypatch, lambda cmd: subprocess.CalledProcessError(1, cmd))
     with caplog.at_level(logging.INFO, logger="vibenative"):
         r = client.post(
-            "/analyze",
+            "/api/v1/analyze",
             data={"file": (io.BytesIO(b"not audio"), "renamed.mp3")},
             content_type="multipart/form-data",
         )
@@ -360,15 +370,15 @@ def test_analyze_upload_that_is_not_audio_is_422_and_one_warning(client, monkeyp
     assert not any(rec.exc_info for rec in caplog.records)
 
 
-def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
+def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch, use_settings):
     # A file that stalls ffmpeg/ffprobe must fail on its own, not pin a batch worker.
-    # Runs the REAL analyze() path (FAKE off for the analysis module) with every
+    # Runs the REAL analyze() path (FAKE off) with every
     # child process timing out.
     import subprocess
 
     from conftest import seed_track
     from vibenative import analysis, decode, metadata
-    from vibenative.db import file_hash
+    from vibenative.hashing import file_hash
 
     def hang(cmd, **kw):
         raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
@@ -376,7 +386,7 @@ def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", hang)
     monkeypatch.setattr(decode, "_tool", lambda name: name)  # no ffmpeg needed on CI
     monkeypatch.setattr(metadata, "find_tool", lambda name: name)
-    monkeypatch.setattr(analysis, "FAKE", False)
+    use_settings(fake=False)
     monkeypatch.setattr(analysis, "get_engine", lambda: {})  # never reached: decode fails first
 
     hung = tmp_path / "a_hung.wav"
@@ -393,7 +403,7 @@ def test_hung_decode_is_a_per_file_batch_failure(client, tmp_path, monkeypatch):
     assert metadata.read_tags(hung)["tag"] == {}
 
     # (b) /batch reports the hung file as a failure line and keeps going.
-    r = client.post("/batch", json={"path": str(tmp_path), "workers": 1})
+    r = client.post("/api/v1/batch", json={"path": str(tmp_path), "workers": 1})
     assert r.status_code == 200
     lines = [json.loads(x) for x in r.data.decode().splitlines() if x.strip()]
     assert lines[1] == {"total": 2}
@@ -409,13 +419,13 @@ def test_map_populated(client):
     hashes = []
     for i, name in enumerate(("m1.wav", "m2.wav", "m3.wav")):
         data = {"file": (io.BytesIO(_tiny_wav_bytes(sample=i + 1)), name)}  # 3 distinct tracks
-        h = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()[
-            "hash"
-        ]
+        h = client.post(
+            "/api/v1/analyze", data=data, content_type="multipart/form-data"
+        ).get_json()["hash"]
         hashes.append(h)
     assert len(set(hashes)) == 3  # distinct content -> distinct nodes (not deduped)
 
-    body = client.get("/map").get_json()
+    body = client.get("/api/v1/map").get_json()
     node_hashes = {n["hash"] for n in body["nodes"]}
     assert set(hashes) <= node_hashes
     for n in body["nodes"]:
@@ -428,25 +438,28 @@ def test_map_populated(client):
 def test_vibe_lifecycle(client):
     # create a vibe, add a track, weight it (Rocchio), read members, remove, read.
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "vibe.wav")}
-    h = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()["hash"]
+    h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
+        "hash"
+    ]
 
-    vid = client.post("/vibes", json={"name": "Peak Time"}).get_json()["id"]
-    assert client.post("/vibes/add", json={"vibe_id": vid, "hash": h}).get_json()["added"] is True
+    vid = client.post("/api/v1/vibes", json={"name": "Peak Time"}).get_json()["id"]
+    assert (
+        client.post("/api/v1/vibes/add", json={"vibe_id": vid, "hash": h}).get_json()["added"]
+        is True
+    )
 
-    r = client.post("/vibes/weight", json={"vibe_id": vid, "hash": h, "weight": 0.5})
+    r = client.post("/api/v1/vibes/weight", json={"vibe_id": vid, "hash": h, "weight": 0.5})
     assert r.get_json()["weight"] == 0.5
     # weight clamps to [-1, 1]
-    clamped = client.post("/vibes/weight", json={"vibe_id": vid, "hash": h, "weight": 5})
+    clamped = client.post("/api/v1/vibes/weight", json={"vibe_id": vid, "hash": h, "weight": 5})
     assert clamped.get_json()["weight"] == 1.0
 
-    members = client.get(f"/vibes/{vid}/members").get_json()
+    members = client.get(f"/api/v1/vibes/{vid}/members").get_json()
     assert len(members) == 1
     assert members[0]["hash"] == h and members[0]["weight"] == 1.0
 
-    assert (
-        client.post("/vibes/remove", json={"vibe_id": vid, "hash": h}).get_json()["removed"] is True
-    )
-    assert client.get(f"/vibes/{vid}/members").get_json() == []
+    assert client.delete(f"/api/v1/vibes/{vid}/tracks/{h}").get_json()["removed"] is True
+    assert client.get(f"/api/v1/vibes/{vid}/members").get_json() == []
 
 
 def test_similar_returns_neighbors(client):
@@ -454,11 +467,11 @@ def test_similar_returns_neighbors(client):
     for name in ("s1.wav", "s2.wav", "s3.wav"):
         data = {"file": (io.BytesIO(_tiny_wav_bytes()), name)}
         hashes.append(
-            client.post("/analyze", data=data, content_type="multipart/form-data").get_json()[
-                "hash"
-            ]
+            client.post(
+                "/api/v1/analyze", data=data, content_type="multipart/form-data"
+            ).get_json()["hash"]
         )
-    body = client.get(f"/similar/{hashes[0]}?k=5").get_json()
+    body = client.get(f"/api/v1/similar/{hashes[0]}?k=5").get_json()
     assert isinstance(body, list)
     for row in body:
         assert row["hash"] in set(hashes) and row["hash"] != hashes[0]  # excludes self
@@ -467,24 +480,25 @@ def test_similar_returns_neighbors(client):
 
 def test_vibe_match_and_playlist(client):
     data = {"file": (io.BytesIO(_tiny_wav_bytes()), "vm.wav")}
-    h = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()["hash"]
-    vid = client.post("/vibes", json={"name": "V"}).get_json()["id"]
-    client.post("/vibes/add", json={"vibe_id": vid, "hash": h})
+    h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
+        "hash"
+    ]
+    vid = client.post("/api/v1/vibes", json={"name": "V"}).get_json()["id"]
+    client.post("/api/v1/vibes/add", json={"vibe_id": vid, "hash": h})
     # match: the track scored against every vibe's centroid
-    m = client.get(f"/vibes/match/{h}").get_json()
+    m = client.get(f"/api/v1/vibes/match/{h}").get_json()
     assert any(x["id"] == vid and "sim" in x for x in m)
     # the batch form answers the same for the hashes it knows and skips the rest
-    b = client.get(f"/vibes/match?hashes={h},nobody").get_json()
+    b = client.get(f"/api/v1/vibes/match?hashes={h},nobody").get_json()
     assert set(b) == {h} and b[h] == m
     # playlist: whole-DB ranking vs the vibe centroid (the lone member scores ~1.0)
-    pl = client.get(f"/vibes/{vid}/playlist").get_json()
+    pl = client.get(f"/api/v1/vibes/{vid}/playlist").get_json()
     assert isinstance(pl, list) and any(row["hash"] == h for row in pl)
 
 
 def test_vibe_routes_require_fields(client):
-    assert client.post("/vibes/add", json={}).status_code == 400
-    assert client.post("/vibes/weight", json={"vibe_id": 1}).status_code == 400
-    assert client.post("/vibes/remove", json={}).status_code == 400
+    assert client.post("/api/v1/vibes/add", json={}).status_code == 400
+    assert client.post("/api/v1/vibes/weight", json={"vibe_id": 1}).status_code == 400
 
 
 def test_second_style_override_returns_none():
@@ -541,8 +555,8 @@ def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
     ranked read. A relabel used to move the label but leave the blend and the
     candidates on the pre-relabel salience, so the dot argued with its own name."""
     from vibenative.routes import _second_style
-    from vibenative.routes._shared import _dominant_style
     from vibenative.routes.map import _override_candidates
+    from vibenative.style import dominant_read
 
     payload = {
         "salience": [{"style": "Techno", "score": 0.6}, {"style": "House", "score": 0.4}],
@@ -553,13 +567,13 @@ def test_a_relabelled_track_blends_and_offers_candidates_from_the_relabel():
             ]
         },
     }
-    style, score = _dominant_style(payload)
+    style, score = dominant_read(payload)
     assert style == "Trance"
     assert _second_style(payload, style, score) == ["Progressive House", 0.3]
     assert [c["style"] for c in _override_candidates(payload, style)] == ["Progressive House"]
     # ...and a genre removed by hand is not offered back as a one-click correction.
     payload["drops"] = ["Progressive House"]
-    style, score = _dominant_style(payload)
+    style, score = dominant_read(payload)
     assert style == "Trance" and _override_candidates(payload, style) == []
 
 
@@ -580,9 +594,9 @@ def _analyze_tracks(client, names):
     hashes = []
     for i, name in enumerate(names):
         data = {"file": (io.BytesIO(_tiny_wav_bytes(sample=i + 1)), name)}
-        h = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()[
-            "hash"
-        ]
+        h = client.post(
+            "/api/v1/analyze", data=data, content_type="multipart/form-data"
+        ).get_json()["hash"]
         hashes.append(h)
     return hashes
 
@@ -591,7 +605,7 @@ def test_training_candidates_empty_centroid(client):
     # tracks exist but none are labelled the genre -> no centroid -> a clear
     # message (not an error), and an empty candidate list.
     _analyze_tracks(client, ("t1.wav", "t2.wav"))
-    r = client.get("/training/candidates/Riddim")
+    r = client.get("/api/v1/training/candidates/Riddim")
     assert r.status_code == 200
     body = r.get_json()
     assert body["labeled"] == 0
@@ -603,9 +617,9 @@ def test_training_candidates_rank_and_exclusions(client):
     hashes = _analyze_tracks(client, ("a.wav", "b.wav", "c.wav", "d.wav"))
     # seed the genre centroid by overriding one track to it
     seed = hashes[0]
-    assert client.post(f"/override/{seed}", json={"genre": "Riddim"}).status_code == 200
+    assert client.post(f"/api/v1/override/{seed}", json={"genre": "Riddim"}).status_code == 200
 
-    body = client.get("/training/candidates/Riddim").get_json()
+    body = client.get("/api/v1/training/candidates/Riddim").get_json()
     assert body["labeled"] >= 1
     cands = body["candidates"]
     assert cands, "the remaining tracks should be ranked as candidates"
@@ -623,25 +637,32 @@ def test_training_candidates_rank_and_exclusions(client):
     # reject one -> it never resurfaces for this genre
     victim = ch[0]
     assert (
-        client.post("/training/reject", json={"hash": victim, "genre": "Riddim"}).status_code == 200
+        client.post("/api/v1/training/reject", json={"hash": victim, "genre": "Riddim"}).status_code
+        == 200
     )
-    ch2 = [c["hash"] for c in client.get("/training/candidates/Riddim").get_json()["candidates"]]
+    ch2 = [
+        c["hash"] for c in client.get("/api/v1/training/candidates/Riddim").get_json()["candidates"]
+    ]
     assert victim not in ch2
 
     # confirm another -> recorded as a label, so it drops out of the queue too
     keep = ch2[0]
-    r = client.post("/training/confirm", json={"hash": keep, "genre": "Riddim"})
+    r = client.post("/api/v1/training/confirm", json={"hash": keep, "genre": "Riddim"})
     assert r.status_code == 200 and r.get_json()["ok"] is True
-    ch3 = [c["hash"] for c in client.get("/training/candidates/Riddim").get_json()["candidates"]]
+    ch3 = [
+        c["hash"] for c in client.get("/api/v1/training/candidates/Riddim").get_json()["candidates"]
+    ]
     assert keep not in ch3
 
 
 def test_training_confirm_reject_validation(client):
     # both routes require hash + genre; confirm 404s on an unknown track.
-    assert client.post("/training/confirm", json={}).status_code == 400
-    assert client.post("/training/reject", json={}).status_code == 400
+    assert client.post("/api/v1/training/confirm", json={}).status_code == 400
+    assert client.post("/api/v1/training/reject", json={}).status_code == 400
     assert (
-        client.post("/training/confirm", json={"hash": "nope", "genre": "Riddim"}).status_code
+        client.post(
+            "/api/v1/training/confirm", json={"hash": "nope", "genre": "Riddim"}
+        ).status_code
         == 404
     )
 
@@ -650,11 +671,14 @@ def test_training_confirm_clears_prior_reject(client):
     # a confirm on a previously-rejected track wins: it becomes a label and the
     # stale reject is cleared (so it's excluded as a label, not resurrected).
     (h,) = _analyze_tracks(client, ("solo.wav",))
-    assert client.post("/training/reject", json={"hash": h, "genre": "Riddim"}).status_code == 200
-    r = client.post("/training/confirm", json={"hash": h, "genre": "Riddim"})
+    assert (
+        client.post("/api/v1/training/reject", json={"hash": h, "genre": "Riddim"}).status_code
+        == 200
+    )
+    r = client.post("/api/v1/training/confirm", json={"hash": h, "genre": "Riddim"})
     assert r.status_code == 200 and r.get_json()["ok"] is True
     # now labelled: it seeds the centroid and is not offered as a candidate
-    body = client.get("/training/candidates/Riddim").get_json()
+    body = client.get("/api/v1/training/candidates/Riddim").get_json()
     assert body["labeled"] >= 1
     assert h not in [c["hash"] for c in body["candidates"]]
 
@@ -665,26 +689,28 @@ def _batch_one(client, tmp_path, name="seg.wav", sample=9):
     music = tmp_path / "music"
     music.mkdir(exist_ok=True)
     (music / name).write_bytes(_tiny_wav_bytes(sample=sample))
-    lines = client.post("/batch", json={"path": str(music)}).data.decode().splitlines()
+    lines = client.post("/api/v1/batch", json={"path": str(music)}).data.decode().splitlines()
     results = [json.loads(x) for x in lines if x.strip()]
     return next(r["hash"] for r in results if r.get("hash")), music
 
 
 def test_override_segment_validation(client):
     # missing / partial fields
-    assert client.post("/override_segment", json={}).status_code == 400
-    assert client.post("/override_segment", json={"hash": "x"}).status_code == 400  # no genre
+    assert client.post("/api/v1/override_segment", json={}).status_code == 400
+    assert (
+        client.post("/api/v1/override_segment", json={"hash": "x"}).status_code == 400
+    )  # no genre
     # unknown hash -> 404
     assert (
         client.post(
-            "/override_segment", json={"hash": "nope", "genre": "G", "start": 0, "end": 1}
+            "/api/v1/override_segment", json={"hash": "nope", "genre": "G", "start": 0, "end": 1}
         ).status_code
         == 404
     )
 
     # a browser-dropped track exists but has no server-side filepath
     payload = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(_tiny_wav_bytes()), "seg.wav")},
         content_type="multipart/form-data",
     ).get_json()
@@ -693,33 +719,35 @@ def test_override_segment_validation(client):
     # non-numeric bounds -> 400
     assert (
         client.post(
-            "/override_segment", json={"hash": h, "genre": "G", "start": "a", "end": 1}
+            "/api/v1/override_segment", json={"hash": h, "genre": "G", "start": "a", "end": 1}
         ).status_code
         == 400
     )
     # start >= end -> 400
     assert (
         client.post(
-            "/override_segment", json={"hash": h, "genre": "G", "start": 5, "end": 5}
+            "/api/v1/override_segment", json={"hash": h, "genre": "G", "start": 5, "end": 5}
         ).status_code
         == 400
     )
     # negative start -> 400
     assert (
         client.post(
-            "/override_segment", json={"hash": h, "genre": "G", "start": -1, "end": 2}
+            "/api/v1/override_segment", json={"hash": h, "genre": "G", "start": -1, "end": 2}
         ).status_code
         == 400
     )
     # end past the track duration -> 400
     assert (
         client.post(
-            "/override_segment", json={"hash": h, "genre": "G", "start": 0, "end": dur + 10}
+            "/api/v1/override_segment", json={"hash": h, "genre": "G", "start": 0, "end": dur + 10}
         ).status_code
         == 400
     )
     # valid range, but a dropped track has no file to extract from -> clear message
-    r = client.post("/override_segment", json={"hash": h, "genre": "G", "start": 0, "end": 1})
+    r = client.post(
+        "/api/v1/override_segment", json={"hash": h, "genre": "G", "start": 0, "end": 1}
+    )
     assert r.status_code == 400
     assert "server-side file" in r.get_json()["error"]
 
@@ -732,12 +760,12 @@ def test_override_segment_persists_on_cache_hit(client, tmp_path, monkeypatch):
 
     # the override is recorded even if ffmpeg is absent (extraction is a soft step)
     r = client.post(
-        "/override_segment", json={"hash": h, "genre": "Riddim", "start": 0.0, "end": 1.0}
+        "/api/v1/override_segment", json={"hash": h, "genre": "Riddim", "start": 0.0, "end": 1.0}
     )
     assert r.status_code == 200 and r.get_json()["ok"] is True
 
     # a cache-hit re-analyze ships the span with the payload for the waveform repaint
-    lines = client.post("/batch", json={"path": str(music)}).data.decode().splitlines()
+    lines = client.post("/api/v1/batch", json={"path": str(music)}).data.decode().splitlines()
     row = next(r for r in (json.loads(x) for x in lines if x.strip()) if r.get("hash") == h)
     assert row["cached"] is True
     ovs = row.get("segment_overrides")
@@ -753,7 +781,7 @@ def test_override_segment_extracts_clip(client, tmp_path, monkeypatch):
     h, _ = _batch_one(client, tmp_path, sample=7)
 
     r = client.post(
-        "/override_segment", json={"hash": h, "genre": "Riddim", "start": 0.0, "end": 1.0}
+        "/api/v1/override_segment", json={"hash": h, "genre": "Riddim", "start": 0.0, "end": 1.0}
     )
     assert r.status_code == 200
     j = r.get_json()
@@ -769,23 +797,23 @@ def test_override_segment_delete(client, tmp_path, monkeypatch):
 
     # create an override -> the response carries its id
     r = client.post(
-        "/override_segment", json={"hash": h, "genre": "Riddim", "start": 0.0, "end": 1.0}
+        "/api/v1/override_segment", json={"hash": h, "genre": "Riddim", "start": 0.0, "end": 1.0}
     )
     oid = r.get_json()["id"]
     assert isinstance(oid, int)
 
-    # validation: id required, unknown id -> 404
-    assert client.post("/override_segment/delete", json={}).status_code == 400
-    assert client.post("/override_segment/delete", json={"id": 999999}).status_code == 404
+    # validation: the id is an integer in the path, an unknown one -> 404
+    assert client.delete("/api/v1/override_segment/nope").status_code == 404
+    assert client.delete("/api/v1/override_segment/999999").status_code == 404
 
     # delete it (removes the record, and the clip when ffmpeg produced one)
-    d = client.post("/override_segment/delete", json={"id": oid})
+    d = client.delete(f"/api/v1/override_segment/{oid}")
     assert d.status_code == 200 and d.get_json()["deleted"] == 1
     if shutil.which("ffmpeg"):
         assert d.get_json()["clip_removed"] is True
 
     # a cache-hit re-analyze no longer ships the span
-    lines = client.post("/batch", json={"path": str(music)}).data.decode().splitlines()
+    lines = client.post("/api/v1/batch", json={"path": str(music)}).data.decode().splitlines()
     row = next(r for r in (json.loads(x) for x in lines if x.strip()) if r.get("hash") == h)
     assert row.get("segment_overrides") == []
 
@@ -839,7 +867,7 @@ def test_lookup_parse_track():
 
 
 def test_lookup_unknown_hash_404(client):
-    assert client.get("/lookup/deadbeef").status_code == 404
+    assert client.get("/api/v1/lookup/deadbeef").status_code == 404
 
 
 def _boom(url):
@@ -854,11 +882,11 @@ def test_lookup_all_keys_absent_clean(client, monkeypatch):
 
     monkeypatch.setattr(lookup, "_get_json", _boom)
     h = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(_tiny_wav_bytes()), "Artist - Song.wav")},
         content_type="multipart/form-data",
     ).get_json()["hash"]
-    r = client.get(f"/lookup/{h}")
+    r = client.get(f"/api/v1/lookup/{h}")
     assert r.status_code == 200
     body = r.get_json()
     assert body["results"] == {}
@@ -876,7 +904,7 @@ def test_lookup_cache_hit_never_queries(client, monkeypatch):
     # any network call now fails loudly -> proves the cache short-circuits it
     monkeypatch.setattr(lookup, "_get_json", _boom)
     h = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(_tiny_wav_bytes()), "A - B.wav")},
         content_type="multipart/form-data",
     ).get_json()["hash"]
@@ -893,7 +921,7 @@ def test_lookup_cache_hit_never_queries(client, monkeypatch):
                 (h, src, json.dumps(val), 0.0),
             )
 
-    body = client.get(f"/lookup/{h}").get_json()
+    body = client.get(f"/api/v1/lookup/{h}").get_json()
     assert body["results"] == seeded  # all served from cache
     assert body["errors"] == {}  # nothing was queried (else _boom would have errored)
 
@@ -924,11 +952,11 @@ def test_waveform_minmax_shape_and_norm():
 def test_waveform_route_precached_on_analyze(client):
     # analyze pre-fills the waveform cache -> /waveform returns it, min/max/rms
     h = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(_tiny_wav_bytes()), "wf.wav")},
         content_type="multipart/form-data",
     ).get_json()["hash"]
-    r = client.get(f"/waveform/{h}")
+    r = client.get(f"/api/v1/waveform/{h}")
     assert r.status_code == 200
     body = r.get_json()
     for k in ("bins", "min", "max", "rms"):
@@ -945,12 +973,12 @@ def test_waveform_route_decodes_when_uncached(client, tmp_path):
     # drop the pre-filled cache so the route must decode the source WAV
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute("DELETE FROM waveform_cache WHERE hash=?", (h,))
-    r = client.get(f"/waveform/{h}")
+    r = client.get(f"/api/v1/waveform/{h}")
     assert r.status_code == 200
     body = r.get_json()
     assert len(body["max"]) == body["bins"] and len(body["min"]) == body["bins"]
     # a second call is now served from the cache the decode just wrote
-    assert client.get(f"/waveform/{h}").status_code == 200
+    assert client.get(f"/api/v1/waveform/{h}").status_code == 200
 
 
 def test_batch_backfills_dropped_track_filepath(client, tmp_path):
@@ -962,7 +990,7 @@ def test_batch_backfills_dropped_track_filepath(client, tmp_path):
     # 1) analyze it as an upload (dropped): filepath ends up empty
     with open(music / "bf.wav", "rb") as fh:
         h = client.post(
-            "/analyze",
+            "/api/v1/analyze",
             data={"file": (io.BytesIO(fh.read()), "bf.wav")},
             content_type="multipart/form-data",
         ).get_json()["hash"]
@@ -978,12 +1006,12 @@ def test_batch_backfills_dropped_track_filepath(client, tmp_path):
 
     # 2) batch-scan the folder -> cache hit backfills the path (consume the
     #    streamed NDJSON so the generator actually runs)
-    client.post("/batch", json={"path": str(music)}).get_data()
+    client.post("/api/v1/batch", json={"path": str(music)}).get_data()
     with _db_lock, closing(db()) as conn, conn as c:
         fp = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()[0]
     assert fp and fp.endswith("bf.wav")
     # 3) the waveform now decodes from the backfilled path
-    assert client.get(f"/waveform/{h}").status_code == 200
+    assert client.get(f"/api/v1/waveform/{h}").status_code == 200
 
 
 def test_batch_repoints_moved_track_filepath(client, tmp_path):
@@ -997,7 +1025,7 @@ def test_batch_repoints_moved_track_filepath(client, tmp_path):
     a = tmp_path / "a"
     a.mkdir()
     (a / "moved.wav").write_bytes(_tiny_wav_bytes(sample=11))
-    client.post("/batch", json={"path": str(a)}).get_data()
+    client.post("/api/v1/batch", json={"path": str(a)}).get_data()
     with _db_lock, closing(db()) as conn, conn as c:
         h, fp = c.execute("SELECT hash, filepath FROM tracks").fetchone()
     assert str(a) in fp  # points into folder a
@@ -1009,7 +1037,7 @@ def test_batch_repoints_moved_track_filepath(client, tmp_path):
     (a / "moved.wav").unlink()
 
     # re-scan the new folder -> cache hit re-points the now-stale path
-    client.post("/batch", json={"path": str(b)}).get_data()
+    client.post("/api/v1/batch", json={"path": str(b)}).get_data()
     with _db_lock, closing(db()) as conn, conn as c:
         fp2 = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()[0]
     assert str(b) in fp2 and str(a) not in fp2  # followed the move
@@ -1025,7 +1053,7 @@ def test_batch_keeps_valid_filepath_on_duplicate_scan(client, tmp_path):
     a = tmp_path / "a"
     a.mkdir()
     (a / "orig.wav").write_bytes(_tiny_wav_bytes(sample=12))
-    client.post("/batch", json={"path": str(a)}).get_data()
+    client.post("/api/v1/batch", json={"path": str(a)}).get_data()
     with _db_lock, closing(db()) as conn, conn as c:
         h, fp = c.execute("SELECT hash, filepath FROM tracks").fetchone()
 
@@ -1033,7 +1061,7 @@ def test_batch_keeps_valid_filepath_on_duplicate_scan(client, tmp_path):
     b = tmp_path / "b"
     b.mkdir()
     (b / "dupe.wav").write_bytes(_tiny_wav_bytes(sample=12))
-    client.post("/batch", json={"path": str(b)}).get_data()
+    client.post("/api/v1/batch", json={"path": str(b)}).get_data()
     with _db_lock, closing(db()) as conn, conn as c:
         fp2 = c.execute("SELECT filepath FROM tracks WHERE hash=?", (h,)).fetchone()[0]
     assert fp2 == fp  # unchanged: the still-valid original path wins
@@ -1041,20 +1069,20 @@ def test_batch_keeps_valid_filepath_on_duplicate_scan(client, tmp_path):
 
 def test_waveform_route_missing(client):
     # unknown hash -> 404
-    assert client.get("/waveform/deadbeef").status_code == 404
+    assert client.get("/api/v1/waveform/deadbeef").status_code == 404
     # a dropped track with no file and no cache -> 404 (client keeps its envelope)
     from contextlib import closing
 
     from vibenative.db import _db_lock, db
 
     h = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(_tiny_wav_bytes()), "nf.wav")},
         content_type="multipart/form-data",
     ).get_json()["hash"]
     with _db_lock, closing(db()) as conn, conn as c:
         c.execute("DELETE FROM waveform_cache WHERE hash=?", (h,))
-    r = client.get(f"/waveform/{h}")
+    r = client.get(f"/api/v1/waveform/{h}")
     assert r.status_code == 404
     assert "no server-side audio" in r.get_json()["error"]
 
@@ -1087,7 +1115,7 @@ def test_applederived_sidecars_are_not_queued_for_analysis(tmp_path):
     assert _is_sidecar(tmp_path / ".hidden.mp3") is False
 
 
-def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
+def test_training_status_reports_readiness_bands(tmp_path, monkeypatch, settings):
     """The Vibes tab's "what still needs examples" view. Reads the real
     ~/genre_training folders that /override files audio into, so it reports the
     training set that exists rather than one that was intended."""
@@ -1101,13 +1129,12 @@ def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
             (d / f"{i}.mp3").write_bytes(b"x")
     (root / "Sparse" / "._junk.mp3").write_bytes(b"x")  # AppleDouble must not count
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
 
     from vibenative import create_app
 
-    app = create_app()
+    app = create_app(settings)
     with authed(app) as c:
-        d = c.get("/training/status").get_json()
+        d = c.get("/api/v1/training/status").get_json()
     by = {g["genre"]: g for g in d["genres"]}
     assert by["Ready"]["state"] == "ready" and by["Ready"]["needs"] == 0
     assert by["Thin"]["state"] == "thin"
@@ -1118,30 +1145,23 @@ def test_training_status_reports_readiness_bands(tmp_path, monkeypatch):
     assert [g["genre"] for g in d["genres"]][0] == "Ready"
 
 
-def test_vibe_description_round_trips_unbounded_text(tmp_path, monkeypatch):
+def test_vibe_description_round_trips_unbounded_text(tmp_path, use_settings):
     """A vibe is the user's own category; the notes about it get as much room as
     they need, and paragraphs must survive verbatim."""
-    import importlib
-
-    dbfile = tmp_path / "v.db"
-    monkeypatch.setenv("GENRE_DB", str(dbfile))
-    from vibenative import db as dbmod
-
-    importlib.reload(dbmod)
-    dbmod.init_db()
-    monkeypatch.setenv("GENRE_TOKEN", TEST_TOKEN)
     from vibenative import create_app
 
-    app = create_app()
+    app = create_app(use_settings(db_path=tmp_path / "v.db"))
     with authed(app) as c:
-        vid = c.post("/vibes", json={"name": "Notes Test"}).get_json()["id"]
+        vid = c.post("/api/v1/vibes", json={"name": "Notes Test"}).get_json()["id"]
         text = "First para.\n\nSecond para.\n\n" + ("word " * 2000)
-        out = c.post(f"/vibes/{vid}/description", json={"description": text}).get_json()
+        out = c.post(f"/api/v1/vibes/{vid}/description", json={"description": text}).get_json()
         assert out["length"] == len(text.strip())
-        listed = {v["id"]: v for v in c.get("/vibes").get_json()}
+        listed = {v["id"]: v for v in c.get("/api/v1/vibes").get_json()}
         assert listed[vid]["description"] == text.strip()
-        assert c.post("/vibes/9999/description", json={"description": "x"}).status_code == 404
-        assert c.post(f"/vibes/{vid}/description", json={}).status_code == 400
+        assert (
+            c.post("/api/v1/vibes/9999/description", json={"description": "x"}).status_code == 404
+        )
+        assert c.post(f"/api/v1/vibes/{vid}/description", json={}).status_code == 400
 
 
 def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
@@ -1149,7 +1169,8 @@ def test_genre_profiles_carry_signature_and_feel(tmp_path, monkeypatch):
     4/4), so `feel` is the field that actually separates these genres. Both are
     genre conventions, NOT per-track measurements -- the engine computes a single
     BPM and never locates beats or downbeats, so meter can't be detected."""
-    from vibenative.genres import PROFILES, summarise
+    from vibenative.genres import summarise
+    from vibenative.taxonomy.profiles import PROFILES
 
     missing = [k for k, v in PROFILES.items() if not v.get("signature") or not v.get("feel")]
     assert missing == []
@@ -1169,10 +1190,10 @@ def test_key_correction_overrides_the_detector(client):
 
     h = seed_track("k" * 40, {"key": "C", "scale": "major", "camelot": "8B", "styles": []})
 
-    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    row = next(t for t in client.get("/api/v1/library").get_json() if t["hash"] == h)
     assert (row["key"], row["scale"], row["key_source"]) == ("C", "major", "detector")
 
-    r = client.post(f"/key/{h}", json={"key": "Eb", "scale": "minor"})
+    r = client.post(f"/api/v1/key/{h}", json={"key": "Eb", "scale": "minor"})
     assert r.status_code == 200, r.data
     assert r.get_json() == {
         "ok": True,
@@ -1182,7 +1203,7 @@ def test_key_correction_overrides_the_detector(client):
         "key_source": "manual",
     }
 
-    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    row = next(t for t in client.get("/api/v1/library").get_json() if t["hash"] == h)
     assert (row["key"], row["scale"], row["camelot"], row["key_source"]) == (
         "Eb",
         "minor",
@@ -1191,8 +1212,8 @@ def test_key_correction_overrides_the_detector(client):
     )
 
     # clearing restores the detector's own answer from the payload
-    assert client.post(f"/key/{h}", json={"key": None}).get_json()["key"] == "C"
-    row = next(t for t in client.get("/library").get_json() if t["hash"] == h)
+    assert client.post(f"/api/v1/key/{h}", json={"key": None}).get_json()["key"] == "C"
+    row = next(t for t in client.get("/api/v1/library").get_json() if t["hash"] == h)
     assert (row["key"], row["key_source"]) == ("C", "detector")
 
 
@@ -1200,16 +1221,19 @@ def test_key_correction_rejects_nonsense(client):
     from tests.conftest import seed_track
 
     h = seed_track("j" * 40, {"key": "C", "scale": "major", "styles": []})
-    assert client.post(f"/key/{h}", json={"key": "H", "scale": "minor"}).status_code == 400
-    assert client.post(f"/key/{h}", json={"key": "C", "scale": "lydian"}).status_code == 400
-    assert client.post("/key/nosuchtrack", json={"key": "C", "scale": "minor"}).status_code == 404
+    assert client.post(f"/api/v1/key/{h}", json={"key": "H", "scale": "minor"}).status_code == 400
+    assert client.post(f"/api/v1/key/{h}", json={"key": "C", "scale": "lydian"}).status_code == 400
+    assert (
+        client.post("/api/v1/key/nosuchtrack", json={"key": "C", "scale": "minor"}).status_code
+        == 404
+    )
 
 
 def test_notices_lists_what_the_build_ships(client):
     """Attribution is owed to whoever runs the product, so it has to be reachable
     from inside it. The list is built from what is actually present, so it never
     credits a file this build does not have."""
-    r = client.get("/notices")
+    r = client.get("/api/v1/notices")
     assert r.status_code == 200
     items = r.get_json()
     assert items and all({"name", "what", "licence", "url"} <= set(i) for i in items)

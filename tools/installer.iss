@@ -2,8 +2,8 @@
 ; Windows installer (Start-menu + optional desktop shortcut, uninstaller).
 ;
 ; Build it with:  python tools/build_installer.py   (reads the version from
-; vibenative.__version__ and passes it here via /DMyAppVersion=...). You can also run
-; iscc directly:  iscc /DMyAppVersion=2.1.0 "tools\installer.iss"
+; pyproject.toml and passes it here via /DMyAppVersion=...). You can also run
+; iscc directly:  iscc /DMyAppVersion=<pyproject version> "tools\installer.iss"
 ;
 ; DATA SAFETY (verified): this installer only writes under {app} (Program Files).
 ;   * The music database lives in %USERPROFILE%\genre_v2.db (default) or wherever
@@ -13,8 +13,10 @@
 ;     READS them, and its exe-adjacent resolution (models_dir()) finds {app}\models
 ;     with no change. ffmpeg installs the same way, beside the exe.
 
+; No default: the version comes from pyproject.toml or the build stops, so a
+; Setup can never carry a number that isn't the app's.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.0.0-dev"
+  #error MyAppVersion is not set. Build with tools/build_installer.py, or pass /DMyAppVersion=<pyproject version>.
 #endif
 #ifndef DistDir
   #define DistDir "..\dist\Vibe Identify"
@@ -66,7 +68,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Files]
 ; The entire built folder: the exe, its _internal bundle, models\, ffmpeg, notices.
 ; Exclude runtime artifacts a prior local run may have dropped here (the backend log
-; now lives in %LOCALAPPDATA%\Vibenative, but be defensive).
+; now lives in %LOCALAPPDATA%\Vibe Identify, but be defensive).
 Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.log"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
@@ -231,7 +233,9 @@ begin
   DeleteFile(DbPath);
   DeleteFile(DbPath + '-wal');
   DeleteFile(DbPath + '-shm');
-  { extracted section clips + the runtime log dir }
+  { extracted section clips, the runtime log dir, and the pre-rename folder:
+    the WebView2 profile and any logs from before the log dir was renamed }
   DelTree(ExpandConstant('{%USERPROFILE}\genre_training'), True, True, True);
+  DelTree(ExpandConstant('{localappdata}\{#MyAppName}'), True, True, True);
   DelTree(ExpandConstant('{localappdata}\Vibenative'), True, True, True);
 end;
