@@ -45,10 +45,15 @@ desktop = [
 ]
 
 # The package lives under src/ (standard src-layout). Both the engine modules and
-# the ported app share one importable `vibenative` package.
+# the ported app share one importable `vibenative` package. Its subpackages are
+# discovered, not listed: a hand-kept list left repo/ and taxonomy/ out of the
+# wheel. test_wheel builds one and checks.
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = ["vibenative", "vibenative.routes"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["vibenative*"]
 
 [tool.setuptools.package-data]
 vibenative = ["templates/*", "static/*"]
