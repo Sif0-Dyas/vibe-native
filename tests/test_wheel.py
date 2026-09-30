@@ -28,7 +28,9 @@ def test_the_wheel_contains_every_subpackage(tmp_path):
         ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"),
     )
     out = tmp_path / "wheelhouse"
-    subprocess.run(  # nosec B603  # sys.executable with fixed args, no shell
+    # setuptools >= 70.1 builds wheels itself (no `wheel` package); it is in the
+    # dev group because it is the [build-system] backend.
+    r = subprocess.run(  # nosec B603  # sys.executable with fixed args, no shell
         [
             sys.executable,
             "-c",
@@ -36,10 +38,11 @@ def test_the_wheel_contains_every_subpackage(tmp_path):
             str(out),
         ],
         cwd=tmp_path,
-        check=True,
         capture_output=True,
+        text=True,
         timeout=300,
     )
+    assert r.returncode == 0, r.stderr[-3000:]
     (wheel,) = out.glob("vibenative-*.whl")
     names = zipfile.ZipFile(wheel).namelist()
     packages = {n.rsplit("/", 1)[0] for n in names if n.endswith("/__init__.py")}
