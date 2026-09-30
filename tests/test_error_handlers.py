@@ -17,14 +17,14 @@ def _upload(name, data=b"RIFF0000WAVE"):
     return {"file": (io.BytesIO(data), name)}
 
 
-@pytest.mark.parametrize("route", ["/analyze", "/refine"])
+@pytest.mark.parametrize("route", ["/api/v1/analyze", "/api/v1/refine"])
 def test_no_file_is_400(client, route):
     r = client.post(route, data={}, content_type="multipart/form-data")
     assert r.status_code == 400
     assert set(r.get_json()) == {"error"}
 
 
-@pytest.mark.parametrize("route", ["/analyze", "/refine"])
+@pytest.mark.parametrize("route", ["/api/v1/analyze", "/api/v1/refine"])
 def test_wrong_type_is_415_with_the_suffix(client, route):
     r = client.post(route, data=_upload("notes.txt"), content_type="multipart/form-data")
     assert r.status_code == 415
@@ -32,11 +32,13 @@ def test_wrong_type_is_415_with_the_suffix(client, route):
 
 
 def test_save_training_upload_errors_keep_their_status(client):
-    r = client.post("/save_training", data={"genre": "House"}, content_type="multipart/form-data")
+    r = client.post(
+        "/api/v1/save_training", data={"genre": "House"}, content_type="multipart/form-data"
+    )
     assert r.status_code == 400
     assert r.get_json() == {"error": "no file or filepath provided"}
     r = client.post(
-        "/save_training",
+        "/api/v1/save_training",
         data={"genre": "House", **_upload("x.exe")},
         content_type="multipart/form-data",
     )
@@ -44,7 +46,7 @@ def test_save_training_upload_errors_keep_their_status(client):
     assert r.get_json() == {"error": "unsupported file type: .exe"}
 
 
-@pytest.mark.parametrize("route", ["/analyze", "/refine"])
+@pytest.mark.parametrize("route", ["/api/v1/analyze", "/api/v1/refine"])
 def test_an_unexpected_failure_is_500_internal_error_and_logged(client, monkeypatch, caplog, route):
     from vibenative.routes import analysis as A
 
@@ -63,7 +65,7 @@ def test_an_unexpected_failure_is_500_internal_error_and_logged(client, monkeypa
 def test_an_http_error_is_not_turned_into_a_500(client):
     client.application.config["MAX_CONTENT_LENGTH"] = 10
     r = client.post(
-        "/analyze", data=_upload("a.wav", b"x" * 100), content_type="multipart/form-data"
+        "/api/v1/analyze", data=_upload("a.wav", b"x" * 100), content_type="multipart/form-data"
     )
     assert r.status_code == 413
-    assert client.get("/analyze").status_code == 405  # POST-only route
+    assert client.get("/api/v1/analyze").status_code == 405  # POST-only route

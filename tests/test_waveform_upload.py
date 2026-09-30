@@ -31,7 +31,7 @@ def _wav(sample=0):
 
 def _analyze(client, audio, name="drop.wav"):
     r = client.post(
-        "/analyze",
+        "/api/v1/analyze",
         data={"file": (io.BytesIO(audio), name)},
         content_type="multipart/form-data",
     )
@@ -41,7 +41,7 @@ def _analyze(client, audio, name="drop.wav"):
 
 def _upload_waveform(client, h, audio, name="drop.wav"):
     return client.post(
-        f"/waveform/{h}",
+        f"/api/v1/waveform/{h}",
         data={"file": (io.BytesIO(audio), name)},
         content_type="multipart/form-data",
     )
@@ -65,7 +65,7 @@ def test_a_track_with_no_file_and_no_waveform_cannot_get_one_by_asking(client):
     audio = _wav(11)
     h = _analyze(client, audio)
     _forget_waveform(h)
-    assert client.get(f"/waveform/{h}").status_code == 404
+    assert client.get(f"/api/v1/waveform/{h}").status_code == 404
 
 
 def test_uploading_the_audio_builds_the_waveform(client):
@@ -86,7 +86,7 @@ def test_the_result_is_cached_so_it_happens_once(client):
     built = _upload_waveform(client, h, audio).get_json()
 
     # The plain GET now answers, without the file being sent again.
-    r = client.get(f"/waveform/{h}")
+    r = client.get(f"/api/v1/waveform/{h}")
     assert r.status_code == 200
     assert r.get_json() == built
 
@@ -98,7 +98,7 @@ def test_audio_that_is_not_that_track_is_refused(client):
     _forget_waveform(h)
     r = _upload_waveform(client, h, _wav(22), "two.wav")
     assert r.status_code == 400
-    assert client.get(f"/waveform/{h}").status_code == 404  # nothing was stored
+    assert client.get(f"/api/v1/waveform/{h}").status_code == 404  # nothing was stored
 
 
 def test_an_unknown_track_is_refused(client):
@@ -111,7 +111,7 @@ def test_an_unknown_track_is_refused(client):
 def test_a_missing_upload_is_a_bad_request_not_a_crash(client):
     h = _analyze(client, _wav(11))
     _forget_waveform(h)
-    r = client.post(f"/waveform/{h}", data={}, content_type="multipart/form-data")
+    r = client.post(f"/api/v1/waveform/{h}", data={}, content_type="multipart/form-data")
     assert r.status_code == 400
 
 
@@ -121,4 +121,4 @@ def test_uploading_when_it_is_already_cached_just_returns_it(client):
     h = _analyze(client, audio)  # analysis already cached a waveform
     r = _upload_waveform(client, h, audio)
     assert r.status_code == 200
-    assert r.get_json() == client.get(f"/waveform/{h}").get_json()
+    assert r.get_json() == client.get(f"/api/v1/waveform/{h}").get_json()

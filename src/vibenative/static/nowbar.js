@@ -113,13 +113,13 @@ let playHash, nowShowQueueControls; // assigned below, where the file sets it up
     if (cached) url = keepUrl(URL.createObjectURL(cached));
     else {
       let serverOk = false;
-      try { serverOk = (await fetch('/audio/' + hash, { method: 'HEAD' })).ok; } catch (_) { /* offline */ }
-      if (serverOk) url = '/audio/' + hash;
+      try { serverOk = (await fetch('/api/v1/audio/' + hash, { method: 'HEAD' })).ok; } catch (_) { /* offline */ }
+      if (serverOk) url = '/api/v1/audio/' + hash;
       else if (typeof FSH !== 'undefined' && FSH.supported) {
         const f = await FSH.file(hash);   // reopens the dropped file (may prompt once)
         if (f) { if (typeof HASH_FILES !== 'undefined') HASH_FILES.set(hash, f); url = keepUrl(URL.createObjectURL(f)); }
       }
-      if (!url) url = '/audio/' + hash;   // let it error -> the bar shows the message
+      if (!url) url = '/api/v1/audio/' + hash;   // let it error -> the bar shows the message
     }
     // Always start from the beginning. Re-selecting the SAME track keeps the src,
     // so the element would otherwise resume mid-track — reset currentTime instead.

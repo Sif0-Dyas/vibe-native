@@ -26,11 +26,11 @@ def test_thread_count_covers_the_batch_cap_plus_ui():
 
 def test_each_request_logs_method_path_status_but_never_the_token(client, caplog):
     with caplog.at_level(logging.INFO, logger="vibenative.requests"):
-        assert client.get("/library", query_string={"k": TEST_TOKEN}).status_code == 200
+        assert client.get("/api/v1/library", query_string={"k": TEST_TOKEN}).status_code == 200
         anon = client.application.test_client()
-        assert anon.get("/library").status_code == 403
+        assert anon.get("/api/v1/library").status_code == 403
     lines = [r.getMessage() for r in caplog.records if r.name == "vibenative.requests"]
-    assert "GET /library 200" in lines and "GET /library 403" in lines
+    assert "GET /api/v1/library 200" in lines and "GET /api/v1/library 403" in lines
     assert TEST_TOKEN not in caplog.text
 
 
@@ -72,7 +72,7 @@ def test_batch_ndjson_streams_through_waitress(client, monkeypatch, tmp_path):
         t0 = time.monotonic()
         conn.request(
             "POST",
-            f"/batch?k={TEST_TOKEN}",
+            f"/api/v1/batch?k={TEST_TOKEN}",
             body=body,
             headers={"Content-Type": "application/json"},
         )

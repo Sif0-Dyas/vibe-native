@@ -13,7 +13,7 @@ __version__ = "2.1.0"
 
 from . import auth, serve  # noqa: E402 -- after __version__ so routes can read it
 from .db import init_db  # noqa: E402
-from .routes import bp  # noqa: E402
+from .routes import API_PREFIX, bp, pages  # noqa: E402
 from .settings import Settings, use  # noqa: E402
 
 __all__ = ["create_app", "Settings", "__version__"]
@@ -35,5 +35,6 @@ def create_app(settings=None):
     # sets one per launch), else a fresh one; see auth.py.
     auth.install(app)
     serve.log_requests(app)
-    app.register_blueprint(bp)
+    app.register_blueprint(pages)
+    app.register_blueprint(bp, url_prefix=API_PREFIX)
     return app

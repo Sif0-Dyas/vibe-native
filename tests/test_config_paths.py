@@ -107,12 +107,12 @@ def test_db_path_and_taxonomy_edits_write_to_the_config_dir(client, tmp_path, us
     cfg = tmp_path / "config"  # conftest's Settings.config_dir
     use_settings(taxonomy=None)
 
-    r = client.post("/db-path", json={"path": str(tmp_path / "lib.db")})
+    r = client.post("/api/v1/db-path", json={"path": str(tmp_path / "lib.db")})
     assert r.status_code == 200, r.get_json()
     assert r.get_json()["settings_ini"] == str(cfg / "settings.ini")
     assert _db_path_in(cfg / "settings.ini") == str(tmp_path / "lib.db")
 
-    r = client.post("/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
+    r = client.post("/api/v1/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
     assert r.status_code == 200, r.get_json()
     saved = (cfg / "taxonomy.json").read_text(encoding="utf-8")
     assert '"Halftime": "Drum n Bass"' in saved
@@ -128,7 +128,7 @@ def test_read_only_installer_ini_no_longer_breaks_db_path(client, packaged, tmp_
     _ini(seed, r"%USERPROFILE%\genre_v2.db")
     os.chmod(seed, stat.S_IREAD)
     try:
-        r = client.post("/db-path", json={"path": str(tmp_path / "moved.db")})
+        r = client.post("/api/v1/db-path", json={"path": str(tmp_path / "moved.db")})
         assert r.status_code == 200, r.get_json()
         assert r.get_json()["settings_ini"] == str(cfg / "settings.ini")
         assert _db_path_in(cfg / "settings.ini") == str(tmp_path / "moved.db")

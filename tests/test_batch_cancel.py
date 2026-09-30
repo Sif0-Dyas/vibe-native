@@ -60,7 +60,7 @@ def batch(client, monkeypatch):
 
 
 def _start(client, folder):
-    r = client.post("/batch", json={"path": str(folder), "workers": 3}, buffered=False)
+    r = client.post("/api/v1/batch", json={"path": str(folder), "workers": 3}, buffered=False)
     assert r.status_code == 200
     lines = iter(r.response)
     job_line = json.loads(next(lines))  # {"job": id}, sent before the folder walk
@@ -93,7 +93,7 @@ def test_cancel_after_two_of_twenty(client, batch, tmp_path):
     assert first["total"] == 20 and job in mod._BATCH_JOBS
 
     got = [json.loads(next(lines)), json.loads(next(lines))]
-    assert client.post(f"/batch/{job}/cancel").status_code == 200
+    assert client.post(f"/api/v1/batch/{job}/cancel").status_code == 200
     rest = [json.loads(x) for x in lines]  # drains what was already running, then ends
 
     final = rest[-1]
@@ -105,7 +105,7 @@ def test_cancel_after_two_of_twenty(client, batch, tmp_path):
     # results that finished after the cancel were still cached
     assert _tracks_in_db() == final["processed"]
     _assert_fully_stopped(mod, executors, job)
-    assert client.post(f"/batch/{job}/cancel").status_code == 404  # gone once ended
+    assert client.post(f"/api/v1/batch/{job}/cancel").status_code == 404  # gone once ended
 
 
 def test_client_disconnect_shuts_the_executor_down(client, batch, tmp_path):
@@ -129,7 +129,7 @@ def test_cancelling_one_job_leaves_a_concurrent_one_alone(client, batch, tmp_pat
     assert a_job != b_job
 
     next(a_lines)
-    assert client.post(f"/batch/{a_job}/cancel").status_code == 200
+    assert client.post(f"/api/v1/batch/{a_job}/cancel").status_code == 200
     b_rest = [json.loads(x) for x in b_lines]
     a_rest = [json.loads(x) for x in a_lines]
 
@@ -142,7 +142,7 @@ def test_cancelling_one_job_leaves_a_concurrent_one_alone(client, batch, tmp_pat
 
 
 def test_cancel_of_an_unknown_job_is_404(client):
-    assert client.post("/batch/not-a-job/cancel").status_code == 404
+    assert client.post("/api/v1/batch/not-a-job/cancel").status_code == 404
 
 
 def test_cancel_during_the_folder_walk(client, batch, tmp_path, monkeypatch):
@@ -161,7 +161,7 @@ def test_cancel_during_the_folder_walk(client, batch, tmp_path, monkeypatch):
             yield real
 
     monkeypatch.setattr(mod, "_iter_folder", slow_walk)
-    r = client.post("/batch", json={"path": str(tmp_path / "lib")}, buffered=False)
+    r = client.post("/api/v1/batch", json={"path": str(tmp_path / "lib")}, buffered=False)
     lines = iter(r.response)
     job = json.loads(next(lines))["job"]  # before the walk has started
 
@@ -169,7 +169,7 @@ def test_cancel_during_the_folder_walk(client, batch, tmp_path, monkeypatch):
     reader = threading.Thread(target=lambda: got.extend(json.loads(x) for x in lines))
     reader.start()  # drives the walk
     time.sleep(0.3)  # well into the walk
-    assert authed(client.application).post(f"/batch/{job}/cancel").status_code == 200
+    assert authed(client.application).post(f"/api/v1/batch/{job}/cancel").status_code == 200
     reader.join(timeout=10)
     assert not reader.is_alive()
 
@@ -220,12 +220,12 @@ def test_batch_refuses_folders_that_are_never_a_library(client, profile, which, 
         "AppData": profile / "AppData",
     }[which]
     # buffered=False and no iteration: a guard that failed must not walk a drive.
-    r = client.post("/batch", json={"path": str(folder)}, buffered=False)
+    r = client.post("/api/v1/batch", json={"path": str(folder)}, buffered=False)
     assert r.status_code == 400
     assert words in json.loads(r.get_data())["error"]
     r.close()
     # the check ignores case, as Windows does
-    r = client.post("/batch", json={"path": str(folder).upper()}, buffered=False)
+    r = client.post("/api/v1/batch", json={"path": str(folder).upper()}, buffered=False)
     assert r.status_code == 400
     r.close()
 
@@ -251,7 +251,9 @@ def test_a_big_batch_waits_for_confirm(client, batch, tmp_path, monkeypatch):
     mod, calls, executors = batch
     monkeypatch.setattr(mod, "BATCH_CONFIRM_OVER", 3)
     monkeypatch.setattr(mod, "CONFIRM_KEEPALIVE_S", 0.1)
-    r = client.post("/batch", json={"path": str(_folder(tmp_path / "lib", 5))}, buffered=False)
+    r = client.post(
+        "/api/v1/batch", json={"path": str(_folder(tmp_path / "lib", 5))}, buffered=False
+    )
     lines = iter(r.response)
     job = json.loads(next(lines))["job"]
     assert json.loads(next(lines)) == {"total": 5, "needs_confirm": True}
@@ -263,8 +265,8 @@ def test_a_big_batch_waits_for_confirm(client, batch, tmp_path, monkeypatch):
     assert calls == []  # waiting: nothing analysed
     assert got and all(not c.strip() for c in got)  # only keepalives so far
     other = authed(client.application)
-    assert other.post(f"/batch/{job}/confirm", json={}).status_code == 400  # must say true
-    assert other.post(f"/batch/{job}/confirm", json={"confirm": True}).status_code == 200
+    assert other.post(f"/api/v1/batch/{job}/confirm", json={}).status_code == 400  # must say true
+    assert other.post(f"/api/v1/batch/{job}/confirm", json={"confirm": True}).status_code == 200
     reader.join(timeout=10)
 
     rows = [json.loads(c) for c in got if c.strip()]
@@ -279,7 +281,9 @@ def test_cancel_at_the_confirm_prompt(client, batch, tmp_path, monkeypatch):
     mod, calls, executors = batch
     monkeypatch.setattr(mod, "BATCH_CONFIRM_OVER", 3)
     monkeypatch.setattr(mod, "CONFIRM_KEEPALIVE_S", 0.1)
-    r = client.post("/batch", json={"path": str(_folder(tmp_path / "lib", 5))}, buffered=False)
+    r = client.post(
+        "/api/v1/batch", json={"path": str(_folder(tmp_path / "lib", 5))}, buffered=False
+    )
     lines = iter(r.response)
     job = json.loads(next(lines))["job"]
     next(lines)  # the needs_confirm total
@@ -287,7 +291,7 @@ def test_cancel_at_the_confirm_prompt(client, batch, tmp_path, monkeypatch):
     reader = threading.Thread(target=_read_all, args=(lines, got))
     reader.start()
     time.sleep(0.3)
-    assert authed(client.application).post(f"/batch/{job}/cancel").status_code == 200
+    assert authed(client.application).post(f"/api/v1/batch/{job}/cancel").status_code == 200
     reader.join(timeout=10)
     rows = [json.loads(c) for c in got if c.strip()]
     assert rows == [{"done": True, "cancelled": True, "processed": 0, "total": 5}]
@@ -296,4 +300,4 @@ def test_cancel_at_the_confirm_prompt(client, batch, tmp_path, monkeypatch):
 
 
 def test_confirm_of_an_unknown_job_is_404(client):
-    assert client.post("/batch/nope/confirm", json={"confirm": True}).status_code == 404
+    assert client.post("/api/v1/batch/nope/confirm", json={"confirm": True}).status_code == 404

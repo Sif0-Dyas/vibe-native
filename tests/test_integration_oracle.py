@@ -60,7 +60,7 @@ def test_analyze_route_matches_oracle(tmp_path, use_settings):
         p = Path(wsl_to_windows(m["file"]))
         with open(p, "rb") as fh:
             resp = client.post(
-                "/analyze",
+                "/api/v1/analyze",
                 data={"file": (io.BytesIO(fh.read()), p.name)},
                 content_type="multipart/form-data",
             )

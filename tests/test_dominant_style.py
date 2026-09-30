@@ -50,8 +50,10 @@ def library(client):
         [("ovr", BASE), ("wts", BASE), ("rel", RELABELLED), ("pl1", BASE), ("pl2", BASE)]
     ):
         cache_put(h * 8, f"{h}.mp3", "", h, p, _emb(i))
-    assert client.post("/override/" + "ovr" * 8, json={"genre": "Dubstep"}).status_code == 200
-    r = client.post("/weights/" + "wts" * 8, json={"steps": {"House": 3}})
+    assert (
+        client.post("/api/v1/override/" + "ovr" * 8, json={"genre": "Dubstep"}).status_code == 200
+    )
+    r = client.post("/api/v1/weights/" + "wts" * 8, json={"steps": {"House": 3}})
     assert r.status_code == 200, r.get_json()
     return {
         "ovr" * 8: "Dubstep",
@@ -64,16 +66,16 @@ def library(client):
 
 def test_every_view_reports_the_same_style(client, library, monkeypatch):
     # the column /library reads
-    listed = {t["hash"]: t["style"] for t in client.get("/library").get_json()}
+    listed = {t["hash"]: t["style"] for t in client.get("/api/v1/library").get_json()}
     assert {h: listed[h] for h in library} == library
 
     # /similar computes it from the payload
     for h in library:
-        others = {t["hash"]: t["style"] for t in client.get(f"/similar/{h}?k=10").get_json()}
+        others = {t["hash"]: t["style"] for t in client.get(f"/api/v1/similar/{h}?k=10").get_json()}
         assert others == {k: v for k, v in library.items() if k != h}
 
     # the map's nodes
-    nodes = {n["hash"]: n["style"] for n in client.get("/map").get_json()["nodes"]}
+    nodes = {n["hash"]: n["style"] for n in client.get("/api/v1/map").get_json()["nodes"]}
     assert {h: nodes[h] for h in library} == library
 
     # the misread check: every track's own style and every neighbour's
@@ -109,7 +111,7 @@ def test_the_column_follows_every_payload_write(client, library):
         return p
 
     tracks_repo.update_payload("ovr" * 8, drop_override)
-    listed = {t["hash"]: t["style"] for t in client.get("/library").get_json()}
+    listed = {t["hash"]: t["style"] for t in client.get("/api/v1/library").get_json()}
     assert listed["ovr" * 8] == "Techno"
 
 
@@ -186,22 +188,26 @@ def test_every_row_and_edit_response_carries_the_identity(client, tmp_path):
 
     wav = b"RIFF" + b"\x00" * 64  # the fake engine reads nothing but the bytes
     fresh = client.post(
-        "/analyze", data={"file": (io.BytesIO(wav), "t.wav")}, content_type="multipart/form-data"
+        "/api/v1/analyze",
+        data={"file": (io.BytesIO(wav), "t.wav")},
+        content_type="multipart/form-data",
     ).get_json()
     h = fresh["hash"]
     assert _identity_of(fresh) == stored(h) and fresh["dominant_source"] == "salience"
     cached = client.post(
-        "/analyze", data={"file": (io.BytesIO(wav), "t.wav")}, content_type="multipart/form-data"
+        "/api/v1/analyze",
+        data={"file": (io.BytesIO(wav), "t.wav")},
+        content_type="multipart/form-data",
     ).get_json()
     assert cached["cached"] and _identity_of(cached) == stored(h)
-    assert _identity_of(client.get(f"/track/{h}").get_json()) == stored(h)
+    assert _identity_of(client.get(f"/api/v1/track/{h}").get_json()) == stored(h)
 
     folder = tmp_path / "scan"
     folder.mkdir()
     (folder / "a.wav").write_bytes(b"RIFF" + b"\x01" * 64)
     lines = [
         json.loads(x)
-        for x in client.post("/batch", json={"path": str(folder)})
+        for x in client.post("/api/v1/batch", json={"path": str(folder)})
         .get_data(as_text=True)
         .splitlines()
         if x.strip()
@@ -210,12 +216,12 @@ def test_every_row_and_edit_response_carries_the_identity(client, tmp_path):
     assert _identity_of(row) == stored(row["hash"])
 
     w = client.post(
-        f"/weights/{h}", json={"steps": {fresh["dominant_read"][1]["style"]: 3}}
+        f"/api/v1/weights/{h}", json={"steps": {fresh["dominant_read"][1]["style"]: 3}}
     ).get_json()
     assert _identity_of(w) == stored(h) and w["dominant_source"] == "weights"
-    assert _identity_of(client.get(f"/weights/{h}").get_json()) == stored(h)
+    assert _identity_of(client.get(f"/api/v1/weights/{h}").get_json()) == stored(h)
 
-    o = client.post(f"/override/{h}", json={"genre": "Dubstep"}).get_json()
+    o = client.post(f"/api/v1/override/{h}", json={"genre": "Dubstep"}).get_json()
     assert _identity_of(o) == stored(h)
     assert (o["dominant_style"], o["dominant_score"], o["dominant_source"]) == (
         "Dubstep",

@@ -7,7 +7,7 @@ running, and injects a small JS shim at runtime that adds one thing a plain
 browser can't do:
 
   * a native Windows *folder* picker whose picked ``C:\\...`` path is handed
-    straight to the app's existing runBatch() (the native /batch route reads
+    straight to the app's existing runBatch() (the native /api/v1/batch route reads
     Windows paths directly now — no WSL translation).
 
 Two backend modes (native ONNX engine, no WSL anywhere):
@@ -165,11 +165,11 @@ def configure():
 
 
 def _probe() -> str:
-    """Who is on the app's port: "ours" (answers /status with THIS launch's token),
+    """Who is on the app's port: "ours" (answers /api/v1/status with THIS launch's token),
     "foreign" (answers, but not to our token -- someone else's server, e.g. a stale
     dev server left running), or "down" (nothing answers)."""
     try:
-        with urllib.request.urlopen(f"{BASE_URL}/status?k={TOKEN}", timeout=2) as r:  # nosec B310  # fixed 127.0.0.1 loopback probe
+        with urllib.request.urlopen(f"{BASE_URL}/api/v1/status?k={TOKEN}", timeout=2) as r:  # nosec B310  # fixed 127.0.0.1 loopback probe
             return "ours" if r.status == 200 else "foreign"
     except urllib.error.HTTPError:
         return "foreign"  # 403 = not our token; anything else = not our app either
@@ -338,7 +338,7 @@ def _start_inprocess() -> threading.Thread:
     automatically when the window closes."""
     os.environ["GENRE_PORT"] = str(PORT)
     os.environ["GENRE_TOKEN"] = TOKEN
-    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG  # so /status can point users to the log
+    os.environ["GENRE_BACKEND_LOG"] = BACKEND_LOG  # so /api/v1/status can point users to the log
     if FAKE:
         os.environ["FAKE_ANALYZER"] = "1"
     _ensure_std_streams()
@@ -542,7 +542,7 @@ class Api:
     def pick_folder(self):
         """Native Windows folder dialog -> Windows path string ('' if cancelled).
 
-        The native /batch route reads ``C:\\...`` paths directly, so the picked path
+        The native /api/v1/batch route reads ``C:\\...`` paths directly, so the picked path
         is handed through unchanged (no WSL /mnt translation anymore)."""
         import webview
 

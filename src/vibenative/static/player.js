@@ -115,11 +115,11 @@ function attachPlayer(row, container, controls, c, file, data, dur){
     async function resolveSrc(){
       const localFile = file || (data.hash && HASH_FILES.get(data.hash));
       if (localFile) return blobFor(localFile);
-      if (data.hash && data.filepath) return '/audio/' + data.hash;   // server file
+      if (data.hash && data.filepath) return '/api/v1/audio/' + data.hash;   // server file
       if (data.hash){
         const f = await FSH.file(data.hash);          // may prompt (we're in a click)
         if (f){ HASH_FILES.set(data.hash, f); return blobFor(f); }
-        return '/audio/' + data.hash;                 // last resort (404 -> error UI)
+        return '/api/v1/audio/' + data.hash;                 // last resort (404 -> error UI)
       }
       return null;
     }

@@ -133,7 +133,7 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
     for (const t of PL.tracks) {
       const label = (t.artist ? t.artist + ' - ' : '') + (t.title || 'Track');
       lines.push('#EXTINF:-1,' + label);
-      lines.push(origin + '/audio/' + t.hash);   // streams from the running app
+      lines.push(origin + '/api/v1/audio/' + t.hash);   // streams from the running app
     }
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'audio/x-mpegurl' });
     const a = document.createElement('a');
@@ -160,7 +160,7 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
     const name = (window.prompt('Save playlist as:') || '').trim();
     if (!name) return;
     try {
-      const r = await fetch('/playlists', {
+      const r = await fetch('/api/v1/playlists', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, tracks: PL.tracks })
       });
@@ -178,14 +178,14 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
   async function renderSaved() {
     savedList.innerHTML = '<div class="pl-saved-empty">loading…</div>';
     let items;
-    try { items = await fetch('/playlists').then(r => r.json()); }
+    try { items = await fetch('/api/v1/playlists').then(r => r.json()); }
     catch (_) { savedList.innerHTML = '<div class="pl-saved-empty">failed to load</div>'; return; }
     if (!items.length) { savedList.innerHTML = '<div class="pl-saved-empty">no saved playlists yet</div>'; return; }
     savedList.innerHTML = items.map(p =>
       `<div class="pl-saved-item" data-id="${p.id}">` +
       `<button class="pl-saved-load" title="load this playlist">${esc(p.name)}</button>` +
       `<span class="pl-saved-n">${p.count}</span>` +
-      `<a class="pl-saved-rb" href="/playlists/${p.id}/rekordbox" download ` +
+      `<a class="pl-saved-rb" href="/api/v1/playlists/${p.id}/rekordbox" download ` +
       `title="export for Rekordbox — carries star ratings and grade/note comments">&#8681; rb</a>` +
       `<button class="pl-saved-del" title="delete this saved playlist">✕</button></div>`).join('');
     savedList.querySelectorAll('.pl-saved-item').forEach(el => {
@@ -197,7 +197,7 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
 
   async function loadSaved(id) {
     try {
-      const p = await fetch('/playlists/' + id).then(r => r.json());
+      const p = await fetch('/api/v1/playlists/' + id).then(r => r.json());
       if (!p || p.error || !Array.isArray(p.tracks)) return;
       if (PL.tracks.length && !window.confirm(`Replace the current playlist with “${p.name}”?`)) return;
       PL.tracks = p.tracks; PL.qi = -1; save(); render();
@@ -208,7 +208,7 @@ let playlistAdd, playlistHas; // assigned below, where the file sets it up
   async function delSaved(id, el) {
     if (!window.confirm('Delete this saved playlist?')) return;
     try {
-      await fetch('/playlists/' + id + '/delete', { method: 'POST' });
+      await fetch('/api/v1/playlists/' + id + '/delete', { method: 'POST' });
       el.remove(); playlistsChanged();
     } catch (_) { /* ignore */ }
     if (!savedList.querySelector('.pl-saved-item')) {

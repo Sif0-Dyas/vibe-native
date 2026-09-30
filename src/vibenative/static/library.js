@@ -184,7 +184,7 @@ let vibeLoadLibrary; // assigned below, where the file sets it up
   function load(force) {
     if (LIB && !force) { render(); return; }
     els.rows.innerHTML = '<div class="lib-empty">loading library…</div>';
-    fetch('/library').then(function (r) { return r.json(); }).then(function (data) {
+    fetch('/api/v1/library').then(function (r) { return r.json(); }).then(function (data) {
       LIB = data || []; render();
     }).catch(function () { els.rows.innerHTML = '<div class="lib-empty">failed to load the library</div>'; });
   }

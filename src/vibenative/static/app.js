@@ -122,7 +122,7 @@ function statRowsHtml(rows, total){
 
 function clientLog(msg, level){
   try {
-    fetch('/clientlog', {
+    fetch('/api/v1/clientlog', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({msg: String(msg), level: level || 'info'}),
       keepalive: true,          // still sent if the page is tearing down
@@ -310,7 +310,7 @@ const SIBLING_MAP = (() => {
    the labels do. Resolution falls back through the editable sibling groups,
    then to the style itself, for a name the taxonomy has no keystone for. */
 let STYLE_FAMILY = {};
-fetch('/taxonomy/keystones')
+fetch('/api/v1/taxonomy/keystones')
   .then(r => r.ok ? r.json() : null)
   .then(d => { if (d && typeof d === 'object') STYLE_FAMILY = d; })
   .catch(() => {});
@@ -417,7 +417,7 @@ const loadTrackByHash = async (hash) => {
     return true;
   }
   try{
-    const d = await fetch(`/track/${encodeURIComponent(hash)}`).then(r => r.json());
+    const d = await fetch(`/api/v1/track/${encodeURIComponent(hash)}`).then(r => r.json());
     if (!d || d.error) return false;
     const row = addRow({name: d.filename || d.title || 'track'});
     finishRow(row, d, null);
@@ -493,7 +493,7 @@ function openKeyMenu(anchorEl, track, repaint){
   async function send(body){
     msg.textContent = 'saving\u2026';
     try {
-      const res = await fetch(`/key/${track.hash}`, {
+      const res = await fetch(`/api/v1/key/${track.hash}`, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
       });
       const j = await res.json();
@@ -855,11 +855,11 @@ function finishRow(row, data, file){
     // row redraws at full detail. Without a file in hand the envelope stands.
     row._fetchWave = async () => {
       try {
-        let r = await fetch(`/waveform/${data.hash}`);
+        let r = await fetch(`/api/v1/waveform/${data.hash}`);
         if (r.status === 404 && file){
           const fd = new FormData();
           fd.append('file', file);
-          r = await fetch(`/waveform/${data.hash}`, {method: 'POST', body: fd});
+          r = await fetch(`/api/v1/waveform/${data.hash}`, {method: 'POST', body: fd});
         }
         if (!r.ok) return;
         const mm = await r.json();
@@ -966,7 +966,7 @@ function finishRow(row, data, file){
         apply.disabled = true; msg.textContent = 'extracting section\u2026';
         let j;
         try {
-          const resp = await fetch('/override_segment', {method:'POST', headers:{'Content-Type':'application/json'},
+          const resp = await fetch('/api/v1/override_segment', {method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({hash: data.hash, start: s, end: e, genre})});
           j = await resp.json();
           if (!resp.ok){ msg.textContent = j.error || 'failed'; apply.disabled = false; return; }
@@ -1004,7 +1004,7 @@ function finishRow(row, data, file){
       rm.addEventListener('click', async () => {
         rm.disabled = true; msg.textContent = 'removing…';
         try {
-          const resp = await fetch('/override_segment/delete', {method:'POST', headers:{'Content-Type':'application/json'},
+          const resp = await fetch('/api/v1/override_segment/delete', {method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({id: o.id})});
           const j = await resp.json();
           if (!resp.ok){ msg.textContent = j.error || 'failed'; rm.disabled = false; return; }
@@ -1024,7 +1024,7 @@ function finishRow(row, data, file){
       try{
         const fd = new FormData();
         fd.append('file', file);
-        const resp = await fetch('/refine', {method:'POST', body:fd});
+        const resp = await fetch('/api/v1/refine', {method:'POST', body:fd});
         const j = await resp.json();
         if (!resp.ok) throw new Error(j.error || resp.statusText);
         waveState.winners = j.segments;
@@ -1241,7 +1241,7 @@ function finishRow(row, data, file){
       + `Deletes its analysis (genre, BPM, key) and takes it off the map. `
       + `The audio file is untouched.`)) return;
     const res = getResult();
-    if (res && res.hash){ try{ await fetch(`/forget/${res.hash}`, {method:'POST'}); }catch(_){} }
+    if (res && res.hash){ try{ await fetch(`/api/v1/forget/${res.hash}`, {method:'POST'}); }catch(_){} }
     results = results.filter(r => r.row !== row);
     EXTRAS.forget(row); row.remove();
     if (!rowsEl.querySelector('.row')) emptyEl.style.display = '';
@@ -1270,7 +1270,7 @@ function finishRow(row, data, file){
     if (!hash){ lookupPanel.innerHTML = '<div class="lk-note">no hash for this track yet</div>'; return; }
     lookupPanel.innerHTML = '<div class="lk-note">searching Discogs · MusicBrainz · Last.fm…</div>';
     let j;
-    try { j = await fetch(`/lookup/${hash}`).then(r => r.json()); }
+    try { j = await fetch(`/api/v1/lookup/${hash}`).then(r => r.json()); }
     catch(_){ lookupPanel.innerHTML = '<div class="lk-note">lookup failed</div>'; return; }
     lookupLoaded = true;
     renderLookup(lookupPanel, row, hash, j);
@@ -1387,7 +1387,7 @@ function finishRow(row, data, file){
       if (hash){
         // /override sets payload["override"] so the dominant style sticks; it
         // also files the audio for training when the DB has a server-side path.
-        const r = await fetch(`/override/${hash}`, {
+        const r = await fetch(`/api/v1/override/${hash}`, {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({genre}),
         });
@@ -1402,7 +1402,7 @@ function finishRow(row, data, file){
       if (!trained && file){
         const fd = new FormData();
         fd.append('genre', genre); fd.append('file', file);
-        const r = await fetch('/save_training', {method:'POST', body:fd});
+        const r = await fetch('/api/v1/save_training', {method:'POST', body:fd});
         if (r.ok) trained = true;
       }
       trainBadge.textContent = trained
@@ -1491,7 +1491,7 @@ const EXTRAS = (() => {
     if (!batch.length) return;
     const q = encodeURIComponent([...new Set(batch.map(([, h]) => h))].join(','));
     const grab = url => fetch(url).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-    const [tags, vibes] = await Promise.all([grab(`/tags/for?hashes=${q}`), grab(`/vibes/match?hashes=${q}`)]);
+    const [tags, vibes] = await Promise.all([grab(`/api/v1/tags/for?hashes=${q}`), grab(`/api/v1/vibes/match?hashes=${q}`)]);
     for (const [row, h] of batch){
       if (!row.isConnected) continue;
       renderVibeMatches(row, h, vibes[h] || []);
@@ -1530,7 +1530,7 @@ async function fillGenreList(extra){
   if (GENRE_NAMES !== null) return;
   GENRE_NAMES = [];                         // set first: a slow fetch shouldn't
   try {                                     // start a second one on the next click
-    const j = await fetch('/genres?flat=1&top=0').then(r => r.json());
+    const j = await fetch('/api/v1/genres?flat=1&top=0').then(r => r.json());
     if (Array.isArray(j)){
       const set = new Set();
       for (const g of j){
@@ -1683,7 +1683,7 @@ function wireAdjustPanel(btn, box, opts){
     const drops = state.drops || [];
     saving = (saving || Promise.resolve()).then(async () => {
       try {
-        const r = await fetch(`/weights/${hash}`, {
+        const r = await fetch(`/api/v1/weights/${hash}`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({steps, drops})});
         const body = await r.json();
@@ -1709,7 +1709,7 @@ function wireAdjustPanel(btn, box, opts){
     const hash = opts.hashOf();
     if (!hash){ rowsEl_.innerHTML = `<div class="ovr-h">no hash for this track yet</div>`; return; }
     rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`;
-    try { state = await (await fetch(`/weights/${hash}`)).json(); }
+    try { state = await (await fetch(`/api/v1/weights/${hash}`)).json(); }
     catch(_){ rowsEl_.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
     if (state && state.error){
       rowsEl_.innerHTML = `<div class="ovr-h">${escapeHtml(state.error)}</div>`;
@@ -1762,7 +1762,7 @@ async function pump(){
     const fd = new FormData();
     fd.append('file', file);
     try{
-      const resp = await fetch('/analyze', {method:'POST', body:fd});
+      const resp = await fetch('/api/v1/analyze', {method:'POST', body:fd});
       const data = await resp.json();
       // Persist a file handle (drag-drop / native picker) so this track stays
       // playable across restarts — even on a cache hit, which has no other source.
@@ -2022,7 +2022,7 @@ batchCancelBtn.addEventListener('click', async () => {
   batchCancelBtn.disabled = true;
   batchCancelBtn.textContent = 'cancelling…';
   try {
-    await fetch(`/batch/${encodeURIComponent(batchJob)}/cancel`, {method:'POST'});
+    await fetch(`/api/v1/batch/${encodeURIComponent(batchJob)}/cancel`, {method:'POST'});
   } catch(e){
     clientLog('batch cancel failed: ' + (e && e.message), 'error');
   }
@@ -2033,7 +2033,7 @@ batchStartBtn.addEventListener('click', async () => {
   if (!batchJob) return;
   batchStartBtn.disabled = true;
   try {
-    const r = await fetch(`/batch/${encodeURIComponent(batchJob)}/confirm`, {
+    const r = await fetch(`/api/v1/batch/${encodeURIComponent(batchJob)}/confirm`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({confirm: true}),
     });
@@ -2076,7 +2076,7 @@ async function runBatch(folderPath){
   clientLog(`batch start: ${folderPath}  (jsHeap=${jsHeapMB()}MB)`);
 
   try {
-    const resp = await fetch('/batch', {
+    const resp = await fetch('/api/v1/batch', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({path: folderPath, workers: 3})
@@ -2286,7 +2286,7 @@ function escapeHtml(s){
     panel.classList.add('open');
     body.innerHTML = `<div class="flag-note">scanning your library…</div>`;
     let list;
-    try{ list = await fetch('/audit').then(r => r.json()); }
+    try{ list = await fetch('/api/v1/audit').then(r => r.json()); }
     catch(_){ body.innerHTML = `<div class="flag-note">audit failed</div>`; return; }
     if (!list.length){ body.innerHTML = `<div class="flag-note">✓ no likely misreads found.</div>`; return; }
     body.innerHTML =
@@ -2312,7 +2312,7 @@ function escapeHtml(s){
         if (hooks.vibeMapGoto) hooks.vibeMapGoto(h);
       };
       row.querySelector('.flag-omit').onclick = async () => {
-        try{ await fetch(`/forget/${h}`, {method:'POST'}); }catch(_){}
+        try{ await fetch(`/api/v1/forget/${h}`, {method:'POST'}); }catch(_){}
         row.remove();
       };
     });
@@ -2388,7 +2388,7 @@ function escapeHtml(s){
     if (loaded) return;
     loaded = true;
     try{
-      const md = await fetch('/guide').then(r => r.text());
+      const md = await fetch('/api/v1/guide').then(r => r.text());
       body.innerHTML = mdToHtml(md);
     }catch(_){
       body.innerHTML = '<p>Could not load the guide.</p>';

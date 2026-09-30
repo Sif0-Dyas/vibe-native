@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-from flask import Response, jsonify, render_template, request
+from flask import Response, jsonify, request
 
 from .. import insight
 from ..config import log
@@ -388,13 +388,6 @@ def map_stamp_route():
     """
     mode = "light" if request.args.get("mode") == "light" else "dark"
     return jsonify({"stamp": _map_stamp(mode)})
-
-
-@bp.get("/")
-def index():
-    from .. import __version__
-
-    return render_template("index.html", app_version=__version__)
 
 
 @bp.get("/guide")

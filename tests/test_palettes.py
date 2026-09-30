@@ -138,20 +138,20 @@ def test_a_junk_preset_name_in_the_file_falls_back_to_the_default():
 
 # --- the HTTP surface ---------------------------------------------------------
 def test_routes(client):
-    body = client.get("/palettes").get_json()
+    body = client.get("/api/v1/palettes").get_json()
     assert body["current"] == "studio"
     assert {p["name"] for p in body["presets"]} == set(PP.names())
     assert body["presets"][0]["colors"]  # swatches, so the picker can show them
 
-    assert client.post("/palettes/neon").get_json()["current"] == "neon"
-    assert client.get("/palettes").get_json()["current"] == "neon"
+    assert client.post("/api/v1/palettes/neon").get_json()["current"] == "neon"
+    assert client.get("/api/v1/palettes").get_json()["current"] == "neon"
 
-    r = client.post("/palettes/nope")
+    r = client.post("/api/v1/palettes/nope")
     assert r.status_code == 404 and "known" in r.get_json()
 
 
 def test_light_and_dark_are_different_schemes(client):
-    dark = client.get("/palettes?mode=dark").get_json()["presets"]
-    light = client.get("/palettes?mode=light").get_json()["presets"]
+    dark = client.get("/api/v1/palettes?mode=dark").get_json()["presets"]
+    light = client.get("/api/v1/palettes?mode=light").get_json()["presets"]
     by = lambda ps: {p["name"]: [c["color"] for c in p["colors"]] for p in ps}  # noqa: E731
     assert by(dark)["neon"] != by(light)["neon"]

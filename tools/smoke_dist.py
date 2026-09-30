@@ -11,7 +11,7 @@ and finding it out from whoever you sent the build to.
     python tools/smoke_dist.py                 # after tools/build_exe.py
     python tools/smoke_dist.py --timeout 90    # slower machine / cold antivirus scan
 
-Checks: the process stays up, Flask serves on the loopback port, /status reports the
+Checks: the process stays up, Flask serves on the loopback port, /api/v1/status reports the
 packaged version, ffmpeg and ffprobe resolve *from the bundle*, the ONNX providers
 list is non-empty, and the UI page and its static assets are served out of the
 bundle. GPU absence is reported, not failed -- the target may genuinely lack one.
@@ -302,13 +302,13 @@ def main() -> int:
                         f"before serving a request."
                     )
                     return 1
-                status, body = _get(f"{base}/status?k={token}")
+                status, body = _get(f"{base}/api/v1/status?k={token}")
                 if status == 200:
                     break
                 time.sleep(1.0)
 
             print("backend:")
-            check("answers /status within the timeout", status, 200)
+            check("answers /api/v1/status within the timeout", status, 200)
             if status != 200:
                 print(
                     f"\nFAIL: never answered ({body!r}). The app started but its backend "
@@ -357,7 +357,7 @@ def main() -> int:
             # generated track and see its title come back.
             track = Path(tmp) / "smoke track.mp3"
             if _make_tagged_track(track, "Smoke Test Title"):
-                st, resp = _post_file(f"{base}/analyze?k={token}", track, timeout=120)
+                st, resp = _post_file(f"{base}/api/v1/analyze?k={token}", track, timeout=120)
                 check("analyses an uploaded file", st, 200)
                 if st == 200:
                     j = json.loads(resp)

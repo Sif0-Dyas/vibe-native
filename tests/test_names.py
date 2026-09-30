@@ -70,7 +70,7 @@ def test_save_training_files_into_the_same_folder(
 
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     r = client.post(
-        "/save_training",
+        "/api/v1/save_training",
         data={"genre": name, "file": (io.BytesIO(b"RIFF"), "t.wav")},
         content_type="multipart/form-data",
     )
@@ -94,7 +94,7 @@ def test_rekordbox_export_names_the_file_the_same(
     from vibenative.repo import playlists as playlists_repo
 
     pid = playlists_repo.save(name, [])
-    r = client.get(f"/playlists/{pid}/rekordbox")
+    r = client.get(f"/api/v1/playlists/{pid}/rekordbox")
     assert r.status_code == 200
     assert r.headers["Content-Disposition"] == f'attachment; filename="{playlist}.xml"'
 
@@ -131,7 +131,7 @@ def test_override_refuses_before_writing_or_copying(client, tmp_path, settings, 
     from vibenative.repo.tracks import payload
 
     h = _track_with_file(tmp_path)
-    r = client.post(f"/override/{h}", json={"genre": genre})
+    r = client.post(f"/api/v1/override/{h}", json={"genre": genre})
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
     assert "override" not in payload(h)  # nothing written
     assert not settings.training_root.exists()  # nothing copied
@@ -142,7 +142,9 @@ def test_segment_override_refuses_before_writing(client, tmp_path, settings, gen
     from vibenative.repo.tracks import segment_overrides
 
     h = _track_with_file(tmp_path)
-    r = client.post("/override_segment", json={"hash": h, "genre": genre, "start": 0, "end": 5})
+    r = client.post(
+        "/api/v1/override_segment", json={"hash": h, "genre": genre, "start": 0, "end": 5}
+    )
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
     assert segment_overrides(h) == []
     assert not settings.training_root.exists()
@@ -153,7 +155,7 @@ def test_training_confirm_refuses_before_labelling(client, tmp_path, settings, g
     from vibenative.repo.training import label_hashes
 
     h = _track_with_file(tmp_path)
-    r = client.post("/training/confirm", json={"hash": h, "genre": genre})
+    r = client.post("/api/v1/training/confirm", json={"hash": h, "genre": genre})
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
     assert label_hashes(genre) == set()
     assert not settings.training_root.exists()
@@ -164,7 +166,7 @@ def test_training_reject_refuses_before_writing(client, tmp_path, genre):
     from vibenative.repo.training import reject_hashes
 
     h = _track_with_file(tmp_path)
-    r = client.post("/training/reject", json={"hash": h, "genre": genre})
+    r = client.post("/api/v1/training/reject", json={"hash": h, "genre": genre})
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
     assert reject_hashes(genre) == set()
 
@@ -177,12 +179,12 @@ def test_training_set_routes_refuse(client, tmp_path, settings, genre):
 
     h = _track_with_file(tmp_path)
     g = quote(genre, safe="")
-    r = client.post(f"/training/set/{g}/add", json={"hashes": [h]})
+    r = client.post(f"/api/v1/training/set/{g}/add", json={"hashes": [h]})
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
     assert labels_any_case(genre) == []
-    r = client.get(f"/training/set/{g}/export")
+    r = client.get(f"/api/v1/training/set/{g}/export")
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
-    r = client.post(f"/training/set/{g}/reset")
+    r = client.post(f"/api/v1/training/set/{g}/reset")
     assert (r.status_code, r.get_json()) == (400, {"error": GENRE_NEEDS_ALNUM})
     assert not settings.training_root.exists()
 
@@ -190,5 +192,5 @@ def test_training_set_routes_refuse(client, tmp_path, settings, genre):
 def test_a_name_with_a_letter_is_still_filed(client, tmp_path, settings):
     """The rule only refuses names with nothing usable in them."""
     h = _track_with_file(tmp_path)
-    assert client.post(f"/override/{h}", json={"genre": "R&B / Soul"}).status_code == 200
+    assert client.post(f"/api/v1/override/{h}", json={"genre": "R&B / Soul"}).status_code == 200
     assert (settings.training_root / "R_B _ Soul" / "song.wav").is_file()

@@ -30,7 +30,7 @@ def seed(client, h="mc1", payload=None):
 
 def build(client):
     """One /map request: (was it a cache hit, the parsed body)."""
-    r = client.get("/map")
+    r = client.get("/api/v1/map")
     assert r.status_code == 200
     return r.headers.get("X-Map-Cache") == "hit", r.get_json()
 
@@ -69,7 +69,7 @@ def test_a_new_track_rebuilds_the_map(client):
 def test_an_override_rebuilds_the_map(client):
     h = seed(client)
     build(client)
-    client.post(f"/override/{h}", json={"genre": "Trance"})
+    client.post(f"/api/v1/override/{h}", json={"genre": "Trance"})
     hit, body = build(client)
     assert hit is False
     assert style_of(body, h) == "Trance"
@@ -79,7 +79,7 @@ def test_a_weight_adjustment_rebuilds_the_map(client):
     h = seed(client)
     _, before = build(client)
     assert style_of(before, h) == "Techno"
-    client.post(f"/weights/{h}", json={"steps": {"House": W.MAX_STEP}})
+    client.post(f"/api/v1/weights/{h}", json={"steps": {"House": W.MAX_STEP}})
     hit, after = build(client)
     assert hit is False
     assert style_of(after, h) == "House"
@@ -88,7 +88,7 @@ def test_a_weight_adjustment_rebuilds_the_map(client):
 def test_removing_a_genre_rebuilds_the_map(client):
     h = seed(client)
     build(client)
-    client.post(f"/weights/{h}", json={"drops": ["Techno"]})
+    client.post(f"/api/v1/weights/{h}", json={"drops": ["Techno"]})
     hit, body = build(client)
     assert hit is False
     assert style_of(body, h) == "House"
@@ -100,8 +100,8 @@ def test_a_tag_change_rebuilds_the_map(client):
     table, which is exactly the kind of input a fingerprint forgets."""
     h = seed(client)
     build(client)
-    tag_id = client.post("/tags", json={"name": "peak time"}).get_json()["id"]
-    assert client.post("/tags/toggle", json={"tag_id": tag_id, "hash": h}).status_code == 200
+    tag_id = client.post("/api/v1/tags", json={"name": "peak time"}).get_json()["id"]
+    assert client.post("/api/v1/tags/toggle", json={"tag_id": tag_id, "hash": h}).status_code == 200
 
     hit, body = build(client)
     assert hit is False
@@ -111,7 +111,7 @@ def test_a_tag_change_rebuilds_the_map(client):
     # build was made from, so this is a legitimate *hit* on that earlier entry --
     # the key describes the library, not the sequence of edits that led to it.
     # What matters is that the map it serves is the untagged one.
-    client.post("/tags/toggle", json={"tag_id": tag_id, "hash": h})
+    client.post("/api/v1/tags/toggle", json={"tag_id": tag_id, "hash": h})
     _, body = build(client)
     assert next(n for n in body["nodes"] if n["hash"] == h)["tags"] == []
 
@@ -120,7 +120,7 @@ def test_forgetting_a_track_rebuilds_the_map(client):
     seed(client, "mc1")
     seed(client, "mc2")
     build(client)
-    client.post("/forget/mc2")
+    client.post("/api/v1/forget/mc2")
     hit, body = build(client)
     assert hit is False
     assert {n["hash"] for n in body["nodes"]} == {"mc1"}
@@ -145,10 +145,10 @@ def test_the_taxonomy_overlay_is_part_of_the_key(client):
 def test_the_two_render_modes_do_not_share_an_entry(client):
     """Light and dark differ in the palette steps they bake into every node."""
     seed(client)
-    assert client.get("/map").headers.get("X-Map-Cache") == "miss"
-    assert client.get("/map").headers.get("X-Map-Cache") == "hit"
-    assert client.get("/map?mode=light").headers.get("X-Map-Cache") == "miss"
-    assert client.get("/map?mode=light").headers.get("X-Map-Cache") == "hit"
+    assert client.get("/api/v1/map").headers.get("X-Map-Cache") == "miss"
+    assert client.get("/api/v1/map").headers.get("X-Map-Cache") == "hit"
+    assert client.get("/api/v1/map?mode=light").headers.get("X-Map-Cache") == "miss"
+    assert client.get("/api/v1/map?mode=light").headers.get("X-Map-Cache") == "hit"
 
 
 # --- the cache must never be the reason the map fails -------------------------
@@ -172,7 +172,7 @@ def test_a_cache_that_cannot_be_written_still_serves_the_map(client, monkeypatch
 
     monkeypatch.setattr(map_routes, "_map_cache_dir", boom)
     seed(client)
-    r = client.get("/map")
+    r = client.get("/api/v1/map")
     assert r.status_code == 200
     assert len(r.get_json()["nodes"]) == 1
 
@@ -201,7 +201,7 @@ def test_a_truncated_entry_is_rebuilt_rather_than_served(client):
 def test_the_stamp_matches_the_map_it_was_built_with(client):
     seed(client)
     _, body = build(client)
-    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
+    assert body["stamp"] == client.get("/api/v1/map/stamp").get_json()["stamp"]
 
 
 def test_the_stamp_answers_the_same_on_a_cache_hit(client):
@@ -213,14 +213,14 @@ def test_the_stamp_answers_the_same_on_a_cache_hit(client):
     build(client)
     hit, body = build(client)
     assert hit is True
-    assert body["stamp"] == client.get("/map/stamp").get_json()["stamp"]
+    assert body["stamp"] == client.get("/api/v1/map/stamp").get_json()["stamp"]
 
 
 def test_the_stamp_moves_when_the_library_does(client):
     h = seed(client)
-    before = client.get("/map/stamp").get_json()["stamp"]
-    client.post(f"/override/{h}", json={"genre": "Trance"})
-    assert client.get("/map/stamp").get_json()["stamp"] != before
+    before = client.get("/api/v1/map/stamp").get_json()["stamp"]
+    client.post(f"/api/v1/override/{h}", json={"genre": "Trance"})
+    assert client.get("/api/v1/map/stamp").get_json()["stamp"] != before
 
 
 def test_a_rating_leaves_the_stamp_alone(client):
@@ -229,9 +229,9 @@ def test_a_rating_leaves_the_stamp_alone(client):
     built from one, so the map it is holding is still exactly right. The stamp is
     what lets it find that out for a quarter of a second instead of a rebuild."""
     h = seed(client)
-    before = client.get("/map/stamp").get_json()["stamp"]
-    assert client.post(f"/ratings/{h}", json={"stars": 5}).status_code == 200
-    assert client.get("/map/stamp").get_json()["stamp"] == before
+    before = client.get("/api/v1/map/stamp").get_json()["stamp"]
+    assert client.post(f"/api/v1/ratings/{h}", json={"stars": 5}).status_code == 200
+    assert client.get("/api/v1/map/stamp").get_json()["stamp"] == before
 
 
 def test_the_stamp_never_reads_a_track(client, monkeypatch):
@@ -245,7 +245,7 @@ def test_the_stamp_never_reads_a_track(client, monkeypatch):
     monkeypatch.setattr(
         M, "_map_fingerprint", lambda rev, mode: calls.append(rev) or real(rev, mode)
     )
-    assert client.get("/map/stamp").status_code == 200
+    assert client.get("/api/v1/map/stamp").status_code == 200
     assert calls and isinstance(calls[0], int)
 
 
@@ -298,7 +298,7 @@ def test_a_genre_is_not_a_subgenre_of_itself(client):
     to have to strip that row before "House > House" reached the user."""
     seed(client, h="sg1", payload={"salience": [{"style": "House", "score": 0.9}]})
     seed(client, h="sg2", payload={"salience": [{"style": "Progressive House", "score": 0.9}]})
-    body = client.get("/genres?flat=1&top=0").get_json()
+    body = client.get("/api/v1/genres?flat=1&top=0").get_json()
     house = next(g for g in body if g["keystone"] == "House")
     assert house["self_count"] == 1
     assert [s["style"] for s in house["subgenres"]] == ["Progressive House"]

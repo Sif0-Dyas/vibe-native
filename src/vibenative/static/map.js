@@ -3031,7 +3031,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
     if (PREFS.sampleFrom === 'start') return 0;
     if (PREFS.sampleFrom === 'middle') return dur ? Math.min(dur * 0.4, cap) : 0;
     try {
-      const mm = await fetch('/waveform/' + hash).then(r => r.ok ? r.json() : null);
+      const mm = await fetch('/api/v1/waveform/' + hash).then(r => r.ok ? r.json() : null);
       const rms = mm && mm.rms;
       if (rms && rms.length && dur){
         let mx = 0; for (const v of rms) if (v > mx) mx = v;
@@ -3086,7 +3086,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
     // resolve a source: the server copy, else a persisted dropped-file handle
     let src = null;
     if (PREV.url){ URL.revokeObjectURL(PREV.url); PREV.url = null; }
-    if (n.a) src = '/audio/' + n.hash;
+    if (n.a) src = '/api/v1/audio/' + n.hash;
     else if (typeof FSH !== 'undefined' && FSH.supported){
       const f = await FSH.file(n.hash);
       if (my !== PREV.token) return;                // a newer selection won
@@ -3296,7 +3296,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
     wireChips(popEl);
     // Keep the map's copies current so "size stars by rating" reacts now rather
     // than at the next full map load.
-    wireRating(popEl.querySelector('.pop-rate-track'), `/ratings/${n.hash}`, j => {
+    wireRating(popEl.querySelector('.pop-rate-track'), `/api/v1/ratings/${n.hash}`, j => {
       TRACK_RATINGS[n.hash] = { stars: j.stars || 0, grade: j.grade || '', note: j.note || '' };
       ratingsChanged();
     });
@@ -3305,7 +3305,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
       // widget is bound to whichever is picked and re-bound when that changes.
       const who = [...popEl.querySelectorAll('.arate-who')];
       const bind = name => wireRating(popEl.querySelector('.pop-rate-artist'),
-        `/artist-ratings/${encodeURIComponent(name)}`,
+        `/api/v1/artist-ratings/${encodeURIComponent(name)}`,
         j => { ARTIST_RATINGS[j.key || artistKey(name)] = j; ratingsChanged(); });
       if (who.length){
         bind(who[0].dataset.a);
@@ -3356,7 +3356,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
       }
     });
     try{
-      simCache = await fetch(`/similar/${n.hash}?k=12`).then(r=>r.ok?r.json():[]);
+      simCache = await fetch(`/api/v1/similar/${n.hash}?k=12`).then(r=>r.ok?r.json():[]);
     }catch(_){ simCache = []; }
     renderPick();
     renderSimilar(simCache);
@@ -3563,7 +3563,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
   async function overrideTrack(n, genre){
     genre = (genre || '').trim(); if (!genre) return;
     try{
-      await fetch(`/override/${n.hash}`, {
+      await fetch(`/api/v1/override/${n.hash}`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ genre }) });
     }catch(_){ /* still relabel locally */ }
@@ -3582,7 +3582,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
       `Remove "${n.title}" from your library?\n\n` +
       `This deletes its analysis (genre, BPM, key) and takes it off the map. ` +
       `Your audio file is NOT touched — re-scanning it will analyze it fresh.`)) return;
-    try{ await fetch(`/forget/${n.hash}`, {method:'POST'}); }catch(_){ /* still drop it locally */ }
+    try{ await fetch(`/api/v1/forget/${n.hash}`, {method:'POST'}); }catch(_){ /* still drop it locally */ }
     NODES = NODES.filter(x => x.hash !== n.hash);
     EDGES = EDGES.filter(e => e.a !== n.hash && e.b !== n.hash);
     closePopup();
@@ -4397,7 +4397,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
   async function loadOverlays(){
     const grab = url => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
     const [mem, tr, ar] = await Promise.all([
-      grab('/vibes/membership'), grab('/ratings'), grab('/artist-ratings'), refreshPlaylists(),
+      grab('/api/v1/vibes/membership'), grab('/api/v1/ratings'), grab('/api/v1/artist-ratings'), refreshPlaylists(),
     ]);
 
     VIBES = Array.isArray(mem) ? mem : [];
@@ -4474,7 +4474,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
      saved beforehand, that reads as "the app only lets me pick this one". */
   async function refreshPlaylists(){
     try{
-      const r = await fetch('/playlists');
+      const r = await fetch('/api/v1/playlists');
       if (!r.ok) return;
       const pls = await r.json();
       PLAYLISTS = Array.isArray(pls) ? pls : (pls && pls.playlists) || [];
@@ -4501,7 +4501,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
      has used (`tracks` of objects, or bare `hashes`). */
   async function playlistHashSet(id){
     try{
-      const r = await fetch(`/playlists/${id}`);
+      const r = await fetch(`/api/v1/playlists/${id}`);
       if (!r.ok) return null;
       const d = await r.json();
       const hs = d.tracks || d.hashes || [];
@@ -4600,7 +4600,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
      server can't say. */
   async function mapStamp(){
     try{
-      const r = await fetch('/map/stamp');
+      const r = await fetch('/api/v1/map/stamp');
       if (!r.ok) return null;
       const j = await r.json();
       return (j && j.stamp) || null;
@@ -4637,7 +4637,7 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
       // builds the response. Nothing is measurable until it starts sending.
       loading(true, 'Reading and sorting your library…', -1);
       countMap.textContent = 'loading…';
-      const data = await fetchJsonProgress('/map', f => {
+      const data = await fetchJsonProgress('/api/v1/map', f => {
         loading(true, 'Downloading your library… ' + Math.round(f * 100) + '%', f);
       });
       /* NOTHING is published to NODES until layout() can follow immediately.

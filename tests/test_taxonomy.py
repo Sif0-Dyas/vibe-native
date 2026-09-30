@@ -216,20 +216,24 @@ def test_a_partial_ordering_leaves_the_rest_in_place():
 
 # --- the HTTP surface ---------------------------------------------------------
 def test_routes_round_trip(client):
-    body = client.get("/taxonomy/overlay").get_json()
+    body = client.get("/api/v1/taxonomy/overlay").get_json()
     assert body["overlay"]["archgenre"] == {}
     assert body["path"].endswith("taxonomy.json")  # hand-editing needs the location
     assert "House" in body["archgenres"]
 
-    client.post("/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
-    assert client.get("/taxonomy/overlay").get_json()["overlay"]["archgenre"] == {
+    client.post("/api/v1/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
+    assert client.get("/api/v1/taxonomy/overlay").get_json()["overlay"]["archgenre"] == {
         "Halftime": "Drum n Bass"
     }
 
-    assert client.post("/taxonomy/overlay", json=[]).status_code == 400
-    assert client.post("/taxonomy/overlay/reset", json={}).status_code == 400  # needs the word
-    assert client.post("/taxonomy/overlay/reset", json={"confirm": "RESET"}).status_code == 200
-    assert client.get("/taxonomy/overlay").get_json()["overlay"]["archgenre"] == {}
+    assert client.post("/api/v1/taxonomy/overlay", json=[]).status_code == 400
+    assert (
+        client.post("/api/v1/taxonomy/overlay/reset", json={}).status_code == 400
+    )  # needs the word
+    assert (
+        client.post("/api/v1/taxonomy/overlay/reset", json={"confirm": "RESET"}).status_code == 200
+    )
+    assert client.get("/api/v1/taxonomy/overlay").get_json()["overlay"]["archgenre"] == {}
 
 
 def test_an_invented_archgenre_gets_a_place_in_the_order():
@@ -250,24 +254,24 @@ def test_no_group_can_fall_off_the_genres_tab(client):
         seed_track(h, {"salience": [{"style": style, "score": 1.0}]})
 
     def listed():
-        body = client.get("/genres?by=archgenre&top=0").get_json()
+        body = client.get("/api/v1/genres?by=archgenre&top=0").get_json()
         return {k["keystone"] for g in body for k in g["keystones"]}
 
     assert "Halftime" in listed()
-    client.post("/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
+    client.post("/api/v1/taxonomy/overlay", json={"archgenre": {"Halftime": "Drum n Bass"}})
     assert "Halftime" in listed()
 
 
 # --- the frontend's and the misread check's family: the keystone ---------------
 def test_style_keystones_maps_known_styles_with_the_overlay(client, tmp_overlay):
-    body = client.get("/taxonomy/keystones").get_json()
+    body = client.get("/api/v1/taxonomy/keystones").get_json()
     assert body["deep house"] == "House"
     assert body["drum n bass"] == "Drum n Bass"
     assert all(k == k.lower() for k in body)  # keys are lower-cased, as familyOf looks up
     assert "made-up style" not in body
     # an overlay alias is applied, and a name it introduces is listed
     write(tmp_overlay, {"aliases": {"deep house": "Techno", "made-up style": "Dubstep"}})
-    body = client.get("/taxonomy/keystones").get_json()
+    body = client.get("/api/v1/taxonomy/keystones").get_json()
     assert body["deep house"] == "Techno"
     assert body["made-up style"] == "Dubstep"
 

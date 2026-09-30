@@ -323,7 +323,7 @@ def test_an_override_made_during_apply_survives(client, monkeypatch):
     worker.start()
     try:
         assert inferring.wait(10), "apply never reached inference"
-        r = client.post(f"/override/{hashes[1]}", json={"genre": "Trance"})
+        r = client.post(f"/api/v1/override/{hashes[1]}", json={"genre": "Trance"})
         assert r.status_code == 200, r.get_json()
     finally:
         release.set()

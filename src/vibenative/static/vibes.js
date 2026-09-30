@@ -150,7 +150,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       'merges rather than replaces: a vibe with a name you already have gains the imported ' +
       'tracks instead of overwriting them.</div>' +
       '<div class="opt-actions">' +
-        '<a class="gen-exp" href="/vibes/export" download="vibes.json">export all vibes</a>' +
+        '<a class="gen-exp" href="/api/v1/vibes/export" download="vibes.json">export all vibes</a>' +
         '<button id="vib-imp">import from a file</button>' +
         '<input type="file" id="vib-imp-file" accept=".json,application/json" hidden>' +
       '</div>' +
@@ -191,7 +191,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       var el = document.getElementById('vib-new');
       var name = el.value.trim();
       if (!name) { topMsg.innerHTML = '<b class="opt-bad">Type a name first.</b>'; return; }
-      fetch('/vibes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      fetch('/api/v1/vibes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name: name }) })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
@@ -218,7 +218,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
         try { m = JSON.parse(txt); } catch (_) {
           impMsg.innerHTML = '<b class="opt-bad">That is not a vibes file.</b>'; return;
         }
-        return fetch('/vibes/import', {
+        return fetch('/api/v1/vibes/import', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(m)
         }).then(function (r) { return r.json(); }).then(function (j) {
           if (j.error) { impMsg.innerHTML = '<b class="opt-bad">' + esc(j.error) + '</b>'; return; }
@@ -251,7 +251,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
     ta.oninput = grow;
 
     cardEl.querySelector('.vib-save').onclick = function () {
-      fetch('/vibes/' + id + '/description', {
+      fetch('/api/v1/vibes/' + id + '/description', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: ta.value })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -263,7 +263,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
     cardEl.querySelector('.vib-rename').onclick = function () {
       var next = window.prompt('New name for this vibe:', name);
       if (!next || !next.trim() || next.trim() === name) return;
-      fetch('/vibes/rename', {
+      fetch('/api/v1/vibes/rename', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vibe_id: Number(id), name: next.trim() })
       }).then(function (r) { return r.json(); }).then(function (j) {
@@ -276,7 +276,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       if (!window.confirm('Remove every track from "' + name + '"?\n\nThe vibe itself and its ' +
           'notes are kept, and no music files are touched — only the list of which tracks ' +
           'belong to it.')) return;
-      fetch('/vibes/clear', {
+      fetch('/api/v1/vibes/clear', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vibe_id: Number(id) })
       }).then(function (r) { return r.json(); }).then(function () {
@@ -288,7 +288,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
       if (!window.confirm('Delete the vibe "' + name + '"?\n\nIts notes and its list of tracks ' +
           'are gone for good. Your music files are not touched, and the tracks stay in your ' +
           'library.')) return;
-      fetch('/vibes/delete', {
+      fetch('/api/v1/vibes/delete', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vibe_id: Number(id) })
       }).then(function (r) { return r.json(); }).then(function () {
@@ -297,7 +297,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
     };
 
     var members = cardEl.querySelector('.vib-members');
-    fetch('/vibes/' + id + '/members').then(function (r) { return r.json(); })
+    fetch('/api/v1/vibes/' + id + '/members').then(function (r) { return r.json(); })
       .then(function (list) {
         var items = (list || []).slice(0, 200);
         if (!items.length) {
@@ -322,7 +322,7 @@ let vibeLoadVibes; // assigned below, where the file sets it up
     body = document.getElementById('vib-body');
     if (!body) return;
     body.innerHTML = 'Loading…';
-    fetch('/vibes').then(function (r) { return r.json(); }).then(function (vibes) {
+    fetch('/api/v1/vibes').then(function (r) { return r.json(); }).then(function (vibes) {
       render(vibes || []);
       if (!keep) return;
       var tiles = body.querySelectorAll('.vib-key');

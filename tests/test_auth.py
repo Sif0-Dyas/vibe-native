@@ -8,7 +8,7 @@ import pytest
 
 from conftest import TEST_TOKEN
 
-URLS = ["/", "/library", "/static/app.js", "/no-such-page"]
+URLS = ["/", "/api/v1/library", "/static/app.js", "/no-such-page"]
 
 
 @pytest.fixture()
@@ -31,7 +31,7 @@ def test_wrong_token_is_403(anon, url):
 
 def test_the_right_token_opens_everything(client):
     assert client.get("/").status_code == 200
-    assert client.get("/library").status_code == 200
+    assert client.get("/api/v1/library").status_code == 200
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/no-such-page").status_code == 404  # past the guard, then not found
 
@@ -45,10 +45,10 @@ def test_k_on_the_first_load_sets_the_cookie_static_files_need(anon):
     assert "vibe_token=" + TEST_TOKEN in cookie and "HttpOnly" in cookie
     assert "SameSite=Strict" in cookie
     assert anon.get("/static/app.js").status_code == 200
-    assert anon.get("/library").status_code == 200
+    assert anon.get("/api/v1/library").status_code == 200
 
 
-@pytest.mark.parametrize("url", ["/", "/library", "/static/app.js"])
+@pytest.mark.parametrize("url", ["/", "/api/v1/library", "/static/app.js"])
 def test_non_loopback_host_is_403_even_with_the_token(anon, url):
     # DNS rebinding: a page on evil.example resolves to 127.0.0.1 and the browser
     # sends Host: evil.example. The Host check runs unconditionally now.
@@ -129,30 +129,32 @@ def test_main_prints_the_url_with_the_token_once(client, monkeypatch, capsys):
 )
 def test_writes_from_another_site_are_refused(client, site, status):
     headers = {"Sec-Fetch-Site": site} if site else {}
-    r = client.post("/vibes", json={"name": f"v-{site}"}, headers=headers)
+    r = client.post("/api/v1/vibes", json={"name": f"v-{site}"}, headers=headers)
     assert r.status_code == status
 
 
 def test_reads_are_not_subject_to_the_fetch_site_check(client):
     # Only writes are refused; a cross-site GET still needs the token like any other.
-    assert client.get("/library", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200
+    assert (
+        client.get("/api/v1/library", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200
+    )
 
 
 def test_the_right_k_wins_over_a_stale_cookie_and_replaces_it(anon):
     # Another Vibe instance on 127.0.0.1 left its cookie behind (cookies ignore the
     # port). The right ?k= must still get in, and fix the cookie for what follows.
     anon.set_cookie("vibe_token", "some-other-instances-token")
-    assert anon.get("/library").status_code == 403  # the stale cookie alone
+    assert anon.get("/api/v1/library").status_code == 403  # the stale cookie alone
     assert anon.get("/", query_string={"k": "wrong"}).status_code == 403
     r = anon.get("/", query_string={"k": TEST_TOKEN})
     assert r.status_code == 200
     assert f"vibe_token={TEST_TOKEN}" in r.headers.get("Set-Cookie", "")
-    assert anon.get("/library").status_code == 200  # the replaced cookie now works
+    assert anon.get("/api/v1/library").status_code == 200  # the replaced cookie now works
 
 
 def test_a_valid_cookie_is_not_undone_by_an_unrelated_k(client):
     # ?k= is also /similar's neighbour count (map.js asks for ?k=12); with a good
     # cookie that must not be read as a wrong token.
     assert (
-        client.get("/similar/deadbeef", query_string={"k": "12"}).status_code == 404
+        client.get("/api/v1/similar/deadbeef", query_string={"k": "12"}).status_code == 404
     )  # past the guard
