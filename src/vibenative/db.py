@@ -366,6 +366,19 @@ def _migration_11(c):
     c.executemany("UPDATE tracks SET style=? WHERE hash=?", updates)
 
 
+def _migration_12(c):
+    """v12 -- genre labels chosen blind (the /label page).
+
+    The accuracy benchmark needs genres a person chose *without* seeing the
+    model's read: an override or a weight adjustment is made looking at the
+    read, so it is anchored to it and cannot measure it. Like key_labels (v8),
+    kept out of the payload so a re-analysis cannot overwrite it, and one row
+    per track -- a second choice replaces the first. tools/export_labels.py
+    reads it as the ``manual`` source."""
+    c.execute("""CREATE TABLE IF NOT EXISTS genre_labels(
+        hash TEXT PRIMARY KEY, genre TEXT NOT NULL, source TEXT, created REAL)""")
+
+
 # Ordered, append-only list of (version, migration_fn).
 MIGRATIONS = [
     (1, _migration_1),
@@ -379,6 +392,7 @@ MIGRATIONS = [
     (9, _migration_9),
     (10, _migration_10),
     (11, _migration_11),
+    (12, _migration_12),
 ]
 
 
@@ -416,4 +430,5 @@ TRACK_TABLES = (
     "training_labels",
     "training_rejects",
     "key_labels",
+    "genre_labels",
 )

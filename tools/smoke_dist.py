@@ -377,6 +377,14 @@ def main() -> int:
             css_status, _ = _get(f"{base}/static/app.css?k={token}")
             check("serves static assets from the bundle", css_status, 200)
             _check_modules(base, token, ui or b"")
+            label_status, label_page = _get(f"{base}/label?k={token}")
+            check("serves the blind-labelling page", label_status, 200)
+            check(
+                "it loads label.js",
+                b'type="module" src="/static/label.js"' in (label_page or b""),
+                True,
+            )
+            check("label.js is in the bundle", _get(f"{base}/static/label.js?k={token}")[0], 200)
 
             print(
                 "\n"

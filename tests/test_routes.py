@@ -209,6 +209,7 @@ def test_forget_clears_every_per_track_table(client):
             c.execute("INSERT INTO training_labels(hash, genre) VALUES(?, 'x')", (h,))
             c.execute("INSERT INTO training_rejects(hash, genre) VALUES(?, 'y')", (h,))
             c.execute("INSERT INTO key_labels(hash, key, scale) VALUES(?, 'C', 'major')", (h,))
+            c.execute("INSERT INTO genre_labels(hash, genre) VALUES(?, 'House')", (h,))
         rev_before = library_rev(c)
 
     assert client.delete(f"/api/v1/tracks/{'A' * 40}").get_json()["deleted"] == 1
