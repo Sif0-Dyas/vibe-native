@@ -240,6 +240,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 - [ ] `windows-latest` CI job running `tools/smoke_dist.py`
 - [ ] Code signing
+- [ ] Distinguish an unmounted drive from a missing file in the Library tab, `--probe` and `/label`
 - [ ] Remaining Legacy table rows; `docs/history/`
 - [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
   - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.
