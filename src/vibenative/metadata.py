@@ -84,6 +84,48 @@ def _probe_json(path: Path | str) -> dict:
         return {}
 
 
+def probe_duration(path: Path | str) -> float | None:
+    """The file's length in seconds, or None if it can't be told. ffprobe's
+    container duration; without ffprobe (or when it can't read the file) a PCM
+    WAV is measured from its header. Cheap: no decoding."""
+    exe = find_tool("ffprobe")
+    if exe:
+        try:
+            out = subprocess.run(  # nosec B603  # ffprobe from find_tool(); arg list, no shell
+                [
+                    exe,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "csv=p=0",
+                    str(path),
+                ],
+                capture_output=True,
+                check=True,
+                creationflags=NO_WINDOW,
+                timeout=PROBE_TIMEOUT_S,
+                encoding="utf-8",
+                errors="replace",
+            ).stdout.strip()
+            d = float(out)
+            if d >= 0:
+                return d
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+    if str(path).lower().endswith(".wav"):
+        import wave
+
+        try:
+            with wave.open(str(path), "rb") as w:
+                rate = w.getframerate()
+                return w.getnframes() / rate if rate else None
+        except (OSError, EOFError, wave.Error):
+            return None
+    return None
+
+
 def _lookup(tags: dict, names: tuple[str, ...]) -> str | None:
     """First non-empty tag matching any alias, compared case-insensitively."""
     lower = {str(k).lower(): v for k, v in tags.items()}

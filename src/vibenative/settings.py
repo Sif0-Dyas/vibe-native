@@ -25,6 +25,10 @@ from .config import _apply_dotenv, log
 
 _ROOT_DOTENV = Path(__file__).resolve().parent.parent.parent / ".env"  # src/vibenative -> root
 
+DEFAULT_MIN_DURATION_S = 60.0
+# The range Options accepts (and an env var or settings.ini value is clamped to).
+MAX_MIN_DURATION_S = 1800.0
+
 
 @dataclasses.dataclass(frozen=True)
 class Settings:
@@ -52,6 +56,13 @@ class Settings:
     provider: str = ""
     # MAX_UPLOAD_MB: the largest upload Flask accepts.
     max_upload_mb: int = 512
+    # Files shorter than this many seconds are skipped before analysis (batch and
+    # drag-and-drop) and never reach the library -- app sounds, samples, stingers.
+    # 0 turns it off. VIBE_MIN_DURATION, else settings.ini's min_duration_s (which
+    # the Options tab writes), else 60.
+    min_duration_s: float = DEFAULT_MIN_DURATION_S
+    # True when VIBE_MIN_DURATION set it: Options can't change it then.
+    min_duration_from_env: bool = False
     # Optional metadata-lookup credentials (the per-row lookup). Absent -> that
     # source is skipped. Discogs takes a personal token OR key + secret; the token
     # wins if both are set.
@@ -99,8 +110,11 @@ class Settings:
             return Path(v) if v else None
 
         config_dir = path("VIBE_CONFIG_DIR")
+        min_env = text("VIBE_MIN_DURATION")
         return cls(
             db_path=_db_path(environ.get("GENRE_DB"), config_dir),
+            min_duration_s=_min_duration(min_env or _ini_value("min_duration_s", config_dir)),
+            min_duration_from_env=bool(min_env),
             fake=environ.get("FAKE_ANALYZER") == "1",
             model_dir=path("MODEL_DIR") or _default_model_dir(config_dir),
             custom_head=path("CUSTOM_HEAD"),
@@ -135,21 +149,38 @@ def _db_path(env, config_dir) -> Path:
     """
     if env:
         return Path(os.path.expandvars(env))
+    val = _ini_value("db_path", config_dir)
+    if val:
+        return Path(os.path.expandvars(val))
+    return Path.home() / "genre_v2.db"
+
+
+def _ini_value(key, config_dir) -> str:
+    """``[vibenative] <key>`` from settings.ini (paths.settings_ini_for_read), or ""."""
     try:
         from .paths import resolve_config_dir, settings_ini_for_read
 
         ini = settings_ini_for_read(resolve_config_dir(config_dir))
         if ini.is_file():
-            # interpolation=None so a literal "%USERPROFILE%" in the value isn't parsed
-            # as configparser interpolation; os.path.expandvars expands it below.
+            # interpolation=None so a literal "%USERPROFILE%" in a value isn't parsed
+            # as configparser interpolation; callers expand what they need to.
             cp = configparser.ConfigParser(interpolation=None)
             cp.read(ini, encoding="utf-8")
-            val = cp.get("vibenative", "db_path", fallback="").strip()
-            if val:
-                return Path(os.path.expandvars(val))
+            return cp.get("vibenative", key, fallback="").strip()
     except Exception:  # nosec B110  # a malformed settings.ini must never block startup -> fall through
         pass
-    return Path.home() / "genre_v2.db"
+    return ""
+
+
+def _min_duration(raw) -> float:
+    """Seconds, clamped to 0..MAX_MIN_DURATION_S; the default when unset or not a number."""
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_DURATION_S
+    if v != v:  # NaN
+        return DEFAULT_MIN_DURATION_S
+    return max(0.0, min(MAX_MIN_DURATION_S, v))
 
 
 def _legacy_model_dir() -> Path:

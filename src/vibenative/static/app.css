@@ -432,6 +432,10 @@ input[type=file]{display:none}
 .hx{clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); border-radius:0 !important}
 .row.pending .chip{color:var(--dim); font-weight:400}
 .row.error .chip{color:var(--err); border-color:rgba(229,86,79,.4)}
+/* A dropped file under the minimum length: one line where its row would be. */
+.row.short{ display:block; padding-top:7px; padding-bottom:7px; }
+.short-note{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--dim); }
+.short-note b{ color:var(--text); font-weight:500; }
 #empty{
   flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
   gap:14px; padding:40px 26px; text-align:center; cursor:pointer;
@@ -1937,6 +1941,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
   border-radius:5px; color:var(--text); font-size:12px; padding:5px 8px;
   font-family:'JetBrains Mono',monospace;
 }
+.opt-input.opt-num{ flex:none; width:6em; }
 .opt-input:focus{ outline:none; border-color:var(--accent-a); }
 .opt-good{ color:var(--accent-a); }
 .opt-bad{ color:#ffb03b; }

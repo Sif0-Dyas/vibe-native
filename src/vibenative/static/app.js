@@ -1392,6 +1392,17 @@ function failRow(row, msg){
   refreshFooter();
 }
 
+/* A dropped file under the minimum length (Options): never analysed, never in
+   the library. One line where its row would have been, so a drop never just
+   vanishes. */
+function shortRow(row, d){
+  row.classList.remove('pending');
+  row.classList.add('short');
+  row.innerHTML = `<div class="short-note">skipped <b>${escapeHtml(d.filename || 'this file')}</b> — ` +
+    `${fmtTime(d.duration)} long, under the ${d.min_duration} s minimum (set it in Options)</div>`;
+  refreshFooter();
+}
+
 async function pump(){
   if (busy) return;
   busy = true;
@@ -1406,6 +1417,7 @@ async function pump(){
       // Persist a file handle (drag-drop / native picker) so this track stays
       // playable across restarts — even on a cache hit, which has no other source.
       if (handle && data.hash) FSH.put(data.hash, handle);
+      if (resp.ok && data.short){ shortRow(row, data); continue; }
       if (resp.ok && data.cached){
         // Already analyzed, this session or a previous one. It used to be pulled
         // out of the list entirely, which read as "nothing happened": you dropped
@@ -1750,12 +1762,13 @@ async function runBatch(folderPath){
     // Keep the List light so a huge folder can't blow up the WebView: only newly
     // analyzed tracks get a (heavy, waveform-bearing) row, capped to the most
     // recent BATCH_ROW_CAP; already-in-library and failed tracks are just counted.
-    let added = 0, skipped = 0, failed = 0;
+    let added = 0, skipped = 0, failed = 0, short = 0;
     const shown = [];
     const trimRow = r => { r.remove(); const i = results.findIndex(x => x.row === r); if (i !== -1) results.splice(i, 1); };
     const updateStatus = () => {
       const pct = total ? Math.round(done / total * 100) : 0;
-      const extra = [skipped ? `${skipped} skipped` : '', failed ? `${failed} failed` : ''].filter(Boolean).join(' · ');
+      const extra = [skipped ? `${skipped} skipped` : '', short ? `${short.toLocaleString()} short` : '',
+                     failed ? `${failed} failed` : ''].filter(Boolean).join(' · ');
       batchStatus.textContent = `⟳ ${done} / ${total} · ${pct}%` + (extra ? `  (${extra})` : '');
     };
     while (true){
@@ -1797,7 +1810,9 @@ async function runBatch(folderPath){
           continue;
         }
         done = d.progress || done + 1;
-        if (d.ok && d.cached){
+        if (d.short){
+          short++;                                // under the minimum length: never analysed
+        } else if (d.ok && d.cached){
           skipped++;                              // already analyzed -> don't render
         } else if (d.ok){
           const row = addRow({name: d.filename});
@@ -1845,6 +1860,9 @@ async function runBatch(folderPath){
     }
     const bits = [`✓ ${added} added`];
     if (skipped) bits.push(`${skipped} already in library`);
+    // The final line's count, which the server keeps whatever the client saw.
+    const shortN = (final && final.short) || short;
+    if (shortN) bits.push(`skipped ${shortN.toLocaleString()} short file${shortN === 1 ? '' : 's'}`);
     if (failed) bits.push(`${failed} failed`);
     if (added > BATCH_ROW_CAP) bits.push(`showing last ${BATCH_ROW_CAP} — see the Library tab`);
     batchStatus.textContent = bits.join(' · ');

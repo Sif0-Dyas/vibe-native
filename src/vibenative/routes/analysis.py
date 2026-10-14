@@ -26,11 +26,24 @@ from ..analysis import (
 from ..config import AUDIO_EXTS, log
 from ..decode import UnreadableAudio
 from ..hashing import file_hash
+from ..metadata import probe_duration
 from ..repo import tracks as tracks_repo
 from ..repo.tracks import cache_get, cache_put, waveform_cache_get, waveform_cache_put
 from ..serve import MAX_BATCH_WORKERS
+from ..settings import current
 from ..style import dominant_read, identity_fields
 from ._shared import UploadError, bp
+
+
+def _too_short(path):
+    """``(duration, minimum)`` if ``path`` is shorter than Settings.min_duration_s,
+    else None. Checked before anything is hashed, analysed or written: a short
+    file never reaches the library. A length that can't be told isn't "short"."""
+    minimum = current().min_duration_s
+    if not minimum:
+        return None
+    d = probe_duration(path)
+    return (d, minimum) if d is not None and d < minimum else None
 
 
 # ----------------------------------------------------------------------------
@@ -97,6 +110,18 @@ def analyze_route():
     f = request.files.get("file")
     try:
         with saved_upload(f) as p:
+            short = _too_short(p)
+            if short:
+                # Not an error and not silence either: the Analyzer shows one line.
+                return jsonify(
+                    {
+                        "ok": False,
+                        "short": True,
+                        "filename": upload_label(f.filename),
+                        "duration": round(short[0], 1),
+                        "min_duration": short[1],
+                    }
+                )
             # cache-first: identical audio content = identical hash = instant return
             h = file_hash(p)
             cached = cache_get(h)
@@ -382,6 +407,17 @@ def batch_route():
             size_mb = round(path.stat().st_size / 1e6, 1)
         except OSError:
             size_mb = "?"
+        short = _too_short(path)
+        if short:
+            # Counted, reported in the final line, never written. No log line each:
+            # a drive can hold thousands of these.
+            return {
+                "ok": False,
+                "short": True,
+                "filename": path.name,
+                "filepath": str(path),
+                "duration": round(short[0], 1),
+            }
         log.info("  · START %s (%s MB)", path.name, size_mb)
         t0 = _time.time()
         try:
@@ -443,6 +479,7 @@ def batch_route():
             _BATCH_JOBS[job] = state
         ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch-{job}")
         done, total = 0, None
+        short = 0  # files skipped as under the minimum duration
 
         def await_go(stage):
             """Wait for POST /batch/<job>/confirm answering ``stage`` (or a cancel).
@@ -520,9 +557,12 @@ def batch_route():
                     done += 1
                     result = fut.result()  # analyze_one never raises; failures are dicts
                     result["progress"] = done
+                    short += bool(result.get("short"))
                     yield _json.dumps(result) + "\n"
                 refill()  # after a cancel this adds nothing; running files finish, cached
-            yield final(done, total, done < total)
+            # Short files are part of `processed` (each was dealt with) and also
+            # counted on their own, only when there were any.
+            yield final(done, total, done < total, **({"short": short} if short else {}))
         finally:
             # The one place a batch ends, whichever way: finished; cancelled via
             # /batch/<job>/cancel (no refills, the loop drained and fell through);
@@ -533,7 +573,7 @@ def batch_route():
             ex.shutdown(wait=True, cancel_futures=True)
             with _BATCH_JOBS_LOCK:
                 _BATCH_JOBS.pop(job, None)
-            log.info("batch END: %d/%s processed", done, total)
+            log.info("batch END: %d/%s processed, %d skipped as short", done, total, short)
 
     return Response(generate(), mimetype="application/x-ndjson")
 

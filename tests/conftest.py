@@ -55,6 +55,9 @@ def make_settings(tmp_path, **overrides):
         "taxonomy": tmp_path / "taxonomy.json",
         "training": tmp_path / "genre_training",
         "token": TEST_TOKEN,
+        # Off: the suite's fixtures are fractions of a second long, and the 60 s
+        # default would skip every one. tests/test_min_duration.py turns it on.
+        "min_duration_s": 0.0,
     }
     return Settings(**(base | overrides))
 

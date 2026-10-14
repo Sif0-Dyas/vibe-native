@@ -115,6 +115,8 @@ def status_route():
         {
             "version": vibenative.__version__,
             "db_path": str(settings.db_path),
+            "min_duration_s": settings.min_duration_s,
+            "min_duration_from_env": settings.min_duration_from_env,
             "log_path": settings.backend_log or None,
             "tracks": n,
             "ffmpeg": bool(ffmpeg),
@@ -175,10 +177,7 @@ def db_path_route():
     handles pointing at the old file. The response says a restart is needed, and
     the Options tab says so too.
     """
-    import configparser
     import os
-
-    from ..paths import settings_ini, settings_ini_for_read
 
     raw = ((request.get_json(silent=True) or {}).get("path") or "").strip()
     if not raw:
@@ -192,20 +191,9 @@ def db_path_route():
     if not os.access(parent, os.W_OK):
         return jsonify({"error": f"folder is not writable: {parent}"}), 400
 
-    ini = settings_ini()
-    cp = configparser.ConfigParser(interpolation=None)
-    current = settings_ini_for_read()  # keep any other keys, wherever they live today
-    if current.is_file():
-        cp.read(current, encoding="utf-8")
-    if not cp.has_section("vibenative"):
-        cp.add_section("vibenative")
-    cp.set("vibenative", "db_path", str(target))
-    try:
-        ini.parent.mkdir(parents=True, exist_ok=True)
-        with open(ini, "w", encoding="utf-8") as fh:
-            cp.write(fh)
-    except OSError as e:
-        return jsonify({"error": f"could not write {ini}: {e}"}), 500
+    ini, err = _save_ini("db_path", str(target))
+    if err:
+        return jsonify({"error": err}), 500
     return jsonify(
         {
             "ok": True,
@@ -216,6 +204,62 @@ def db_path_route():
             "note": "GENRE_DB, if set, still overrides this.",
         }
     )
+
+
+def _save_ini(key, value):
+    """Set ``[vibenative] <key>`` in the per-user settings.ini, keeping every other
+    key wherever it lives today. ``(ini path, None)``, or ``(ini path, error)``."""
+    import configparser
+
+    from ..paths import settings_ini, settings_ini_for_read
+
+    ini = settings_ini()
+    cp = configparser.ConfigParser(interpolation=None)
+    existing = settings_ini_for_read()
+    if existing.is_file():
+        cp.read(existing, encoding="utf-8")
+    if not cp.has_section("vibenative"):
+        cp.add_section("vibenative")
+    cp.set("vibenative", key, value)
+    try:
+        ini.parent.mkdir(parents=True, exist_ok=True)
+        with open(ini, "w", encoding="utf-8") as fh:
+            cp.write(fh)
+    except OSError as e:
+        return ini, f"could not write {ini}: {e}"
+    return ini, None
+
+
+@bp.post("/min-duration")
+def min_duration_route():
+    """Set the minimum track length (seconds; 0 = off) below which batch and
+    drag-and-drop skip a file before analysis. Saved to settings.ini and in effect
+    at once -- unless VIBE_MIN_DURATION pins it, which this says rather than
+    pretending to change it."""
+    import dataclasses
+
+    from ..settings import MAX_MIN_DURATION_S, use
+
+    raw = (request.get_json(silent=True) or {}).get("seconds")
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "seconds must be a number"}), 400
+    if not 0 <= seconds <= MAX_MIN_DURATION_S:
+        return jsonify({"error": f"seconds must be between 0 and {MAX_MIN_DURATION_S:g}"}), 400
+    settings = current()
+    if settings.min_duration_from_env:
+        return jsonify(
+            {
+                "error": f"VIBE_MIN_DURATION is set ({settings.min_duration_s:g} s) "
+                "and overrides this -- unset it to change the minimum here"
+            }
+        ), 409
+    _, err = _save_ini("min_duration_s", f"{seconds:g}")
+    if err:
+        return jsonify({"error": err}), 500
+    use(dataclasses.replace(settings, min_duration_s=seconds))  # live: no restart needed
+    return jsonify({"ok": True, "min_duration_s": seconds})
 
 
 @bp.post("/override/<h>")

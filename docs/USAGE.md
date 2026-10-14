@@ -54,11 +54,13 @@ Drag any number of files onto the Analyzer window, or click **⊕ Browse files�
 
 > **Use this when** you're checking a handful of tracks, testing a new download, or just poking around. It's the everyday method.
 
+**Short files are skipped.** Anything under a minute long (the minimum is set under **Options › Analysis**) isn't analysed and never reaches your library. Batch folder skips them too, and so does drag-and-drop: in their place you get one line, *"skipped clip.wav — 0:05 long, under the 60 s minimum"*. That keeps app sounds, samples and stingers out. Set the minimum to **0** to analyse everything.
+
 ### Batch folder
 
 Click **⊕ batch folder** and give it the path to a folder of music. It scans that folder (and everything inside it) and analyzes every track it finds, several at a time, showing a running `done / total` count. A folder of more than 2,000 tracks stops once to show the count and asks **▶ start** before analysing anything.
 
-**You can give it a whole drive; it asks twice.** First, before it looks at a single folder: *"You're about to scan the whole of F:\ — every folder on the drive. Continue?"* (**Scan drive** / **Cancel**). Then, once it has counted the tracks: *"4,812 files — start?"* Cancelling at either question analyses nothing. The drive Windows is installed on is the exception: it's refused, with *"C:\ is the Windows drive — pick a music folder instead."*, and so are your whole user folder and the app-data folders.
+**You can give it a whole drive; it asks twice.** First, before it looks at a single folder: *"You're about to scan the whole of F:\ — every folder on the drive. Continue?"* (**Scan drive** / **Cancel**). Then, once it has counted the tracks: *"4,812 files — start?"* Cancelling at either question analyses nothing. Short files are counted, not analysed: a drive full of samples finishes with something like *"✓ 812 added · skipped 9,412 short files"*. The drive Windows is installed on is the exception: it's refused, with *"C:\ is the Windows drive — pick a music folder instead."*, and so are your whole user folder and the app-data folders.
 
 Wherever it starts, the scan never goes into folders that hold system files, programs, other users' files or caches rather than music: `$RECYCLE.BIN`, `System Volume Information`, `Windows`, `Program Files`, `Program Files (x86)`, `ProgramData`, `Users`, `AppData`, `.git`, `node_modules`, `__pycache__`, `Temp`, and any folder starting with `pytest-of-`.
 

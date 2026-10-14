@@ -66,6 +66,20 @@ let vibeLoadOptions; // assigned below, where the file sets it up
         'start &mdash; it does not move the existing database. <b>GENRE_DB</b>, if set, ' +
         'overrides this.</div>' +
       '</div>' +
+      '<div class="opt-card"><h3>Analysis</h3>' +
+        '<div class="opt-row"><span class="k">Skip files shorter than</span>' +
+          '<span class="v"><input type="number" id="mindur-in" class="opt-input opt-num" min="0" ' +
+            'max="1800" step="1" value="' + esc(s.min_duration_s) + '"' +
+            (s.min_duration_from_env ? ' disabled' : '') + '> s ' +
+            '<button id="mindur-save"' + (s.min_duration_from_env ? ' disabled' : '') + '>save</button>' +
+          '</span></div>' +
+        '<div class="opt-note" id="mindur-msg">' + (s.min_duration_from_env
+          ? '<b>VIBE_MIN_DURATION</b> is set and decides this; unset it to change it here.'
+          : 'Batch folder and drag-and-drop skip anything shorter, before analysing it: ' +
+            'app sounds, samples and stingers never reach your library. Batch reports how many ' +
+            'it skipped; a dropped file shows one line saying so. <b>0</b> turns this off. ' +
+            'Takes effect at once.') + '</div>' +
+      '</div>' +
       (s.log_path ?
         '<div class="opt-card"><h3>Diagnostics</h3>' +
           row('Log file', pathLink('log', s.log_path)) +
@@ -175,6 +189,7 @@ let vibeLoadOptions; // assigned below, where the file sets it up
       a.onclick = function () { reveal(a.dataset.reveal); };
     });
     wireDbEdit();
+    wireMinDuration();
     wireFilePaths();
     wireKeyView();
     wirePrefs();
@@ -374,6 +389,28 @@ let vibeLoadOptions; // assigned below, where the file sets it up
             'created there on the next start.');
       }).catch(function () { note('db-msg', 'could not save the setting', true); });
     };
+  }
+
+  function wireMinDuration() {
+    var save = document.getElementById('mindur-save');
+    var input = document.getElementById('mindur-in');
+    if (!save || !input) return;
+    function go() {
+      var v = Number(input.value);
+      if (input.value.trim() === '' || !isFinite(v)) { note('mindur-msg', 'enter a number of seconds', true); return; }
+      fetch('/api/v1/min-duration', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seconds: v })
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.error) { note('mindur-msg', j.error, true); return; }
+        input.value = j.min_duration_s;
+        note('mindur-msg', j.min_duration_s
+          ? 'Saved. Files under ' + j.min_duration_s + ' s are skipped from now on.'
+          : 'Saved. Nothing is skipped for length now.');
+      }).catch(function () { note('mindur-msg', 'could not save the setting', true); });
+    }
+    save.onclick = go;
+    input.onkeydown = function (e) { if (e.key === 'Enter') go(); };
   }
 
   // Called by map.js's switchTo() when the Options tab is opened.

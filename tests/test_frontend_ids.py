@@ -27,6 +27,8 @@ DYNAMIC_IDS = {
         "fp-folder",
         "fp-stat",
         "keyview",
+        "mindur-in",
+        "mindur-save",
         "notices",
         "opt-map-reset",
         "opt-prefs-reset",
