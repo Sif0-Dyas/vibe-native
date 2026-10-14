@@ -356,7 +356,12 @@ def batch_route():
     from ..legacy import wsl_to_windows
 
     data = request.get_json(silent=True) or {}
-    folder = Path(wsl_to_windows(str(data.get("path", "")))).expanduser()
+    raw = wsl_to_windows(str(data.get("path", ""))).strip()
+    # "F:" alone is the current folder ON F: to Windows, not its root -- someone
+    # who types it means the drive.
+    if re.fullmatch(r"[A-Za-z]:", raw):
+        raw += "\\"
+    folder = Path(raw).expanduser()
     # Bounded parallelism throttles CPU/GPU/RAM so a huge folder can't swamp the
     # machine; clamp whatever the client asks for to a safe range.
     cpu = os.cpu_count() or 4
@@ -367,6 +372,7 @@ def batch_route():
     refusal = _refuse_folder(folder)
     if refusal:
         return jsonify({"error": refusal}), 400
+    whole_drive = _is_drive_root(folder)
 
     def analyze_one(path: Path):
         # Log BEFORE the heavy work (with the file size) and FLUSH via
@@ -437,10 +443,36 @@ def batch_route():
             _BATCH_JOBS[job] = state
         ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"batch-{job}")
         done, total = 0, None
+
+        def await_go(stage):
+            """Wait for POST /batch/<job>/confirm answering ``stage`` (or a cancel).
+            The blank keepalive line (NDJSON readers skip it) is what lets a closed
+            tab be noticed -- a disconnect only shows up on a write."""
+            state.confirm.clear()
+            state.stage = stage
+            quiet = 0.0
+            while not state.confirm.wait(0.25):
+                if cancel.is_set():
+                    break
+                quiet += 0.25
+                if quiet >= CONFIRM_KEEPALIVE_S:
+                    quiet = 0.0
+                    yield "\n"
+            state.stage = None
+
         try:
             # The id goes out FIRST, before the folder walk: a big tree takes a while
             # to walk, and the job must be cancellable for all of it.
             yield _json.dumps({"job": job}) + "\n"
+            if whole_drive:
+                # A whole drive is asked about twice. First, before any walking:
+                # "the whole of F:\ -- continue?" Then, after the walk, the count.
+                ask = {"needs_confirm": True, "stage": "drive", "drive": str(folder)}
+                yield _json.dumps(ask) + "\n"
+                yield from await_go("drive")
+                if cancel.is_set():
+                    yield final(0, None, True)  # cancelled at the first question: no walk
+                    return
             files = []
             for seen, p in enumerate(_iter_folder(folder), 1):
                 if seen % WALK_CANCEL_EVERY == 0 and cancel.is_set():
@@ -452,24 +484,18 @@ def batch_route():
                 return
             files.sort()
             total = len(files)
-            needs_confirm = total > BATCH_CONFIRM_OVER
-            head = {"total": total, "needs_confirm": True} if needs_confirm else {"total": total}
+            # A whole drive always shows its count; any other folder only a big one.
+            needs_confirm = bool(files) and (whole_drive or total > BATCH_CONFIRM_OVER)
+            head = {"total": total}
+            if needs_confirm:
+                head.update(needs_confirm=True, stage="count")
             yield _json.dumps(head) + "\n"
             if not files:
                 yield final(0, 0, False, error="no audio files found")
                 return
             if needs_confirm:
-                # A big folder waits for POST /batch/<job>/confirm {"confirm": true}.
-                # The blank keepalive line (NDJSON readers skip it) is what lets a
-                # closed tab be noticed -- a disconnect only shows up on a write.
-                quiet = 0.0
-                while not state.confirm.wait(0.25):
-                    if cancel.is_set():
-                        break
-                    quiet += 0.25
-                    if quiet >= CONFIRM_KEEPALIVE_S:
-                        quiet = 0.0
-                        yield "\n"
+                # Waits for POST /batch/<job>/confirm {"confirm": true, "stage": "count"}.
+                yield from await_go("count")
                 if cancel.is_set():
                     yield final(0, total, True)  # cancelled at the prompt
                     return
@@ -516,9 +542,46 @@ def batch_route():
 WALK_CANCEL_EVERY = 200
 
 
+# Folders the walk never enters, matched by name (ignoring case) at every level
+# below the chosen folder: system and program trees, other people's profiles and
+# app data, the recycle bin, caches and source checkouts. From a drive root they
+# hold thousands of sound files that aren't music -- and a recycle bin full of
+# deleted tracks is exactly what should not come back.
+SKIP_DIRS = frozenset(
+    name.casefold()
+    for name in (
+        "$RECYCLE.BIN",
+        "System Volume Information",
+        "Windows",
+        "Program Files",
+        "Program Files (x86)",
+        "ProgramData",
+        "Users",
+        "AppData",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        "Temp",
+    )
+)
+
+
+def _skip_dir(name: str) -> bool:
+    n = name.casefold()
+    return n in SKIP_DIRS or n.startswith("pytest-of-")
+
+
 def _iter_folder(folder: Path):
-    """Every entry under ``folder``, lazily. Separate so a test can make it slow."""
-    return folder.rglob("*")
+    """Every folder and file under ``folder``, lazily, minus the SKIP_DIRS trees
+    (pruned, so never entered). A folder that can't be read is passed over.
+    Separate so a test can make it slow."""
+    for dirpath, dirnames, filenames in os.walk(folder):
+        dirnames[:] = [d for d in dirnames if not _skip_dir(d)]
+        base = Path(dirpath)
+        for name in dirnames:
+            yield base / name  # folders too, so a deep tree still checks cancel
+        for name in filenames:
+            yield base / name
 
 
 # More audio files than this and a batch waits for an explicit go-ahead.
@@ -528,11 +591,14 @@ CONFIRM_KEEPALIVE_S = 5.0
 
 
 class _Job:
-    """A running batch's two flags: cancel it, or confirm a big one may start."""
+    """A running batch's two flags -- cancel it, or answer the question it is
+    waiting on -- and which question that is: "drive" (scan the whole drive?),
+    "count" (N files -- start?) or None while it isn't asking."""
 
     def __init__(self):
         self.cancel = threading.Event()
         self.confirm = threading.Event()
+        self.stage = None
 
 
 # Running /batch jobs: job id -> its _Job. An entry lives exactly as long as that
@@ -559,36 +625,61 @@ def batch_cancel_route(job):
 
 @bp.post("/batch/<job>/confirm")
 def batch_confirm_route(job):
-    """Let a batch that stopped at "N files -- start?" go ahead."""
-    if (request.get_json(silent=True) or {}).get("confirm") is not True:
+    """Answer the question a batch stopped at: "scan the whole drive?" (stage
+    "drive") or "N files -- start?" (stage "count"). ``stage`` names the question
+    being answered; one that isn't the question asked now (a second click on the
+    first, landing during the second) is refused rather than taken as a yes."""
+    body = request.get_json(silent=True) or {}
+    if body.get("confirm") is not True:
         return jsonify({"error": 'send {"confirm": true} to start the batch'}), 400
     state = _job(job)
     if state is None:
         return jsonify({"error": "no such batch"}), 404
+    stage = body.get("stage")
+    if stage is not None and stage != state.stage:
+        return jsonify({"error": f"the batch is not asking about {stage!r} now"}), 409
     state.confirm.set()
-    return jsonify({"ok": True, "job": job})
+    return jsonify({"ok": True, "job": job, "stage": state.stage})
+
+
+def _norm(p):
+    return os.path.normcase(os.path.abspath(str(p)))
+
+
+def _is_drive_root(folder: Path) -> bool:
+    """True for the top of a drive (F:\\, or / elsewhere)."""
+    here = Path(_norm(folder.resolve()))
+    return here.parent == here
+
+
+def _os_drive() -> str:
+    """The drive Windows runs from: the one holding %WINDIR% -- not assumed to be
+    C:. (Elsewhere, the filesystem root.)"""
+    windir = os.environ.get("WINDIR") or os.environ.get("SystemRoot")
+    p = Path(windir) if windir else Path(os.sep)
+    for up in (p, *p.parents):
+        if _is_drive_root(up):  # the same test the folder itself is put to
+            return _norm(up)
+    return _norm(p.anchor)
 
 
 def _refuse_folder(folder: Path):
     """Why ``folder`` must not be batch-scanned, or None if it's fine.
 
-    Walking a whole drive, a whole user profile or an app-data root finds thousands
-    of sound files that aren't music (app sounds, caches, other programs' samples)
-    -- how 435 of them once landed in the library. Compared case-insensitively on
-    Windows."""
-
-    def norm(p):
-        return os.path.normcase(os.path.abspath(str(p)))
-
-    here = norm(folder.resolve())
-    if Path(here).parent == Path(here):
-        return f"{folder} is a whole drive -- choose your music folder instead"
+    Walking the Windows drive, a whole user profile or an app-data root finds
+    thousands of sound files that aren't music (app sounds, caches, other
+    programs' samples) -- how 435 of them once landed in the library. Any other
+    drive root is allowed, but asked about twice (batch_route), and the walk skips
+    SKIP_DIRS. Compared case-insensitively on Windows."""
+    here = _norm(folder.resolve())
+    if _is_drive_root(folder) and here == _os_drive():
+        return f"{folder} is the Windows drive \u2014 pick a music folder instead."
     home = Path(os.environ.get("USERPROFILE") or Path.home())
-    if here in (norm(home), norm(Path.home())):
+    if here in (_norm(home), _norm(Path.home())):
         return f"{folder} is your whole user folder -- choose the music folder inside it"
     # The app-data ROOTS only (and the AppData folder holding both): a folder
     # somewhere inside, like a zip extracted under Temp, is a deliberate choice.
     for app in (os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA"), home / "AppData"):
-        if app and here == norm(app):
+        if app and here == _norm(app):
             return f"{folder} is application data, not music -- choose your music folder"
     return None

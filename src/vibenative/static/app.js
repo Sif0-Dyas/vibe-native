@@ -1667,16 +1667,35 @@ batchCancelBtn.addEventListener('click', async () => {
   }
 });
 
-// A big folder (over 2,000 files) waits at "N files -- start?" until this says go.
+// A batch can stop to ask before going on. The stream says which question
+// (`stage`) and this button answers that one, by name, so a second click on the
+// first question can't be taken as a yes to the next:
+//   "drive"  a whole drive, before any walking: "scan the whole of F:\?"
+//   "count"  after the walk: "N files -- start?" (a drive always; else over 2,000)
+let batchStage = null;
+function askBatch(stage, text, yes){
+  batchStage = stage;
+  batchStatus.textContent = text;
+  batchStartBtn.textContent = yes;
+  batchStartBtn.hidden = false;
+  batchStartBtn.disabled = false;
+  batchCancelBtn.textContent = stage === 'drive' ? 'Cancel' : '✕ cancel';
+}
 batchStartBtn.addEventListener('click', async () => {
-  if (!batchJob) return;
+  if (!batchJob || !batchStage) return;
   batchStartBtn.disabled = true;
+  const stage = batchStage;
   try {
     const r = await fetch(`/api/v1/batch/${encodeURIComponent(batchJob)}/confirm`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({confirm: true}),
+      body: JSON.stringify({confirm: true, stage}),
     });
-    if (r.ok){ batchStartBtn.hidden = true; batchStatus.textContent = 'starting…'; }
+    if (r.ok){
+      batchStage = null;
+      batchStartBtn.hidden = true;
+      batchCancelBtn.textContent = '✕ cancel';
+      batchStatus.textContent = stage === 'drive' ? 'scanning the drive…' : 'starting…';
+    }
     else batchStartBtn.disabled = false;
   } catch(e){
     batchStartBtn.disabled = false;
@@ -1761,14 +1780,17 @@ async function runBatch(folderPath){
           batchStatus.textContent = 'scanning folder…';
           continue;
         }
-        // Second line: how many audio files the walk found.
+        // A whole drive: asked before the server walks a single folder of it.
+        if (d.needs_confirm && d.stage === 'drive'){
+          askBatch('drive', `You're about to scan the whole of ${d.drive} — every folder on the drive. Continue?`, 'Scan drive');
+          continue;
+        }
+        // Then: how many audio files the walk found.
         if ('total' in d && !('ok' in d)){
           total = d.total;
           if (d.needs_confirm){
             // Waits server-side until Start (or Cancel); nothing is analysed yet.
-            batchStatus.textContent = `${total.toLocaleString()} files — start?`;
-            batchStartBtn.hidden = false;
-            batchStartBtn.disabled = false;
+            askBatch('count', `${total.toLocaleString()} files — start?`, '▶ start');
           } else {
             updateStatus();
           }
@@ -1798,6 +1820,15 @@ async function runBatch(folderPath){
       batchStatus.textContent = final.error;       // e.g. "no audio files found"
       return;
     }
+    // Cancelled at a question: still asking when the stream ended.
+    if (final && final.cancelled && batchStage === 'drive'){
+      batchStatus.textContent = 'cancelled — nothing scanned';
+      return;
+    }
+    if (final && final.cancelled && batchStage === 'count'){
+      batchStatus.textContent = `cancelled — ${final.total.toLocaleString()} files found, none analysed`;
+      return;
+    }
     if (final && final.cancelled && final.total == null){
       batchStatus.textContent = 'cancelled while scanning the folder';
       return;
@@ -1825,6 +1856,7 @@ async function runBatch(folderPath){
   } finally {
     batchRunning = false;
     batchJob = null;
+    batchStage = null;
     batchCancelBtn.hidden = true;
     batchStartBtn.hidden = true;
     batchBtn.classList.remove('active');
