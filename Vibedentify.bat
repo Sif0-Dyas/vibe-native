@@ -1,6 +1,6 @@
 @echo off
 REM ===================================================================
-REM  Vibe Identify - launch the native desktop shell (no browser, no WSL).
+REM  Vibedentify - launch the native desktop shell (no browser, no WSL).
 REM  Double-click this file. It runs the desktop shell with the project
 REM  venv's pythonw.exe, so the same interpreter hosts the window and the
 REM  backend (native ONNX engine). A console may flash for a split second.

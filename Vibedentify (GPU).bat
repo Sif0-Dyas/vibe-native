@@ -1,6 +1,6 @@
 @echo off
 REM ===================================================================
-REM  Vibe Identify - GPU (DirectML) mode.  NOT RECOMMENDED right now.
+REM  Vibedentify - GPU (DirectML) mode.  NOT RECOMMENDED right now.
 REM
 REM  The normal launcher runs on CPU, which is the default because the
 REM  DirectML path faults inside the NVIDIA D3D driver part-way through

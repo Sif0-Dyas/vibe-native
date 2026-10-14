@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller ONE-FOLDER build of the Vibe Identify desktop shell -> dist/Vibe Identify/.
+"""PyInstaller ONE-FOLDER build of the Vibedentify desktop shell -> dist/Vibedentify/.
 
 Why onedir, not onefile:
   * onefile re-extracts the entire bundle (CPython + onnxruntime/DirectML DLLs,
@@ -16,7 +16,7 @@ The ONNX models and ffmpeg are NOT baked into the bundle; tools/prepare_dist.py
 copies them in beside the exe after the build (see tools/build_exe.py).
 
 Build:  python tools/build_exe.py       (preferred: builds + copies models/ffmpeg)
-   or:  pyinstaller "Vibe Identify.spec"  (bundle only)
+   or:  pyinstaller "Vibedentify.spec"  (bundle only)
 """
 
 import os
@@ -117,7 +117,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,  # onedir: binaries live beside the exe, not inside it
-    name="Vibe Identify",
+    name="Vibedentify",
     debug=False,
     strip=False,
     upx=False,  # UPX corrupts some native DLLs (onnxruntime); never compress here
@@ -131,5 +131,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="Vibe Identify",  # -> dist/Vibe Identify/
+    name="Vibedentify",  # -> dist/Vibedentify/
 )

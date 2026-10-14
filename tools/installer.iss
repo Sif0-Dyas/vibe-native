@@ -1,4 +1,4 @@
-; Inno Setup script for Vibe Identify — packages dist/Vibe Identify/ into a proper
+; Inno Setup script for Vibedentify — packages dist/Vibedentify/ into a proper
 ; Windows installer (Start-menu + optional desktop shortcut, uninstaller).
 ;
 ; Build it with:  python tools/build_installer.py   (reads the version from
@@ -19,14 +19,16 @@
   #error MyAppVersion is not set. Build with tools/build_installer.py, or pass /DMyAppVersion=<pyproject version>.
 #endif
 #ifndef DistDir
-  #define DistDir "..\dist\Vibe Identify"
+  #define DistDir "..\dist\Vibedentify"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\dist\installer"
 #endif
 
-#define MyAppName "Vibe Identify"
-#define MyAppExeName "Vibe Identify.exe"
+#define MyAppName "Vibedentify"
+#define MyAppExeName "Vibedentify.exe"
+; The name installed under before the rename; only the uninstaller's cleanup uses it.
+#define LegacyAppName "Vibe Identify"
 #define MyAppPublisher "Andres Avalos"
 #define MyAppURL "https://github.com/Sif0-Dyas/vibe-native"
 
@@ -52,7 +54,7 @@ PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=VibeIdentify-Setup-{#MyAppVersion}
+OutputBaseFilename=Vibedentify-Setup-{#MyAppVersion}
 SetupIconFile={#SourcePath}\..\desktop\vibe.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -68,8 +70,15 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Files]
 ; The entire built folder: the exe, its _internal bundle, models\, ffmpeg, notices.
 ; Exclude runtime artifacts a prior local run may have dropped here (the backend log
-; now lives in %LOCALAPPDATA%\Vibe Identify, but be defensive).
+; now lives in %LOCALAPPDATA%\Vibedentify, but be defensive).
 Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.log"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+[InstallDelete]
+; An upgrade from before the rename (same AppId, so the same install folder): the exe
+; and the shortcuts under the old two-word name would otherwise stay beside the new.
+Type: files; Name: "{app}\{#LegacyAppName}.exe"
+Type: filesandordirs; Name: "{autoprograms}\{#LegacyAppName}"
+Type: files; Name: "{autodesktop}\{#LegacyAppName}.lnk"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -106,7 +115,7 @@ begin
   Result := True;
   if not IsWin64() then
   begin
-    MsgBox('Vibe Identify requires 64-bit Windows.' + #13#10 +
+    MsgBox('Vibedentify requires 64-bit Windows.' + #13#10 +
       'This machine is running 32-bit Windows, which is not supported.',
       mbCriticalError, MB_OK);
     Result := False;
@@ -115,7 +124,7 @@ begin
   GetWindowsVersionEx(V);
   if (V.Major < 10) or ((V.Major = 10) and (V.Build < 18362)) then
   begin
-    MsgBox('Vibe Identify requires 64-bit Windows 10 version 1903 (build 18362) or ' +
+    MsgBox('Vibedentify requires 64-bit Windows 10 version 1903 (build 18362) or ' +
       'newer.' + #13#10#13#10 + 'This machine reports Windows ' + IntToStr(V.Major) +
       '.' + IntToStr(V.Minor) + ' (build ' + IntToStr(V.Build) + ').' + #13#10#13#10 +
       'Please update Windows, then run this installer again.', mbCriticalError, MB_OK);
@@ -139,7 +148,7 @@ procedure InitializeWizard;
 begin
   DbDirPage := CreateInputDirPage(wpSelectDir,
     'Music database location',
-    'Where should Vibe Identify keep your library?',
+    'Where should Vibedentify keep your library?',
     'Your analyzed tracks, vibes, and tags are stored in a file named genre_v2.db.' + #13#10 +
     'Choose the folder to keep it in — an existing library there will be reused, so an' + #13#10 +
     'upgrade or reinstall keeps all your data. The default is your user-profile folder.',
@@ -238,4 +247,11 @@ begin
   DelTree(ExpandConstant('{%USERPROFILE}\genre_training'), True, True, True);
   DelTree(ExpandConstant('{localappdata}\{#MyAppName}'), True, True, True);
   DelTree(ExpandConstant('{localappdata}\Vibenative'), True, True, True);
+  { the per-user config folder (settings.ini, taxonomy.json, a trained custom head),
+    under the current name and the two-word one used before the rename -- the app
+    moves its contents across on first start, but an install never started since
+    the update still has only the old one; and the logs kept under the old name }
+  DelTree(ExpandConstant('{userappdata}\{#MyAppName}'), True, True, True);
+  DelTree(ExpandConstant('{userappdata}\{#LegacyAppName}'), True, True, True);
+  DelTree(ExpandConstant('{localappdata}\{#LegacyAppName}'), True, True, True);
 end;

@@ -1,8 +1,8 @@
 """Populate a built dist/ folder with the loose, EXE-ADJACENT resources that are
 deliberately NOT baked into the PyInstaller bundle:
 
-  * the ONNX models  -> dist/Vibe Identify/models/   (models_dir() finds them there)
-  * ffmpeg + ffprobe -> dist/Vibe Identify/           (decode._tool finds them there)
+  * the ONNX models  -> dist/Vibedentify/models/   (models_dir() finds them there)
+  * ffmpeg + ffprobe -> dist/Vibedentify/           (decode._tool finds them there)
 
 Keeping these loose (not in the bundle) makes the build small and lets you swap in
 new models or a newer/LGPL ffmpeg without rebuilding. Run after PyInstaller;
@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DIST = ROOT / "dist" / "Vibe Identify"
+DIST = ROOT / "dist" / "Vibedentify"
 MODELS_SRC = ROOT / "models"
 MODEL_FILES = [
     "effnet.onnx",
@@ -42,7 +42,7 @@ FFMPEG_NOTICE = """\
 ffmpeg.exe / ffprobe.exe bundled beside this application
 =========================================================
 ffmpeg is a SEPARATE program invoked by command line (argv) — it is NOT linked into
-"Vibe Identify.exe" — so it stays a mere aggregation, not a derivative work.
+"Vibedentify.exe" — so it stays a mere aggregation, not a derivative work.
 
 This build is an **LGPL** static ffmpeg from BtbN's FFmpeg-Builds
 (ffmpeg-master-latest-win64-lgpl), chosen for redistribution: it omits the GPL-only
@@ -131,7 +131,7 @@ def copy_ffmpeg() -> None:
 
 def main() -> int:
     if not DIST.is_dir():
-        print(f'ERROR: {DIST} not found — build first (pyinstaller "Vibe Identify.spec").')
+        print(f'ERROR: {DIST} not found — build first (pyinstaller "Vibedentify.spec").')
         return 2
     ok = copy_models()
     copy_ffmpeg()

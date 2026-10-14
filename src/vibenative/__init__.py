@@ -1,4 +1,4 @@
-"""Vibe Identify — Flask + native ONNX music genre / BPM / key analyzer.
+"""Vibedentify — Flask + native ONNX music genre / BPM / key analyzer.
 
 The package is ``vibenative``; the product -- what a user sees in a window
 title, a log folder, the installer or a User-Agent -- is ``PRODUCT_NAME``.
@@ -25,7 +25,7 @@ except PackageNotFoundError:  # a bare source tree, never installed: say so
 # The product's name wherever a user sees it. The desktop shell (which must
 # start without importing this package) and the installer spell it out too;
 # test_one_name pins them to this.
-PRODUCT_NAME = "Vibe Identify"
+PRODUCT_NAME = "Vibedentify"
 
 from . import auth, serve  # noqa: E402 -- after __version__ so routes can read it
 from .db import init_db  # noqa: E402

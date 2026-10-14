@@ -47,8 +47,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from version import pyproject_version  # noqa: E402
 
-DIST = ROOT / "dist" / "Vibe Identify"
-EXE = DIST / "Vibe Identify.exe"
+DIST = ROOT / "dist" / "Vibedentify"
+EXE = DIST / "Vibedentify.exe"
 
 _ok = True
 
@@ -275,7 +275,7 @@ def main() -> int:
             "GENRE_PORT": str(port),
             "GENRE_TOKEN": token,  # the loopback guard the shell normally sets
             "GENRE_DB": str(Path(tmp) / "smoke.db"),  # never the real library
-            # nor the real %APPDATA%\Vibe Identify settings.ini / taxonomy.json
+            # nor the real %APPDATA%\Vibedentify settings.ini / taxonomy.json
             "VIBE_CONFIG_DIR": str(Path(tmp) / "config"),
             # a clean machine's PATH: nothing of this dev box can stand in for the
             # bundle (see the module docstring)
@@ -344,7 +344,7 @@ def main() -> int:
             # into the PYZ. Nothing copyleft may ship in a product meant to be
             # sold, and "I removed the import" is not evidence -- the archive is.
             # See docs/PROVENANCE.md.
-            toc = ROOT / "build" / "Vibe Identify" / "PYZ-00.toc"
+            toc = ROOT / "build" / "Vibedentify" / "PYZ-00.toc"
             if toc.is_file():
                 bundled = toc.read_text(encoding="utf-8", errors="replace").lower()
                 for pkg in ("mutagen",):
@@ -355,10 +355,12 @@ def main() -> int:
             print("reading a real file end to end:")
             # The functional counterpart to the check above: tags are read with
             # ffprobe now, and "the module imports" is not the same as "the
-            # packaged app can actually read a tag off a file". Analyse a short
-            # generated track and see its title come back.
+            # packaged app can actually read a tag off a file". Analyse a generated
+            # track and see its title come back. It has to be longer than the
+            # minimum duration (60 s by default), or it is skipped before analysis --
+            # which the next check wants to see happen, with the bundled ffprobe.
             track = Path(tmp) / "smoke track.mp3"
-            if _make_tagged_track(track, "Smoke Test Title"):
+            if _make_tagged_track(track, "Smoke Test Title", seconds=70):
                 st, resp = _post_file(f"{base}/api/v1/analyze?k={token}", track, timeout=120)
                 check("analyses an uploaded file", st, 200)
                 if st == 200:
@@ -369,6 +371,13 @@ def main() -> int:
                     note("bpm / key", (j.get("bpm"), j.get("key"), j.get("scale")))
             else:
                 note("tag round-trip", "skipped - could not generate a test file")
+            clip = Path(tmp) / "smoke clip.mp3"
+            if _make_tagged_track(clip, "Smoke Clip", seconds=5):
+                st, resp = _post_file(f"{base}/api/v1/analyze?k={token}", clip, timeout=60)
+                j = json.loads(resp) if st == 200 else {}
+                check("skips a file under the minimum duration", j.get("short"), True)
+            else:
+                note("minimum duration", "skipped - could not generate a test file")
 
             print("bundled web assets:")
             ui_status, ui = _get(f"{base}/?k={token}")

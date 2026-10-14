@@ -1,12 +1,12 @@
-# Vibe Identify — Windows desktop shell
+# Vibedentify — Windows desktop shell
 
-A native, chromeless Windows window around the Vibe Identify app. It does **not**
+A native, chromeless Windows window around the Vibedentify app. It does **not**
 change any app code: it opens the same UI (served locally on a random loopback
 port) in an Edge WebView2 window, starts the native backend for you if it isn't
 already running, and adds two things a plain browser can't do.
 
 ```
- Vibe Identify.bat   ──►  pythonw genre_app.pyw
+ Vibedentify.bat   ──►  pythonw genre_app.pyw
                             ├─ probe http://127.0.0.1:<port>
                             ├─ if down: <project>/.venv python -m vibenative
                             ├─ show splash until it answers
@@ -35,9 +35,9 @@ Everything else — the list, the Map, waveforms, playback — is the unchanged 
    uv sync --group desktop
    ```
    (The Edge WebView2 runtime is already on Windows 11.)
-2. Double-click **`Vibe Identify.bat`** at the project root.
+2. Double-click **`Vibedentify.bat`** at the project root.
 
-To make it feel installed: right-click `Vibe Identify.bat` → *Create shortcut*, then
+To make it feel installed: right-click `Vibedentify.bat` → *Create shortcut*, then
 pin the shortcut to Start / the taskbar.
 
 ## Configuration
@@ -112,12 +112,12 @@ backend, no pywebview needed — this is what CI runs.
 
 ## Packaging to a standalone .exe (optional, out of scope)
 
-PyInstaller could later fold this into a single `Vibe Identify.exe`:
+PyInstaller could later fold this into a single `Vibedentify.exe`:
 
 ```
 uv sync --group desktop
-uv run pyinstaller --noconsole --onefile --name "Vibe Identify" desktop\genre_app.pyw
+uv run pyinstaller --noconsole --onefile --name "Vibedentify" desktop\genre_app.pyw
 ```
 
-The resulting `dist\Vibe Identify.exe` launches like installed software (still needs
+The resulting `dist\Vibedentify.exe` launches like installed software (still needs
 the project venv + models for analysis). Not built or tested here — a future option.

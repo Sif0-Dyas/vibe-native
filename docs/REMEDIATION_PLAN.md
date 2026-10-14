@@ -58,8 +58,8 @@ CI guard: `pip-licenses --fail-on="AGPL;GPL;CC-BY-NC"` over the runtime venv, pl
 
 | # | Finding | Where | Fix |
 | --- | --- | --- | --- |
-| 1 | Models CC BY-NC-ND; `data/enao.json` (no stated license) ships **inside the exe** — PROVENANCE verified it in a real build | `Vibe Identify.spec:35` `collect_data_files("vibenative")` | Section 2; exclude `data/enao.json` from the spec now, settle it later (PROVENANCE #6) |
-| 2 | Installed build writes to Program Files: `settings_ini()` and `taxonomy.path()` resolve next to the exe; installer is `PrivilegesRequired=admin`, `DefaultDirName={autopf}`; `/db-path` and every Genres-tab taxonomy edit fail for a normal user | `paths.py:26`, `taxonomy.py:35`, `tools/installer.iss:40,48` | Route both to `%APPDATA%\Vibe Identify\`; read the installer-written `settings.ini` as a one-time seed |
+| 1 | Models CC BY-NC-ND; `data/enao.json` (no stated license) ships **inside the exe** — PROVENANCE verified it in a real build | `Vibedentify.spec:35` `collect_data_files("vibenative")` | Section 2; exclude `data/enao.json` from the spec now, settle it later (PROVENANCE #6) |
+| 2 | Installed build writes to Program Files: `settings_ini()` and `taxonomy.path()` resolve next to the exe; installer is `PrivilegesRequired=admin`, `DefaultDirName={autopf}`; `/db-path` and every Genres-tab taxonomy edit fail for a normal user | `paths.py:26`, `taxonomy.py:35`, `tools/installer.iss:40,48` | Route both to `%APPDATA%\Vibedentify\`; read the installer-written `settings.ini` as a one-time seed |
 | 3 | No lockfile; `requirements.txt` unpinned; CI installs unpinned; pre-commit pins ruff 0.16.0 vs `>=0.6`; 26 files fail `ruff format --check` on the branch, so the pre-commit hook will block the next commit touching any of them | `requirements*.txt`, `ci.yml`, `.pre-commit-config.yaml` | One formatting-only commit first; then `uv lock` or `pip-compile --generate-hashes`; pin ruff in one place |
 | 4 | CI never runs the product: `ubuntu-latest` only, no onnxruntime/ffmpeg/pywebview/models; engine modules excluded from coverage | `ci.yml:9`, `.coveragerc.ci` | Add a `windows-latest` job: `onnxruntime-directml` + ffmpeg, run `tools/smoke_dist.py` and the decode/import paths |
 | 5 | Werkzeug dev server in production | `desktop/genre_app.pyw:322`, `__main__.py:47` | `waitress.serve(app, host="127.0.0.1", port=PORT)` |
@@ -123,7 +123,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 | Group | Delete | Keep / replace with |
 | --- | --- | --- |
 | MAEST | `get_maest`, `maest_genre`, `MAEST_PB`; `/compare` + Compare panel; `MAEST_MODEL`; `models/discogs-maest-*.json` | Nothing — decided 2026-09-23 |
-| Essentia-era config | `MODEL_DIR` default `~/essentia_models`; `CUSTOM_HEAD` default there; `.env.example` `*.pb` lines | `%APPDATA%\Vibe Identify\models\` — done (`<config_dir>/models`); an unmoved `custom_head.npz` is still read from `~/essentia_models` with a WARNING. Delete that fallback (`settings._legacy_model_dir`) once no install needs it |
+| Essentia-era config | `MODEL_DIR` default `~/essentia_models`; `CUSTOM_HEAD` default there; `.env.example` `*.pb` lines | `%APPDATA%\Vibedentify\models\` — done (`<config_dir>/models`); an unmoved `custom_head.npz` is still read from `~/essentia_models` with a WARNING. Delete that fallback (`settings._legacy_model_dir`) once no install needs it |
 | Custom-head trainer | `training/embed_extract.py:44` Essentia import | Port to `onnx_engine`. Feature stays (decided) |
 | WSL legacy | `tools/db_cutover.py`, `tools/make_oracle.py`; `legacy.py` and its 4 route call sites (`routes/analysis.py:550`, `routes/library.py:574, 597`); the "no WSL" selftest assertions | Already isolated in `legacy.py` by design — delete in one piece once no install needs it. `_migration_2` keeps its own copy of the path rewrite |
 | Desktop two-process mode | `GENRE_DESKTOP_MULTIPROC`, `venv_python`, `start_backend`, `_shutdown_backend`, `backend_cmd/env`, `WIN_PROJECT`, `_LAUNCH_WARNING`; both `.bat` launchers; `_selftest` | Single-process only; selftest → `tests/test_desktop_shell.py` |
@@ -153,7 +153,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 
 **Phase 1 — user-visible failures**
 
-- [x] `settings.ini` and `taxonomy.json` to `%APPDATA%\Vibe Identify\`; seed once from the installer-written file
+- [x] `settings.ini` and `taxonomy.json` to `%APPDATA%\Vibedentify\`; seed once from the installer-written file
 - [x] `GENRE_TOKEN` mandatory; print the `?k=` URL in `__main__`
 - [x] `secure_filename` wherever an uploaded name becomes a path; `/save_training` accepts only known `tracks.filepath`; app-level `Sec-Fetch-Site` check refusing cross-origin writes. (Form bodies stay: with the token mandatory and its cookie `SameSite=Strict`, a cross-site POST already fails auth, so JSON-only bodies and an `Origin` check were dropped.)
 - [x] Discogs credentials to the `Authorization` header
@@ -208,7 +208,7 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [x] `/api/v1`; DELETE verbs; one name; one version source
   - Every API route is on `bp`, mounted at `/api/v1`; the page (`/`, its own `pages` blueprint) and `/static/*` stay at the root. No aliases -- the old paths 404 (`test_api_prefix`). Frontend, desktop probe, smoke_dist and tests follow.
   - Deletes are DELETE on the resource: `/playlists/<id>`, `/tracks/<h>` (was `/forget`), `/override_segment/<id>`, `/vibes/<id>`, `/vibes/<id>/tracks` (clear), `/vibes/<id>/tracks/<h>` (remove). The resets stay POST: they archive / rename / snapshot rather than delete, and two take a confirm word.
-  - "Vibe Identify" is `vibenative.PRODUCT_NAME`: titles, taskbar id, banner, Server header, download names, User-Agent (`VibeIdentify/<version>`), the frozen log folder `%LOCALAPPDATA%\Vibe Identify` (old logs left in `Vibenative`; the WebView2 profile deliberately stays there; the uninstaller removes both). `test_one_name` pins the shell's and installer's copies. `palette.py` -> `keystone_colors.py`, `palettes.py` -> `color_presets.py`.
+  - (Name reversed under Phase 5: the product is Vibedentify; `docs/history/NAMES.md` has the two-word spelling this item first chose.) "Vibedentify" is `vibenative.PRODUCT_NAME`: titles, taskbar id, banner, Server header, download names, User-Agent (`Vibedentify/<version>`), the frozen log folder `%LOCALAPPDATA%\Vibedentify` (old logs left in `Vibenative`; the WebView2 profile deliberately stays there; the uninstaller removes both). `test_one_name` pins the shell's and installer's copies. `palette.py` -> `keystone_colors.py`, `palettes.py` -> `color_presets.py`.
   - The version is written once, in `pyproject.toml`: `__version__` via importlib.metadata (the spec bundles the dist-info), `tools/version.py` for build_exe / build_installer / smoke_dist, `installer.iss` has no default and errors without `/DMyAppVersion`. build_exe refuses a venv whose installed metadata is behind pyproject; smoke_dist asserts `/status`'s version equals pyproject's (verified on a real build).
   - Not changed: `pyproject.toml`'s setuptools `packages` lists only `vibenative` and `vibenative.routes`, not `repo` / `taxonomy`. Editable installs and the PyInstaller build don't care; a built wheel would miss them.
 
@@ -245,13 +245,18 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] `windows-latest` CI job running `tools/smoke_dist.py`
 - [ ] Code signing
 - [ ] Distinguish an unmounted drive from a missing file in the Library tab, `--probe` and `/label`
+- [x] Product name back to **Vibedentify** everywhere a user sees it (reverses the Phase 3 one-name choice; history in `docs/history/NAMES.md`)
+  - `PRODUCT_NAME`, window and page titles, banner, taskbar id `Vibedentify.App`, User-Agent `Vibedentify/<version>`, installer AppName / exe / Start-menu entry / setup file name, USAGE.md, README, the Rekordbox export's PRODUCT tag. `Vibedentify.bat`, `Vibedentify (GPU).bat`, `Vibedentify.spec` -> `dist\Vibedentify\Vibedentify.exe`. The package stays `vibenative`; the WebView2 profile stays `%LOCALAPPDATA%\Vibenative\webview`.
+  - Config `%APPDATA%\Vibedentify`: on the first packaged start, `paths.move_legacy_config` moves settings.ini, taxonomy.json (+ .bak), dev_token and `models/` (a trained custom head) from the old folder, never overwriting. Logs `%LOCALAPPDATA%\Vibedentify`.
+  - Installer: same AppId, so an upgrade installs over the old folder; `[InstallDelete]` removes the old exe and shortcuts. Uninstall, when asked to remove data, removes both config folders and the old log folder.
+  - `tests/test_one_name.py`: the two-word name may appear only in docs/history and on the two lines that name the old folder (`paths.LEGACY_APP_DIR_NAME`, the installer's `LegacyAppName`).
 - [x] UX: one Correct panel for a track's genre, the same on every Analyzer row and in the Map popup (`static/correct.js`)
   - Three sections, each with its current value, a Reset and a one-line hint: **Whole track** (one genre, replaces the read), **Sections** (a genre for a time range, several allowed, drawn on the waveform; the popup draws its own strip), **Balance** (nudge several genres; the read stays multi-genre). It replaced ⚖ adjust, ✎ override and the Shift-drag / Shift-click waveform gestures.
   - `DELETE /api/v1/override/<h>` (new) clears the override, recomputes `tracks.style` and deletes the training copy it filed. Switching the override to another genre deletes the old genre's copy too. A same-named file that isn't the track's audio stays, as does a trainset archive.
   - Nothing moves under the cursor while you press: Balance rows hold their order while the panel is open (reopening re-sorts). When a change repaints content above the panel (an adjusted read lists every genre, so the row's summary can gain a line), the page or popup scrolls back by the same amount. A section's ✕ removes it, and its clip, without a confirmation.
   - USAGE.md uses the panel's hint text word for word (`tests/test_correct_panel.py`). Every correction reloads the Library list.
 - [ ] Remaining Legacy table rows; `docs/history/`
-- [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
+- [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibedentify\`)
   - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.
   - Uninstall's data removal finds the DB through `{app}\settings.ini`, so it misses a database moved in Options.
   - Likewise it removes `%USERPROFILE%\genre_training`, `Settings.training_root`'s default; a root moved with `VIBE_TRAINING_ROOT` is left behind.

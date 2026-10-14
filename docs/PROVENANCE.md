@@ -177,9 +177,9 @@ into the process. For a proprietary product that is the classic copyleft
 problem, and it is the one dependency here that is genuinely incompatible with
 selling a closed-source binary.
 
-It **is** redistributed. `Vibe Identify.spec` lists `mutagen` in `hiddenimports`,
+It **is** redistributed. `Vibedentify.spec` lists `mutagen` in `hiddenimports`,
 and the build embeds it in the PYZ archive inside the exe
-(`build/Vibe Identify/PYZ-00.toc` lists `mutagen\__init__.py` and friends).
+(`build/Vibedentify/PYZ-00.toc` lists `mutagen\__init__.py` and friends).
 
 > An earlier revision of this document claimed mutagen was *not* shipped and that
 > tag reading was therefore silently broken in the packaged app. That was wrong,
@@ -293,8 +293,8 @@ in the file. The goal is provenance that is *complete and legible*, not absent.
 
 ```bash
 # what actually ships
-find "dist/Vibe Identify" -name "*.json" -path "*data*"
-find "dist/Vibe Identify" -iname "*mutagen*"        # expect: nothing
+find "dist/Vibedentify" -name "*.json" -path "*data*"
+find "dist/Vibedentify" -iname "*mutagen*"        # expect: nothing
 
 # dependency licences
 for p in mutagen flask numpy onnxruntime-directml pywebview; do

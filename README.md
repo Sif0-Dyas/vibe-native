@@ -1,4 +1,4 @@
-# Vibe Identify — native Windows build (`vibe-native`)
+# Vibedentify — native Windows build (`vibe-native`)
 
 Native-Windows rebuild of [Vibe_Identify](https://github.com/Sif0-Dyas/Vibe_Identify)'s
 analysis engine: ONNX Runtime (+ DirectML GPU) instead of Essentia, same app,
@@ -6,7 +6,7 @@ same database, no WSL.
 
 **Status: shipped as a standalone Windows executable.** Essentia is gone; the app
 runs natively via ONNX Runtime (DirectML on an RTX 5070) inside a chromeless desktop
-window, and packages to a self-contained `dist\Vibe Identify\` folder — no Python,
+window, and packages to a self-contained `dist\Vibedentify\` folder — no Python,
 no venv, no WSL on the target machine (Flask runs in-process behind the exe; DirectML
 GPU works in the packaged build). Validated against the WSL build as the oracle:
 
@@ -49,7 +49,7 @@ tests/                 pytest suite (FAKE mode by default; real-mode tests skip
                        without models)
 models/                ONNX models (git-ignored; `python tools/convert_models.py`)
 docs/                  USAGE.md guide + history/ (completed plan docs)
-Vibe Identify.spec     PyInstaller onedir spec (packages src/vibenative + assets)
+Vibedentify.spec     PyInstaller onedir spec (packages src/vibenative + assets)
 ```
 
 ## Running it
@@ -70,7 +70,7 @@ Requires **ffmpeg** on PATH (`winget install Gyan.FFmpeg`) for audio decode, and
 the ONNX models in `models/` (`python tools/convert_models.py`). The Edge WebView2
 runtime ships with Windows 11.
 
-**Desktop app** — double-click **`Vibe Identify.bat`** (project root). It opens the
+**Desktop app** — double-click **`Vibedentify.bat`** (project root). It opens the
 UI in a native window, boots the backend for you, and shows a splash until it's
 ready. See `desktop/README.md` for the folder-picker / security details.
 
@@ -83,7 +83,7 @@ uv run python -m vibenative        # serves on 127.0.0.1:5005
 It prints the URL to open, token included:
 
 ```
-Open Vibe Identify at:
+Open Vibedentify at:
 
     http://127.0.0.1:5005/?k=<token>
 ```
@@ -152,17 +152,17 @@ docstring has the full source-by-source rationale.
 
 Package the app as a **standalone Windows folder** — no Python, no venv on the
 target machine. The desktop shell runs Flask in-process (a daemon thread), so the
-whole thing is one process behind `Vibe Identify.exe`.
+whole thing is one process behind `Vibedentify.exe`.
 
 ```
 uv sync --group desktop              # brings PyInstaller
 uv run python tools\build_exe.py
 ```
 
-That runs PyInstaller against `Vibe Identify.spec` (one-folder / **onedir**), then
+That runs PyInstaller against `Vibedentify.spec` (one-folder / **onedir**), then
 `tools/prepare_dist.py` copies the ONNX models and the system ffmpeg **beside the
 exe** (they are deliberately *not* baked into the bundle), and prints the final
-folder + size. Result: `dist\Vibe Identify\` — double-click `Vibe Identify.exe`.
+folder + size. Result: `dist\Vibedentify\` — double-click `Vibedentify.exe`.
 
 Notes:
 - **onedir, not onefile** — onefile re-extracts hundreds of MB of native DLLs to a
@@ -172,7 +172,7 @@ Notes:
 - **GPU** — the DirectML EP (`DirectML.dll`) is bundled, but the app runs on **CPU by
   default**: the DML path faults inside the NVIDIA driver part-way through a batch scan,
   for a ~5% speedup (see `onnx_engine.provider_order`). Set `VIBE_PROVIDER=gpu` to opt
-  in to `DmlExecutionProvider` (or use `Vibe Identify (GPU).bat`); if it then can't
+  in to `DmlExecutionProvider` (or use `Vibedentify (GPU).bat`); if it then can't
   load, the fallback to CPU is logged loudly.
 - **models** — must exist in `models\` first (`python tools\convert_models.py`).
 - **ffmpeg licensing** — see the ffmpeg note above; a `ffmpeg-NOTICE.txt` ships in the
@@ -189,7 +189,7 @@ uv run python tools\build_installer.py --build
 
 `--build` runs `tools\build_exe.py` first; then it stamps the version from
 `vibenative.__version__` and runs Inno's `iscc` on `tools\installer.iss`, producing
-`dist\installer\VibeIdentify-Setup-<version>.exe` (~178 MB). Needs **Inno Setup 6** —
+`dist\installer\Vibedentify-Setup-<version>.exe` (~178 MB). Needs **Inno Setup 6** —
 if `iscc` isn't found the script prints `winget install --id JRSoftware.InnoSetup -e`.
 
 **Requirements (enforced by the installer):**
@@ -199,7 +199,7 @@ if `iscc` isn't found the script prints `winget install --id JRSoftware.InnoSetu
   downloads and runs Microsoft's Evergreen bootstrapper automatically if it's missing.
 - ~1.5 GB free during install (the folder is ~540 MB; models + LGPL ffmpeg included).
 
-**What it does:** installs to `C:\Program Files\Vibe Identify`, adds a Start-menu
+**What it does:** installs to `C:\Program Files\Vibedentify`, adds a Start-menu
 shortcut (desktop shortcut optional), and includes a proper uninstaller. A wizard page
 asks where your **music database** lives (default: your user profile,
 `%USERPROFILE%\genre_v2.db`) — an existing library there is reused. Power users can
@@ -211,7 +211,7 @@ them; the **uninstaller** asks whether to remove your data and defaults to **No*
 code-signed, so the first launch on another machine shows **“Windows protected your
 PC.”** Click **More info → Run anyway**. Some antivirus engines occasionally
 false-positive on unsigned PyInstaller executables — if flagged, allow/exclude
-`Vibe Identify.exe`. Signing with a real code-signing certificate removes both prompts
+`Vibedentify.exe`. Signing with a real code-signing certificate removes both prompts
 (out of scope here).
 
 ## License & third-party components

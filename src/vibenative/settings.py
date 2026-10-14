@@ -140,7 +140,7 @@ def _db_path(env, config_dir) -> Path:
 
     1. ``GENRE_DB`` -- always wins (power users, dev).
     2. ``[vibenative] db_path`` in ``settings.ini`` (``paths.settings_ini_for_read``):
-       the per-user copy in ``%APPDATA%\\Vibe Identify``, which a packaged build seeds
+       the per-user copy in ``%APPDATA%\\Vibedentify``, which a packaged build seeds
        once from the installer's DB-location page (written beside the exe) and the
        Options tab updates; the exe-adjacent file is read only if that copy is
        missing. Env vars in the value (e.g. ``%USERPROFILE%``) are expanded at

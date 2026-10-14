@@ -1,6 +1,6 @@
 """Build the standalone Windows executable end to end:
 
-  1. PyInstaller one-folder build from "Vibe Identify.spec"  -> dist/Vibe Identify/
+  1. PyInstaller one-folder build from "Vibedentify.spec"  -> dist/Vibedentify/
   2. tools/prepare_dist.py: copy the loose, exe-adjacent resources the bundle omits
      (ONNX models + ffmpeg/ffprobe) into that folder.
   3. tools/smoke_dist.py: launch the result and check it actually serves.
@@ -29,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from version import pyproject_version  # noqa: E402
 
-SPEC = ROOT / "Vibe Identify.spec"
-DIST = ROOT / "dist" / "Vibe Identify"
+SPEC = ROOT / "Vibedentify.spec"
+DIST = ROOT / "dist" / "Vibedentify"
 
 
 def _dir_size(p: Path) -> int:
@@ -100,7 +100,7 @@ def main() -> int:
         print("prepare_dist FAILED.")
         return r.returncode
 
-    exe = DIST / "Vibe Identify.exe"
+    exe = DIST / "Vibedentify.exe"
     if not exe.is_file():
         # PyInstaller reported success but produced no exe: a broken spec (a renamed
         # EXE(name=...), a collect step that wrote elsewhere). Never a warning.

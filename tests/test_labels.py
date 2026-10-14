@@ -174,7 +174,7 @@ def test_the_label_page_is_served(client):
     page = client.get("/label")
     assert page.status_code == 200
     assert b'<script type="module" src="/static/label.js"></script>' in page.data
-    assert b"Vibe Identify" in page.data
+    assert b"Vibedentify" in page.data
     assert client.get("/static/label.js").status_code == 200
 
 

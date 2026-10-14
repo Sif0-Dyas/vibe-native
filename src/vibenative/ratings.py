@@ -279,7 +279,7 @@ def playlist_xml(name, tracks, ratings=None):
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<DJ_PLAYLISTS Version="1.0.0">\n'
-        '  <PRODUCT Name="Vibe Identify" Version="1.0" Company="Vibe"/>' + skip_note + "\n"
+        '  <PRODUCT Name="Vibedentify" Version="1.0" Company="Vibe"/>' + skip_note + "\n"
         f"  <COLLECTION Entries={_attr(len(rows))}>\n" + "\n".join(rows) + "\n  </COLLECTION>\n"
         "  <PLAYLISTS>\n"
         '    <NODE Type="0" Name="ROOT" Count="1">\n'

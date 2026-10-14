@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ISS = ROOT / "tools" / "installer.iss"
-DIST = ROOT / "dist" / "Vibe Identify"
+DIST = ROOT / "dist" / "Vibedentify"
 OUTDIR = ROOT / "dist" / "installer"
 
 WINGET_LINE = "winget install --id JRSoftware.InnoSetup -e"
@@ -91,7 +91,7 @@ def main() -> int:
         print("iscc FAILED — see output above.")
         return r.returncode
 
-    setup = OUTDIR / f"VibeIdentify-Setup-{version}.exe"
+    setup = OUTDIR / f"Vibedentify-Setup-{version}.exe"
     print("\n" + "=" * 60)
     if setup.is_file():
         print(f"installer: {setup}")

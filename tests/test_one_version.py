@@ -46,7 +46,7 @@ def test_no_version_literal_left_to_drift():
         "tools/build_installer.py",
         "tools/installer.iss",
         "tools/smoke_dist.py",
-        "Vibe Identify.spec",
+        "Vibedentify.spec",
     ):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert not re.search(rf"(?<![\d.]){v}(?![\d.])", text), rel
@@ -55,5 +55,5 @@ def test_no_version_literal_left_to_drift():
 
 
 def test_the_frozen_build_bundles_the_metadata_it_reads():
-    spec = (ROOT / "Vibe Identify.spec").read_text(encoding="utf-8")
+    spec = (ROOT / "Vibedentify.spec").read_text(encoding="utf-8")
     assert 'copy_metadata("vibenative")' in spec

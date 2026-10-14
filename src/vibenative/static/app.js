@@ -1,4 +1,4 @@
-/* Vibe Identify front-end — List / analyzer, plus the shared helpers used by
+/* Vibedentify front-end — List / analyzer, plus the shared helpers used by
    the whole UI.
 
    An ES module (loaded through main.js). It exports the shared helpers —

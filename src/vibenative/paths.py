@@ -18,7 +18,15 @@ from pathlib import Path
 
 from .settings import current
 
-APP_DIR_NAME = "Vibe Identify"  # the per-user folder under %APPDATA%
+APP_DIR_NAME = "Vibedentify"  # the per-user folder under %APPDATA%
+# The folder used before the rename, under the product's two-word name. Its
+# contents move into APP_DIR_NAME once, on the first packaged start that finds
+# them (move_legacy_config); the uninstaller removes both folders.
+LEGACY_APP_DIR_NAME = "Vibe Identify"
+# What moves: the user's settings, their taxonomy edits (and reset's backup of
+# them), the dev token, and models/ -- the custom genre head they trained lives
+# there, and leaving it behind would silently drop it from the next start.
+LEGACY_CONFIG_ITEMS = ("settings.ini", "taxonomy.json", "taxonomy.json.bak", "dev_token", "models")
 
 
 @lru_cache(maxsize=1)
@@ -34,7 +42,7 @@ def config_dir() -> Path:
 
     * ``Settings.config_dir`` (``VIBE_CONFIG_DIR``), if set -- the test suite
       points it at a temp dir.
-    * A packaged build: ``%APPDATA%/Vibe Identify``. NOT next to the exe: the
+    * A packaged build: ``%APPDATA%/Vibedentify``. NOT next to the exe: the
       installer puts the exe in Program Files, which a normal user cannot write, so
       /db-path and every taxonomy edit used to fail there.
     * Dev: the repo root, NOT ``exe_dir()`` -- that resolves to ``.venv/Scripts``,
@@ -59,8 +67,33 @@ def _config_dir(env, frozen, appdata) -> Path:
     if env:
         return Path(env)
     if frozen:
-        return Path(appdata or Path.home() / "AppData" / "Roaming") / APP_DIR_NAME
+        roaming = Path(appdata or Path.home() / "AppData" / "Roaming")
+        move_legacy_config(roaming / LEGACY_APP_DIR_NAME, roaming / APP_DIR_NAME)
+        return roaming / APP_DIR_NAME
     return Path(__file__).resolve().parents[2]
+
+
+def move_legacy_config(old: Path, new: Path) -> list[str]:
+    """Move LEGACY_CONFIG_ITEMS from the old config folder into the new one, each
+    only if the old one has it and the new one doesn't -- so it runs once in
+    effect, and a file the new folder already holds is never overwritten. Runs
+    before anything reads settings.ini (from_env resolves the config dir first).
+    Best-effort: an item that can't be moved stays, and is read from nowhere --
+    the defaults apply, as on a fresh install. Returns the names moved."""
+    moved = []
+    if not old.is_dir():
+        return moved
+    for name in LEGACY_CONFIG_ITEMS:
+        src, dst = old / name, new / name
+        if not src.exists() or dst.exists():
+            continue
+        try:
+            new.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dst))
+            moved.append(name)
+        except OSError:  # nosec B110  # left in the old folder; the app starts with defaults
+            pass
+    return moved
 
 
 def _installer_ini() -> Path:

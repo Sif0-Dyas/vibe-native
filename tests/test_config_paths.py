@@ -3,7 +3,7 @@
 The packaged build is installed into Program Files, which a normal user cannot
 write. These files used to sit next to the exe, so /db-path and every Genres-tab
 taxonomy edit failed for anyone who wasn't an administrator. They now live in
-%APPDATA%\\Vibe Identify, seeded once from the settings.ini the installer writes
+%APPDATA%\\Vibedentify, seeded once from the settings.ini the installer writes
 beside the exe.
 
 "Packaged" is simulated: sys.frozen is set, exe_dir() points at a temp "install
@@ -35,13 +35,13 @@ def _db_path_in(path):
 @pytest.fixture()
 def packaged(tmp_path, monkeypatch, use_settings):
     """A simulated installed build: returns (install folder, per-user config dir)."""
-    app = tmp_path / "Program Files" / "Vibe Identify"
+    app = tmp_path / "Program Files" / "Vibedentify"
     app.mkdir(parents=True)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(paths, "exe_dir", lambda: app)
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
     use_settings(config_dir=None, taxonomy=None)
-    return app, tmp_path / "Roaming" / "Vibe Identify"
+    return app, tmp_path / "Roaming" / "Vibedentify"
 
 
 def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch, use_settings):
@@ -53,11 +53,11 @@ def test_resolution_dev_packaged_and_override(tmp_path, monkeypatch, use_setting
     assert paths.settings_ini() == repo / "settings.ini"
     assert overlay.path() == repo / "taxonomy.json"
 
-    # packaged: %APPDATA%\Vibe Identify, never the exe's folder
+    # packaged: %APPDATA%\Vibedentify, never the exe's folder
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(paths, "exe_dir", lambda: tmp_path / "app")
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
-    cfg = tmp_path / "Roaming" / "Vibe Identify"
+    cfg = tmp_path / "Roaming" / "Vibedentify"
     assert paths.config_dir() == cfg
     assert paths.settings_ini() == cfg / "settings.ini"
     assert overlay.path() == cfg / "taxonomy.json"
@@ -199,3 +199,51 @@ def test_without_a_fixture_nothing_reaches_the_real_library(tmp_path):
     session_dir, db_path = Path(out[1]), Path(out[2])
     assert db_path.is_relative_to(session_dir), (db_path, session_dir)
     assert db_path != Path.home() / "genre_v2.db"
+
+
+# --- the move from the folder used before the rename ---------------------------
+
+
+def _legacy(tmp_path):
+    old = tmp_path / "Roaming" / paths.LEGACY_APP_DIR_NAME
+    _ini(old / "settings.ini", r"D:\Music\genre_v2.db")
+    (old / "taxonomy.json").write_text('{"placements": {}}', encoding="utf-8")
+    (old / "dev_token").write_text("tok", encoding="utf-8")
+    (old / "models").mkdir()
+    (old / "models" / "custom_head.npz").write_bytes(b"head")
+    (old / "unrelated.txt").write_text("not ours to move", encoding="utf-8")
+    return old
+
+
+def test_first_packaged_start_moves_the_old_config_folder(tmp_path, packaged):
+    from vibenative.settings import Settings
+
+    old = _legacy(tmp_path)
+    app, cfg = packaged
+    assert paths.config_dir() == cfg
+    for name in ("settings.ini", "taxonomy.json", "dev_token"):
+        assert (cfg / name).is_file() and not (old / name).exists(), name
+    assert (cfg / "models" / "custom_head.npz").read_bytes() == b"head"  # a trained head survives
+    assert (old / "unrelated.txt").is_file()  # only what is ours moves
+    # and it is read from its new home, before anything else looks
+    env = {"APPDATA": str(tmp_path / "Roaming")}
+    assert str(Settings.from_env(env).db_path) == r"D:\Music\genre_v2.db"
+
+
+def test_the_move_never_overwrites_the_new_folder(tmp_path, packaged):
+    old = _legacy(tmp_path)
+    app, cfg = packaged
+    _ini(cfg / "settings.ini", r"E:\Newer\genre_v2.db")
+    moved = paths.move_legacy_config(old, cfg)
+    assert "settings.ini" not in moved and "taxonomy.json" in moved
+    assert _db_path_in(cfg / "settings.ini") == r"E:\Newer\genre_v2.db"
+    assert (old / "settings.ini").is_file()  # left where it was, for the uninstaller
+    assert paths.move_legacy_config(old, cfg) == []  # nothing left to do: once in effect
+
+
+def test_a_dev_checkout_moves_nothing(tmp_path, monkeypatch, use_settings):
+    old = _legacy(tmp_path)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    use_settings(config_dir=None, taxonomy=None)
+    paths.config_dir()  # dev: the repo root
+    assert (old / "settings.ini").is_file()

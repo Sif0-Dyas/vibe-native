@@ -13,7 +13,7 @@ Run in this order; `build_exe.py` does all three for you.
 
 | script | what it does |
 |---|---|
-| `build_exe.py` | PyInstaller onedir build → `dist/Vibe Identify/`, then prepare, then smoke-test. **The one to run.** |
+| `build_exe.py` | PyInstaller onedir build → `dist/Vibedentify/`, then prepare, then smoke-test. **The one to run.** |
 | `prepare_dist.py` | Copies the deliberately-unbundled resources beside the exe: ONNX models, and an LGPL ffmpeg/ffprobe (vendored on first run) so redistribution is not bound by a GPL build. |
 | `smoke_dist.py` | Launches the built exe and checks it serves: version, bundled ffmpeg, ONNX providers, UI page, static assets. Runs with `PATH` cut back to the Windows system dirs, because a dev box with ffmpeg installed will otherwise pass a bundle that is broken everywhere else. |
 | `build_installer.py` | Inno Setup installer from the packaged folder. |

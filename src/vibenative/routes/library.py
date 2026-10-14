@@ -168,7 +168,7 @@ def reveal_route():
 @bp.post("/db-path")
 def db_path_route():
     """Record a new library-database location in the per-user settings.ini
-    (``paths.settings_ini``: ``%APPDATA%\\Vibe Identify`` in a packaged build --
+    (``paths.settings_ini``: ``%APPDATA%\\Vibedentify`` in a packaged build --
     never the installer's copy beside the exe, which Program Files makes read-only).
 
     Only writes the setting -- it does not move the database or re-point the
