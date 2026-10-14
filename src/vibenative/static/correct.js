@@ -101,6 +101,23 @@ function tabComplete(input, complete){
   });
 }
 
+/* Run `repaint` without moving `el` on screen. The host repaints what sits above
+   the panel after every change -- an adjusted read lists each of its genres, so
+   the row's genre summary can gain a line -- and that pushed the panel, and the
+   +/- button under a still cursor, down one row between two clicks. Whatever
+   scrolls (the page, the popup) scrolls back by the same amount. */
+function holdStill(el, repaint){
+  const before = el.getBoundingClientRect().top;
+  repaint();
+  const shift = el.getBoundingClientRect().top - before;
+  if (Math.abs(shift) < 1) return;
+  for (let p = el.parentElement; p; p = p.parentElement){
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight){ p.scrollTop += shift; return; }
+  }
+  window.scrollBy(0, shift);
+}
+
 /* ---- Balance: each genre carries a step you raise or lower -----------------
    "This is a VERY house track" and "that Tech Trance is a misread" are both
    sayable without flattening the rest to zero. The step is what's stored, never
@@ -111,6 +128,10 @@ function wireBalance(sec, ctx){
   const addIn = sec.querySelector('.adj-add-in');
   let state = null;      // {steps, drops, base, adjusted, max_step, words}
   let saving = null;     // in-flight POST, so rapid presses coalesce in order
+  // The row order, fixed when the panel opens. Sorting by share after every
+  // press slid a different genre under the cursor between two clicks; the
+  // percentages move, the rows don't, and reopening re-sorts.
+  let order = [];
 
   const wordFor = st => (state && state.words && state.words[String(st)]) || 'as read';
   const edited = () => !!state && (Object.keys(state.steps || {}).length > 0 || (state.drops || []).length > 0);
@@ -125,8 +146,9 @@ function wireBalance(sec, ctx){
     // screen anyway, or the press that removed it leaves nothing to undo it with.
     for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
     for (const g of drops) shown.delete(g);          // removed: listed below instead
+    for (const g of shown.keys()) if (!order.includes(g)) order.push(g);   // new ones go last
     const max = state.max_step || 3;
-    const rowsHtml = [...shown.entries()].map(([style, score]) => {
+    const rowsHtml = order.filter(g => shown.has(g)).map(g => [g, shown.get(g)]).map(([style, score]) => {
       const step = (state.steps || {})[style] || 0;
       const pct = Math.round((score || 0) * 100);
       return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
@@ -216,7 +238,7 @@ function wireBalance(sec, ctx){
   tabComplete(addIn, ctx.complete);
 
   return {
-    set(s){ state = s; render(); },
+    set(s){ state = s; order = []; render(); },      // on open: sorted by share, once
     edited,
     summary(){
       if (!state) return '';
@@ -332,7 +354,7 @@ function wireCorrectPanel(btn, box, opts){
     if (!j || j.dominant_source === undefined) return;
     override = j.dominant_source === 'override' ? j.dominant_style : null;
     paintHeads();
-    call('onIdentity', j);
+    holdStill(box, () => call('onIdentity', j));
     paintCands();                          // the one-click choices follow the read
     // Once a burst of Balance presses settles, not per press: a reload is the
     // whole library.
@@ -391,7 +413,8 @@ function wireCorrectPanel(btn, box, opts){
       wholeIn.value = genre;
       identity(j);
       const filed = await call('afterWhole', genre, j);
-      say(whole, (j.trained || filed) ? `set · training copy filed under ${genre}` : 'set');
+      say(whole, ((j.trained || filed) ? `set · training copy filed under ${genre}` : 'set') +
+        (j.previous_copy_removed ? ` · ${j.replaced}'s copy removed` : ''));
       paintCands();
     } catch(err){ say(whole, err.message, true); }
   }

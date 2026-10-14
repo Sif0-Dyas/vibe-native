@@ -245,6 +245,11 @@ XSS: `escapeHtml` is applied consistently; no finding. The pywebview JS API expo
 - [ ] `windows-latest` CI job running `tools/smoke_dist.py`
 - [ ] Code signing
 - [ ] Distinguish an unmounted drive from a missing file in the Library tab, `--probe` and `/label`
+- [x] UX: one Correct panel for a track's genre, the same on every Analyzer row and in the Map popup (`static/correct.js`)
+  - Three sections, each with its current value, a Reset and a one-line hint: **Whole track** (one genre, replaces the read), **Sections** (a genre for a time range, several allowed, drawn on the waveform; the popup draws its own strip), **Balance** (nudge several genres; the read stays multi-genre). It replaced ⚖ adjust, ✎ override and the Shift-drag / Shift-click waveform gestures.
+  - `DELETE /api/v1/override/<h>` (new) clears the override, recomputes `tracks.style` and deletes the training copy it filed. Switching the override to another genre deletes the old genre's copy too. A same-named file that isn't the track's audio stays, as does a trainset archive.
+  - Nothing moves under the cursor while you press: Balance rows hold their order while the panel is open (reopening re-sorts). When a change repaints content above the panel (an adjusted read lists every genre, so the row's summary can gain a line), the page or popup scrolls back by the same amount. A section's ✕ removes it, and its clip, without a confirmation.
+  - USAGE.md uses the panel's hint text word for word (`tests/test_correct_panel.py`). Every correction reloads the Library list.
 - [ ] Remaining Legacy table rows; `docs/history/`
 - [ ] Installer: make `installer.iss` agree with the per-user `settings.ini` (`%APPDATA%\Vibe Identify\`)
   - A reinstall writes its database-location choice to `{app}\settings.ini`, which the app ignores once the per-user copy exists.

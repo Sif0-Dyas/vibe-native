@@ -303,6 +303,24 @@ def test_clearing_an_override_removes_its_training_copy_only(client, tmp_path, s
     assert other.is_file()
 
 
+def test_switching_an_override_removes_the_old_genres_copy(client, tmp_path, settings):
+    # Riddim -> Halftime says Riddim was wrong: its clip must not survive the switch.
+    h, _ = _batch_one(client, tmp_path, name="switch.wav")
+    client.post(f"/api/v1/override/{h}", json={"genre": "Riddim"})
+    riddim = settings.training / "Riddim" / "switch.wav"
+    assert riddim.is_file()
+
+    body = client.post(f"/api/v1/override/{h}", json={"genre": "Halftime"}).get_json()
+    assert body["replaced"] == "Riddim" and body["previous_copy_removed"] is True
+    assert not riddim.exists()
+    assert (settings.training / "Halftime" / "switch.wav").is_file()
+
+    # A respelling of the same genre files into the same folder: nothing removed.
+    body = client.post(f"/api/v1/override/{h}", json={"genre": "halftime"}).get_json()
+    assert body["previous_copy_removed"] is False
+    assert (settings.training / "Halftime" / "switch.wav").is_file()
+
+
 def test_clearing_an_override_removes_a_dropped_tracks_upload(client, settings):
     # A dropped track has no server-side path: the Analyzer files its training
     # copy through /save_training's upload branch instead.

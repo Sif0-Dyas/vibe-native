@@ -222,7 +222,11 @@ def db_path_route():
 def override_route(h):
     """Manually set a track's genre. Persists into the cached analysis (so the
     map, list and audit reflect it and it survives a reload), and files the audio
-    under ~/genre_training/<genre>/ when a server-side file is available."""
+    under ~/genre_training/<genre>/ when a server-side file is available.
+
+    Replacing one override with another deletes the copy the old one filed, as
+    DELETE /override does: a switch says the old label was wrong, and a wrong
+    label left in the training folder would keep teaching the head."""
     import shutil
 
     data = request.get_json(silent=True) or {}
@@ -233,8 +237,11 @@ def override_route(h):
     if not safe:
         return jsonify({"error": GENRE_NEEDS_ALNUM}), 400
 
+    replaced = {}
+
     def set_override(payload):
         p = json.loads(payload)
+        replaced["genre"] = p.get("override")
         p["override"] = genre
         return p
 
@@ -255,7 +262,23 @@ def override_route(h):
             if not dest.exists():
                 shutil.copy2(src, dest)
             trained = True
-    return jsonify({"ok": True, "genre": genre, "trained": trained, **identity_fields(p)})
+    # Only a different folder: "riddim" -> "Riddim" files into the same one (folder
+    # names ignore case on Windows), and removing it there would take the copy
+    # just made.
+    previous = replaced["genre"]
+    previous_removed = False
+    if previous and (genre_folder(previous) or "").casefold() != safe.casefold():
+        previous_removed = _remove_override_copy(h, previous, filepath)
+    return jsonify(
+        {
+            "ok": True,
+            "genre": genre,
+            "trained": trained,
+            "replaced": previous,
+            "previous_copy_removed": previous_removed,
+            **identity_fields(p),
+        }
+    )
 
 
 @bp.delete("/override/<h>")
