@@ -17,6 +17,7 @@ from ..repo.tracks import cosine, forget_track, track_embedding
 from ..settings import current
 from ..style import identity_fields
 from ._shared import _artist_from, bp
+from .training import _safe_upload_name
 
 
 @bp.delete("/tracks/<h>")
@@ -255,6 +256,60 @@ def override_route(h):
                 shutil.copy2(src, dest)
             trained = True
     return jsonify({"ok": True, "genre": genre, "trained": trained, **identity_fields(p)})
+
+
+@bp.delete("/override/<h>")
+def override_clear(h):
+    """Undo a whole-track override: drop ``payload["override"]`` (the style column
+    is recomputed in the same write, and library_rev moves with it, so the map
+    rebuilds), and delete the training copy the override filed -- the usual
+    reason to reset one is that it was wrong, and a wrong label left in the
+    training folder would keep teaching the head. A copy already archived into
+    a trainset snapshot is a record, not the live set, and is left alone."""
+    cleared = {}
+
+    def clear(payload):
+        p = json.loads(payload) if payload else {}
+        cleared["genre"] = p.pop("override", None)
+        return p
+
+    try:
+        filepath, p = tracks_repo.update_payload(h, clear)
+    except NotFound:
+        return jsonify({"error": "track not in database"}), 404
+    genre = cleared["genre"]
+    # disk I/O stays outside the DB lock
+    removed = _remove_override_copy(h, genre, filepath) if genre else False
+    return jsonify({"ok": True, "cleared": genre, "copy_removed": removed, **identity_fields(p)})
+
+
+def _remove_override_copy(h, genre, filepath):
+    """Best-effort delete of the training copy /override (or, for a dropped
+    track, the /save_training upload after it) filed for ``genre``. The name is
+    the one those routes chose. A same-named file whose size differs from the
+    track's source is someone else's, and stays. True if a file was removed."""
+    safe = genre_folder(genre)
+    if not safe:
+        return False
+    folder = current().training_root / safe
+    src = Path(filepath) if filepath else None
+    if src:
+        candidates = [folder / src.name]
+    else:
+        row = tracks_repo.file_info(h)
+        name = (row[1] if row else "") or ""
+        candidates = [folder / _safe_upload_name(name, Path(name).suffix.lower())] if name else []
+    for dest in candidates:
+        try:
+            if not dest.is_file():
+                continue
+            if src and src.is_file() and src.stat().st_size != dest.stat().st_size:
+                continue
+            dest.unlink()
+            return True
+        except OSError:
+            pass
+    return False
 
 
 @bp.post("/key/<h>")

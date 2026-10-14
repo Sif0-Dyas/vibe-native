@@ -248,6 +248,80 @@ def test_override_sets_genre(client):
     assert client.post(f"/api/v1/override/{h}", json={}).status_code == 400  # empty rejected
 
 
+def test_clearing_an_override_restores_the_read(client):
+    from vibenative.repo.tracks import library_rev
+
+    data = {"file": (io.BytesIO(_tiny_wav_bytes()), "clr.wav")}
+    h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
+        "hash"
+    ]
+
+    def style():
+        return next(n for n in client.get("/api/v1/map").get_json()["nodes"] if n["hash"] == h)[
+            "style"
+        ]
+
+    model_read = style()
+    client.post(f"/api/v1/override/{h}", json={"genre": "Riddim"})
+    assert style() == "Riddim"
+    rev = library_rev()
+
+    r = client.delete(f"/api/v1/override/{h}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["cleared"] == "Riddim"
+    assert body["dominant_source"] != "override" and body["dominant_style"] == model_read
+    assert style() == model_read  # the style column and the map follow
+    assert library_rev() > rev  # ...because the write moved the revision
+
+    # Nothing left to clear is not an error; an unknown track is.
+    again = client.delete(f"/api/v1/override/{h}").get_json()
+    assert again["cleared"] is None and again["copy_removed"] is False
+    assert client.delete(f"/api/v1/override/{'f' * 40}").status_code == 404
+
+
+def test_clearing_an_override_removes_its_training_copy_only(client, tmp_path, settings):
+    h, music = _batch_one(client, tmp_path, name="wrong.wav")
+    assert client.post(f"/api/v1/override/{h}", json={"genre": "Riddim"}).get_json()["trained"]
+    copy = settings.training / "Riddim" / "wrong.wav"
+    assert copy.is_file()
+    # An archived trainset is a record, not the live set: it must survive.
+    archived = settings.training / "_archive" / "Riddim-20260101-000000" / "wrong.wav"
+    archived.parent.mkdir(parents=True)
+    shutil.copy2(copy, archived)
+
+    body = client.delete(f"/api/v1/override/{h}").get_json()
+    assert body["copy_removed"] is True
+    assert not copy.exists()
+    assert archived.is_file()
+
+    # A same-named file that is not this track's audio is someone else's: kept.
+    client.post(f"/api/v1/override/{h}", json={"genre": "Tearout"})
+    other = settings.training / "Tearout" / "wrong.wav"
+    other.write_bytes(b"not the same audio")
+    assert client.delete(f"/api/v1/override/{h}").get_json()["copy_removed"] is False
+    assert other.is_file()
+
+
+def test_clearing_an_override_removes_a_dropped_tracks_upload(client, settings):
+    # A dropped track has no server-side path: the Analyzer files its training
+    # copy through /save_training's upload branch instead.
+    wav = _tiny_wav_bytes()
+    data = {"file": (io.BytesIO(wav), "dropped.wav")}
+    h = client.post("/api/v1/analyze", data=data, content_type="multipart/form-data").get_json()[
+        "hash"
+    ]
+    assert not client.post(f"/api/v1/override/{h}", json={"genre": "Riddim"}).get_json()["trained"]
+    up = {"genre": "Riddim", "file": (io.BytesIO(wav), "dropped.wav")}
+    r = client.post("/api/v1/save_training", data=up, content_type="multipart/form-data")
+    assert r.status_code == 200
+    copy = settings.training / "Riddim" / "dropped.wav"
+    assert copy.is_file()
+
+    assert client.delete(f"/api/v1/override/{h}").get_json()["copy_removed"] is True
+    assert not copy.exists()
+
+
 def test_guide_route_serves_markdown(client):
     r = client.get("/api/v1/guide")
     assert r.status_code == 200

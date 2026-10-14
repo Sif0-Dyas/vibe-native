@@ -292,34 +292,6 @@ input[type=file]{display:none}
 }
 .keymenu-clear:hover{ color:var(--text,#dfe7ee); }
 .keymenu-msg{ font-size:10px; color:var(--dim); min-height:12px; margin-top:4px; }
-.segmenu{
-  position:absolute; top:64px; width:220px; z-index:6;
-  background:var(--panel-2); border:1px solid var(--line); border-radius:7px;
-  padding:8px 9px; box-shadow:0 6px 18px rgba(0,0,0,.45);
-}
-.segmenu-lbl{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); margin-bottom:6px; }
-.segmenu-lbl b{ color:var(--text); }
-.segmenu-row{ display:flex; gap:5px; }
-.segmenu-genre{
-  flex:1; min-width:0; font-family:'JetBrains Mono',monospace; font-size:11px;
-  padding:4px 7px; border-radius:5px; background:var(--panel); border:1px solid var(--line); color:var(--text);
-}
-.segmenu-row button{
-  font-family:'JetBrains Mono',monospace; font-size:11px; padding:4px 8px; border-radius:5px;
-  background:var(--panel); border:1px solid var(--line); color:var(--dim); cursor:pointer; flex:none;
-}
-.segmenu-apply:hover{ color:var(--text); border-color:var(--accent-a); }
-.segmenu-cancel:hover{ color:var(--text); border-color:var(--dim); }
-.segmenu-row button:disabled{ opacity:.5; cursor:default; }
-.segmenu-msg{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); margin-top:5px; min-height:1px; line-height:1.4; }
-/* remove-override confirmation (destructive) */
-.segmenu-warn{ font-family:'JetBrains Mono',monospace; font-size:10px; color:#ffb03b; margin-bottom:6px; line-height:1.4; }
-.segmenu-remove{
-  font-family:'JetBrains Mono',monospace; font-size:11px; padding:4px 10px; border-radius:5px;
-  background:var(--panel); border:1px solid var(--err); color:var(--err); cursor:pointer; flex:none;
-}
-.segmenu-remove:hover{ background:var(--err); color:#fff; }
-.segmenu-remove:disabled{ opacity:.5; cursor:default; }
 .wavehint .restag{color:var(--text)}
 .finebtn{
   font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--trance);
@@ -352,34 +324,6 @@ input[type=file]{display:none}
 }
 .row-flag:hover{ text-decoration:underline; }
 .row-flag b{ color:#ffcf8a; }
-.override-editor{
-  display:flex; align-items:center; gap:6px; margin-top:8px;
-  padding:7px 8px; background:var(--panel); border:1px solid var(--line);
-  border-radius:var(--r-sm);
-}
-.override-editor input{
-  flex:1; background:var(--panel-2); border:1px solid var(--line);
-  border-radius:4px; color:var(--text); font-family:'JetBrains Mono',monospace;
-  font-size:11px; padding:4px 8px; outline:none;
-}
-.override-editor input:focus{border-color:var(--accent-a)}
-.override-editor button{
-  font-family:'JetBrains Mono',monospace; font-size:10px;
-  padding:4px 10px; border-radius:4px; cursor:pointer; white-space:nowrap;
-}
-.ovr-save{
-  background:var(--accent-a); color:var(--on-accent); border:none; font-weight:600;
-}
-.ovr-cancel{
-  background:none; border:1px solid var(--line); color:var(--dim);
-}
-.ovr-cancel:hover{color:var(--text)}
-.train-badge{
-  font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--other);
-  letter-spacing:.08em; text-transform:uppercase; margin-top:4px;
-  display:none;
-}
-.train-badge.show{display:block}
 /* 🔎 external metadata lookup panel */
 .lookup-btn:hover{ color:var(--trance); border-color:var(--trance); }
 .lookup-panel{
@@ -733,7 +677,7 @@ header h1 em{
 }
 /* --- buttons: raised bevels, pressed = inset --- */
 #export, #clear, #batch-btn, #vibe-btn, #an-more-btn, .sib-btn, .browse,
-.override-btn, .addvibe-btn, .tagchip, .ovr-save, .ovr-cancel,
+.override-btn, .addvibe-btn, .tagchip,
 .vibe-row button, .vibe-create button, .sib-add, .sib-close{
   border:2px solid;
   border-top-color:var(--bev-lt); border-left-color:var(--bev-lt);
@@ -1399,23 +1343,14 @@ body.view-options .lensbar{ display:none; }
 /* omit / forget a track from the map popup */
 .pop-omit-row{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line); display:flex; gap:6px; }
 .pop-omit-row[hidden]{ display:none; }
-.pop-adjust, .pop-override, .pop-omit{
+.pop-correct, .pop-omit{
   flex:1; background:none; border:1px solid var(--line); border-radius:7px;
   color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:10.5px;
   padding:7px; cursor:pointer;
 }
-.pop-adjust:hover, .pop-override:hover{ color:var(--text); border-color:var(--accent-a); background:rgba(86,180,233,.10); }
+.pop-correct:hover{ color:var(--text); border-color:var(--accent-a); background:rgba(86,180,233,.10); }
 .pop-omit:hover{ color:var(--err); border-color:var(--err); background:rgba(229,86,79,.10); }
-/* inline override editor */
-/* Override panel: the track's own runner-up reads first (one click each), then
-   a free-text field for anything the model never proposed. */
-.pop-ovr{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line);
-  display:flex; flex-direction:column; gap:7px; }
-.pop-ovr[hidden]{ display:none; }
-.ovr-typed{ display:flex; gap:6px; }
 .ovr-h{ font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
-.ovr-cands{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
-.ovr-cands .ovr-h{ width:100%; margin-bottom:1px; }
 .ovr-cand{
   display:inline-flex; align-items:center; gap:5px; cursor:pointer;
   font-size:11px; padding:3px 8px; border-radius:11px;
@@ -1425,25 +1360,7 @@ body.view-options .lensbar{ display:none; }
 .ovr-cand i{ font-style:normal; font-family:'JetBrains Mono',monospace;
   font-size:9px; color:var(--dim); }
 .ovr-cand:hover i{ color:var(--accent-a); }
-.ovr-hint{ font-size:9px; color:var(--dimmer); }
-.pop-ovr-in{
-  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
-  color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 9px;
-}
-.pop-ovr-in:focus{ outline:none; border-color:var(--accent-a); }
-.pop-ovr-save, .pop-ovr-cancel{
-  background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text);
-  font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; cursor:pointer;
-}
-.pop-ovr-save:hover{ border-color:var(--accent-a); color:var(--accent-a); }
-.pop-ovr-cancel:hover{ border-color:var(--dimmer); }
 
-/* Adjust panel: per-genre +/- steps. An override replaces the read; this bends
-   it, so the layout is a list of what the model heard with a nudge on each --
-   the bar shows the resulting share so a press has visible consequences. */
-.pop-adj{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line);
-  display:flex; flex-direction:column; gap:7px; }
-.pop-adj[hidden]{ display:none; }
 .adj-rows{ display:flex; flex-direction:column; gap:4px; }
 .adj-row{ display:grid; grid-template-columns:auto auto 1fr 30px auto; gap:5px;
   align-items:center; font-size:11px; }
@@ -1475,17 +1392,6 @@ body.view-options .lensbar{ display:none; }
 .adj-row.moved .adj-meter em{ color:var(--accent-a); }
 .adj-pct{ font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--dim);
   text-align:right; }
-.adj-add-in{
-  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
-  color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 9px;
-}
-.adj-add-in:focus{ outline:none; border-color:var(--accent-a); }
-.adj-add, .adj-close{
-  background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text);
-  font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; cursor:pointer;
-}
-.adj-add:hover{ border-color:var(--accent-a); color:var(--accent-a); }
-.adj-close:hover{ border-color:var(--dimmer); }
 
 /* Remove a genre outright. Deliberately quiet until hovered -- it sits beside
    the -/+ pair on every row, and a destructive-looking button repeated down the
@@ -1512,12 +1418,67 @@ body.view-options .lensbar{ display:none; }
 .adj-restore:hover{ border-style:solid; border-color:var(--accent-a);
   color:var(--accent-a); text-decoration:none; }
 
+/* The Correct panel (correct.js): Whole track, Sections, Balance, one under the
+   other, each with what it holds now, a Reset, and a line saying what it does.
+   The same panel in the Map popup (.pop-cor) and under an Analyzer row (.row-cor). */
+.pop-cor{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line); }
+.cor[hidden]{ display:none; }
+.cor{ display:flex; flex-direction:column; gap:12px; }
+.cor-sec{ display:flex; flex-direction:column; gap:6px; }
+.cor-sec + .cor-sec{ padding-top:10px; border-top:1px dashed var(--line); }
+.cor-head{ display:flex; align-items:baseline; gap:8px; }
+.cor-title{ font-size:11px; font-weight:600; color:var(--text); letter-spacing:.02em; }
+.cor-now{ flex:1; min-width:0; font-family:'JetBrains Mono',monospace; font-size:10px;
+  color:var(--accent-a); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cor-hint{ font-size:10px; line-height:1.4; color:var(--dim); }
+.cor-note{ font-size:10px; line-height:1.4; color:#ffb03b; }
+.cor-note[hidden]{ display:none; }
+.cor-line{ display:flex; gap:6px; align-items:center; }
+.cor-line[hidden]{ display:none; }
+/* "1:15-1:55 as [genre] Apply Cancel" in a 320px popup: let the box take its own line. */
+.cor-seg-new{ flex-wrap:wrap; }
+.cor-seg-new .cor-in{ flex:1 1 140px; }
+.cor-cands{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.cor-cands:empty{ display:none; }
+.cor-cands .ovr-h{ width:100%; margin-bottom:1px; }
+.cor-in{
+  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 9px;
+}
+.cor-in:focus{ outline:none; border-color:var(--accent-a); }
+.cor-btn, .cor-reset{
+  background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text);
+  font-family:'JetBrains Mono',monospace; font-size:10.5px; padding:6px 10px; cursor:pointer;
+  white-space:nowrap;
+}
+.cor-btn:hover:not(:disabled){ border-color:var(--accent-a); color:var(--accent-a); }
+.cor-btn:disabled, .cor-reset:disabled{ opacity:.35; cursor:default; }
+.cor-reset{ padding:2px 8px; font-size:9.5px; color:var(--dim); }
+.cor-reset:hover:not(:disabled){ border-color:var(--err); color:var(--err); }
+.cor-range{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text); white-space:nowrap; }
+.cor-msg{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); line-height:1.4; }
+.cor-msg:empty{ display:none; }
+.cor-msg.err{ color:var(--err); }
+.cor-seglist{ display:flex; flex-direction:column; gap:3px; }
+.cor-seglist:empty{ display:none; }
+.cor-seg{ display:flex; align-items:center; gap:8px; font-size:11px;
+  padding:3px 4px 3px 7px; border-radius:5px; background:var(--ov-2); }
+.cor-seg-t{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); }
+.cor-seg b{ flex:1; font-weight:500; }
+.cor-seg-x{ width:19px; height:19px; padding:0; line-height:1; cursor:pointer; background:none;
+  border:1px solid transparent; border-radius:5px; color:var(--dimmer); font-size:10px; }
+.cor-seg-x:hover{ color:var(--err); border-color:var(--err); background:rgba(229,86,79,.10); }
+.cor-strip{ width:100%; height:44px; border-radius:5px; background:var(--ov-2); display:block; }
+.cor-strip[hidden]{ display:none; }
+.cor-strip.drawing, canvas.drawing{ cursor:crosshair; outline:1px dashed var(--accent-a); outline-offset:1px; }
+.cor-foot{ display:flex; justify-content:flex-end; }
+
 /* The same panel inside an Analyzer row. The map's copy sits in a 320px popup;
    the genre column here is far wider, so cap it -- across a full-width row the
    +/- button and the bar it moves end up at opposite sides of the screen. */
-.row-adj{ max-width:440px; margin-top:10px; }
-.row-adj .adj-meter{ padding:4px 7px; }
-.adj-btn{ vertical-align:middle; }
+.row-cor{ max-width:440px; margin-top:10px; padding:10px; border:1px solid var(--line);
+  border-radius:var(--r-sm, 6px); background:var(--panel); }
+.row-cor .adj-meter{ padding:4px 7px; }
 
 /* The genre cell is a rendered body plus a fixed strip of controls; the body is
    what re-renders. No box of its own -- it is a seam, not a section. */
@@ -1688,7 +1649,7 @@ header .sub{ color:var(--dim); text-shadow:none; }
 
 /* --- buttons: flat pills with a cyan hover glow (was bevel + Silkscreen) --- */
 #export, #clear, #batch-btn, #vibe-btn, #an-more-btn, .sib-btn, .browse,
-.override-btn, .addvibe-btn, .tagchip, .ovr-save, .ovr-cancel,
+.override-btn, .addvibe-btn, .tagchip,
 .vibe-row button, .vibe-create button, .sib-add, .sib-close{
   border:1px solid var(--line);
   border-top-color:var(--line); border-left-color:var(--line);

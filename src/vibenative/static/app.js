@@ -11,6 +11,7 @@
 import { hooks } from './hooks.js';
 import { FSH, HASH_FILES, OBJ_URLS, PLAYER, attachPlayer } from './player.js';
 import { renderLookup, renderTags, renderVibeMatches } from './panels.js';
+import { wireCorrectPanel } from './correct.js';
 let vibeLoadGuide; // assigned below, where the file sets it up
 
 /* ---- diagnostics: ship frontend breadcrumbs to the backend log ------------
@@ -886,11 +887,12 @@ function finishRow(row, data, file){
         (shown ? `<span class="sw" style="background:${swatch}"></span>${escapeHtml(text)}` : '');
     }
 
-    // ---- shift-drag to override a time RANGE as a genre (segment override) ----
-    // A modifier keeps this from fighting the hover magnifier / click-to-play:
-    // shift-drag selects a span; a plain drag still magnifies. See the guide.
+    // ---- marking a section for the Correct panel ----
+    // "＋ add section" arms the waveform for ONE plain drag (row._drawRange); an
+    // unarmed waveform magnifies on hover and seeks on click, as always.
     const fracFromX = cx => { const r = c.getBoundingClientRect(); return Math.max(0, Math.min(1, (cx - r.left) / r.width)); };
-    let sel = null;   // {a, b} fractions while a shift-drag is in progress
+    let sel = null;     // {a, b} fractions while the armed drag is in progress
+    let armed = null;   // the panel's callback while armed
 
     function paintSel(){
       redraw(null);
@@ -902,118 +904,34 @@ function finishRow(row, data, file){
       ctx.fillRect(x0, 0, Math.max(1, x1 - x0), c.clientHeight || 60);
       ctx.globalAlpha = 1;
     }
+    const disarm = () => { armed = null; sel = null; c.classList.remove('drawing'); redraw(null); };
 
     c.addEventListener('pointermove', e => {
       if (sel){ sel.b = fracFromX(e.clientX); paintSel(); return; }
       showAt(e.clientX);
     });
     c.addEventListener('pointerdown', e => {
-      if (e.shiftKey){                                // begin a range selection
+      c.setPointerCapture(e.pointerId);
+      if (armed){                                     // begin the section's range
         e.preventDefault();
-        closeSegMenu();
-        c.setPointerCapture(e.pointerId);
         const f = fracFromX(e.clientX);
         sel = {a: f, b: f};
         paintSel();
-        return;                                       // don't magnify or start playback
+        return;                                       // the player skips a 'drawing' canvas too
       }
-      c.setPointerCapture(e.pointerId); showAt(e.clientX);
+      showAt(e.clientX);
     });
     c.addEventListener('pointerup', e => {
-      if (!sel) return;
+      if (!sel || !armed) return;
       sel.b = fracFromX(e.clientX);
-      const a = Math.min(sel.a, sel.b), b = Math.max(sel.a, sel.b);
-      sel = null;
-      redraw(null);
-      if ((b - a) * dur < 0.5){                       // a shift-CLICK (not a drag)...
-        if (dur){                                     // ...on an existing override -> offer to remove it
-          const o = segOverrides.find(x => x.id != null && a >= x.start_s / dur && a < x.end_s / dur);
-          if (o) openRemoveMenu(o);
-        }
-        return;
-      }
-      openSegMenu(a, b);
+      const a = Math.min(sel.a, sel.b), b = Math.max(sel.a, sel.b), done = armed;
+      disarm();
+      done((b - a) * dur < 0.5 ? null : a * dur, b * dur);   // a click is not a range
     });
     c.addEventListener('pointerleave', () => { if (sel) return; tip.style.display = 'none'; redraw(null); });
 
-    // ---- floating "override section as [genre]" menu ----
-    let segMenu = null;
-    function closeSegMenu(){ if (segMenu){ segMenu.remove(); segMenu = null; } }
-    function openSegMenu(a, b){
-      closeSegMenu();
-      const s = a * dur, e = b * dur;
-      segMenu = document.createElement('div');
-      segMenu.className = 'segmenu';
-      segMenu.innerHTML =
-        `<div class="segmenu-lbl">override <b>${fmtTime(s)}\u2013${fmtTime(e)}</b> as</div>` +
-        `<div class="segmenu-row"><input class="segmenu-genre" type="text" autocomplete="off" spellcheck="false" placeholder="genre (e.g. Riddim)">` +
-        `<button class="segmenu-apply" type="button">apply</button>` +
-        `<button class="segmenu-cancel" type="button" title="cancel">\u2715</button></div>` +
-        `<div class="segmenu-msg"></div>`;
-      const rect = c.getBoundingClientRect();
-      const mid = ((a + b) / 2) * rect.width;
-      segMenu.style.left = Math.max(4, Math.min(rect.width - 220, mid - 110)) + 'px';
-      container.appendChild(segMenu);
-      const input = segMenu.querySelector('.segmenu-genre');
-      const msg = segMenu.querySelector('.segmenu-msg');
-      const apply = segMenu.querySelector('.segmenu-apply');
-      input.focus();
-      segMenu.querySelector('.segmenu-cancel').addEventListener('click', closeSegMenu);
-      async function submit(){
-        const genre = input.value.trim();
-        if (!genre){ input.focus(); return; }
-        if (!data.hash){ msg.textContent = 'this track has no hash yet'; return; }
-        apply.disabled = true; msg.textContent = 'extracting section\u2026';
-        let j;
-        try {
-          const resp = await fetch('/api/v1/override_segment', {method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({hash: data.hash, start: s, end: e, genre})});
-          j = await resp.json();
-          if (!resp.ok){ msg.textContent = j.error || 'failed'; apply.disabled = false; return; }
-        } catch(_){ msg.textContent = 'request failed'; apply.disabled = false; return; }
-        // persist locally + repaint the span in the manual-override style
-        segOverrides.push({id: j.id, start_s: s, end_s: e, genre});
-        redraw(null);
-        if (renderGenreCell) renderGenreCell();
-        closeSegMenu();
-      }
-      apply.addEventListener('click', submit);
-      input.addEventListener('keydown', ev => { if (ev.key === 'Enter') submit(); if (ev.key === 'Escape') closeSegMenu(); });
-    }
-
-    // ---- remove an existing override: a two-step CONFIRMATION wall (shift-click
-    // the span, then click the red Remove). Deletes the record AND its clip. ----
-    function openRemoveMenu(o){
-      closeSegMenu();
-      segMenu = document.createElement('div');
-      segMenu.className = 'segmenu';
-      segMenu.innerHTML =
-        `<div class="segmenu-lbl">remove override <b>${escapeHtml(o.genre)}</b> ` +
-          `${fmtTime(o.start_s)}–${fmtTime(o.end_s)}?</div>` +
-        `<div class="segmenu-warn">this also deletes the extracted training clip.</div>` +
-        `<div class="segmenu-row"><button class="segmenu-remove" type="button">remove</button>` +
-        `<button class="segmenu-cancel" type="button" title="keep it">cancel</button></div>` +
-        `<div class="segmenu-msg"></div>`;
-      const rect = c.getBoundingClientRect();
-      const mid = dur ? ((o.start_s + o.end_s) / 2 / dur) * rect.width : rect.width / 2;
-      segMenu.style.left = Math.max(4, Math.min(rect.width - 220, mid - 110)) + 'px';
-      container.appendChild(segMenu);
-      const msg = segMenu.querySelector('.segmenu-msg');
-      const rm = segMenu.querySelector('.segmenu-remove');
-      segMenu.querySelector('.segmenu-cancel').addEventListener('click', closeSegMenu);
-      rm.addEventListener('click', async () => {
-        rm.disabled = true; msg.textContent = 'removing…';
-        try {
-          const resp = await fetch(`/api/v1/override_segment/${o.id}`, {method:'DELETE'});
-          const j = await resp.json();
-          if (!resp.ok){ msg.textContent = j.error || 'failed'; rm.disabled = false; return; }
-        } catch(_){ msg.textContent = 'request failed'; rm.disabled = false; return; }
-        segOverrides = segOverrides.filter(x => x.id !== o.id);
-        redraw(null);
-        if (renderGenreCell) renderGenreCell();
-        closeSegMenu();
-      });
-    }
+    row._drawRange = done => { armed = done; c.classList.add('drawing'); return disarm; };
+    row._setSections = list => { segOverrides = list.slice(); redraw(null); if (renderGenreCell) renderGenreCell(); };
 
     /* fine-detail: re-analyze just this track at ~0.5s resolution on demand */
     fineBtn.addEventListener('click', async () => {
@@ -1204,30 +1122,18 @@ function finishRow(row, data, file){
     });
   }
 
-  /* ---- adjust: bend the blend instead of replacing it ----
-     An override answers "what is this track" with one word and throws away
-     everything the model got right. This nudges each genre's share up or down
-     and renormalises, so "this is a VERY house track" and "that Tech Trance is a
-     misread" are both sayable without flattening the rest to zero. Same endpoint
-     and the same stored steps the map's popup writes, so a track adjusted on one
-     screen reads identically on the other. */
-  const adjBtn = document.createElement('button');
-  adjBtn.className = 'override-btn adj-btn';
-  adjBtn.textContent = '⚖ adjust';
-  adjBtn.title = 'nudge how much of each genre this track is — keeps the rest of the read';
-  genreCell.appendChild(adjBtn);
+  /* ---- correct: whole track, sections, balance (correct.js) ----
+     The same panel the Map popup opens, on the same endpoints, so a track
+     corrected on either screen reads the same on both. */
+  const correctBtn = document.createElement('button');
+  correctBtn.className = 'override-btn correct-btn';
+  correctBtn.textContent = '✎ correct';
+  correctBtn.title = 'correct the genre: the whole track, sections of it, or the balance of its read';
+  genreCell.appendChild(correctBtn);
 
-  const adjBox = document.createElement('div');
-  adjBox.className = 'pop-adj row-adj';
-  adjBox.hidden = true;
-  adjBox.innerHTML = adjustPanelHtml();
-
-  /* ---- manual genre override ---- */
-  const overrideBtn = document.createElement('button');
-  overrideBtn.className = 'override-btn';
-  overrideBtn.textContent = '✎ override';
-  overrideBtn.title = 'set the genre yourself — persists across reloads + saved as training data';
-  genreCell.appendChild(overrideBtn);
+  const corBox = document.createElement('div');
+  corBox.className = 'row-cor';
+  corBox.hidden = true;
 
   /* ---- omit: delete this analysis entirely (e.g. a bogus read) ---- */
   const omitBtn = document.createElement('button');
@@ -1275,25 +1181,9 @@ function finishRow(row, data, file){
     renderLookup(lookupPanel, row, hash, j);
   });
 
-  const editor = document.createElement('div');
-  editor.className = 'override-editor';
-  editor.style.display = 'none';
-  const oInput = document.createElement('input');
-  oInput.type = 'text'; oInput.placeholder = 'e.g. Riddim, Tearout, Colour Bass…';
-  const oSave = document.createElement('button');
-  oSave.className = 'ovr-save'; oSave.textContent = 'save + train';
-  const oCancel = document.createElement('button');
-  oCancel.className = 'ovr-cancel'; oCancel.textContent = 'cancel';
-  editor.append(oInput, oSave, oCancel);
-  genreCell.appendChild(editor);
-
-  const trainBadge = document.createElement('div');
-  trainBadge.className = 'train-badge';
-  genreCell.appendChild(trainBadge);
-
   // Appended after the whole button strip so opening it drops a panel below the
   // controls rather than shoving half of them onto the next line.
-  genreCell.appendChild(adjBox);
+  genreCell.appendChild(corBox);
 
   /* Vibes and tags share one wrapping strip. They used to be two separate
      blocks, each claiming a full-width band of a column only 300px wide, so a
@@ -1310,109 +1200,50 @@ function finishRow(row, data, file){
   tagsHolder.className = 'tagchips';
   chipsRow.append(vibesHolder, tagsHolder);
   genreCell.appendChild(chipsRow);
-  /* The row's adjust panel: same widget as the map popup's (wireAdjustPanel),
-     same /weights endpoint, same stored steps, so a track nudged on either
-     screen reads the same on both. `hashOf` is a getter because a just-dropped
-     row gets its hash from the server a moment after the row exists;
-     re-rendering the genre cell is what makes the percentages move as you
-     press. */
-  // The adjust panel's GET and POST both return the track's identity: take it.
-  const showIdentity = state => {
-    if (state && state.dominant_source !== undefined){ row._identity = identityOf(state); redrawRow(); }
-  };
-  wireAdjustPanel(adjBtn, adjBox, {
+
+  // find this track's result entry so we can use the stored file/filepath
+  function getResult(){ return results.find(r => r.row === row); }
+
+  /* The row's Correct panel. `hashOf` is a getter because a just-dropped row
+     gets its hash from the server a moment after the row exists. Every answer
+     carries the track's identity; repainting the genre cell from it is what
+     makes the row follow each press. */
+  // The read the one-click Whole-track choices come from: the last one that was
+  // the track's own, not a whole-track genre standing in for it.
+  let lastRead = (row._identity && row._identity.source !== 'override') ? row._identity.read : (data.styles || []);
+  const correct = wireCorrectPanel(correctBtn, corBox, {
     hashOf: () => data.hash || ((getResult() || {}).hash || null),
-    // Opening the panel may repaint the row: it shows the server's identity,
-    // which on an overridden track is still the override.
-    onLoaded: showIdentity,
-    onSaved: showIdentity,
+    onIdentity: j => {
+      row._identity = identityOf(j);
+      if (j.dominant_source !== 'override' && (j.dominant_read || []).length) lastRead = j.dominant_read;
+      const res = getResult();               // export uses the override label
+      if (res){ if (j.dominant_source === 'override') res.overrideGenre = j.dominant_style; else delete res.overrideGenre; }
+      redrawRow();
+    },
+    onSegments: list => { if (row._setSections) row._setSections(list); },
+    drawRange: done => (row._drawRange ? row._drawRange(done) : (done(null), () => {})),
+    cands: () => lastRead || [],
+    // A dropped file has no server-side path, so /override cannot file its
+    // training copy: send the audio we are holding instead.
+    afterWhole: async (genre, j) => {
+      if (j.trained || !file) return false;
+      const fd = new FormData();
+      fd.append('genre', genre); fd.append('file', file);
+      try { return (await fetch('/api/v1/save_training', {method: 'POST', body: fd})).ok; }
+      catch(_){ return false; }
+    },
   });
 
-  overrideBtn.addEventListener('click', () => {
-    editor.style.display = 'flex';
-    overrideBtn.style.display = 'none';
-    oInput.value = '';
-    oInput.focus();
-  });
-  oCancel.addEventListener('click', () => {
-    editor.style.display = 'none';
-    overrideBtn.style.display = '';
-  });
-  oInput.addEventListener('keydown', e => { if (e.key === 'Enter') oSave.click(); });
-
-  // likely-misread hint: click to override with the neighbour-suggested genre
+  // likely-misread hint: opens Correct with the neighbours' suggestion filled in
   const nc = data.neighbor_check;
   if (nc && nc.flag){
     const warn = document.createElement('div');
     warn.className = 'row-flag';
     warn.innerHTML = `⚠ low-confidence — sounds like <b>${escapeHtml(nc.suggested_style)}</b>`;
-    warn.title = 'nearest tracks disagree with this read · click to override to the suggestion';
-    warn.addEventListener('click', () => {
-      overrideBtn.click();                 // opens + clears the editor
-      oInput.value = nc.suggested_style;
-      oInput.focus();
-    });
+    warn.title = 'nearest tracks disagree with this read · click to correct it to the suggestion';
+    warn.addEventListener('click', () => correct.open(nc.suggested_style));
     genreCell.appendChild(warn);
   }
-
-  // find this track's result entry so we can use the stored file/filepath
-  function getResult(){ return results.find(r => r.row === row); }
-
-  oSave.addEventListener('click', async () => {
-    const genre = oInput.value.trim();
-    if (!genre) return;
-
-    // 1. show it at once (the server's answer, below, replaces this). An override
-    //    supersedes any hand adjustment -- the steps stay on the server, but the
-    //    row reads as the one word you gave it. Only the body is rewritten, so
-    //    adjust / omit / lookup stay where they were.
-    row._identity = {style: genre, score: 1, source: 'override', read: [{style: genre, score: 1}]};
-    redrawRow();
-    adjBox.hidden = true;
-    editor.style.display = 'none';
-    overrideBtn.style.display = '';
-
-    // update results so export uses the override label
-    const res = getResult();
-    if (res) res.overrideGenre = genre;
-
-    // 2. persist the override to the DB (survives reload, same as the map's
-    //    ✎ override) + save a training copy to ~/genre_training/<genre>/.
-    oSave.disabled = true; oSave.textContent = 'saving…';
-    try {
-      const res2 = getResult();
-      const hash = res2 && res2.hash;
-      let trained = false;
-      if (hash){
-        // /override sets payload["override"] so the dominant style sticks; it
-        // also files the audio for training when the DB has a server-side path.
-        const r = await fetch(`/api/v1/override/${hash}`, {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({genre}),
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || 'override failed');
-        trained = !!j.trained;
-        row._identity = identityOf(j);
-        redrawRow();
-      }
-      // dropped files have no server-side path -> re-upload the file so the
-      // training copy still gets saved (the override above already persisted).
-      if (!trained && file){
-        const fd = new FormData();
-        fd.append('genre', genre); fd.append('file', file);
-        const r = await fetch('/api/v1/save_training', {method:'POST', body:fd});
-        if (r.ok) trained = true;
-      }
-      trainBadge.textContent = trained
-        ? `✓ saved · training copy in ~/genre_training/${escapeHtml(genre)}/`
-        : '✓ override saved (persists across reloads)';
-      trainBadge.classList.add('show');
-    } catch(err){
-      trainBadge.textContent = `⚠ save failed: ${err.message}`;
-      trainBadge.classList.add('show');
-    }
-  });
 
   /* details panel + toggle button */
   const t = (data.tags && data.tags.tag) || {};
@@ -1552,197 +1383,6 @@ function identityOf(d){
     source: d.dominant_source || null,
     read: d.dominant_read || [],
   };
-}
-
-/* ---- the adjust panel -----------------------------------------------------
-   One widget, used by the map popup and by every Analyzer row. An override
-   answers "what is this" with one word and throws away everything the model
-   got right; this bends the read instead: each genre carries a step you raise
-   or lower, so "this is a VERY house track" and "that Tech Trance is a
-   misread" are both sayable without flattening the rest to zero. The step is
-   what's stored, never the multiplier it computes -- the server can retune
-   the curve without silently rewriting what you meant by it.
-
-   `wireAdjustPanel(btn, box, opts)`:
-     hashOf()          the track's hash, or null if it has none yet (a getter,
-                       because a just-dropped row learns its hash later)
-     genres()          extra names to offer in the "add a genre" completion
-     complete(text)    a completer for the add box (Tab / on add); optional
-     onOpen/onClose()  the panel showed / hid -- for chrome around it
-     onLoaded(state)   the track's read arrived
-     onSaved(state)    the server accepted a press; state.adjusted is current */
-function adjustPanelHtml(){
-  return `<div class="ovr-h">how much of each genre is this?</div>
-    <div class="adj-rows"><span class="pop-bar">\u2026</span></div>
-    <div class="ovr-typed">
-      <input class="adj-add-in" type="text" placeholder="add a genre it missed\u2026" list="ovr-genre-list"
-             autocomplete="off" spellcheck="false">
-      <button class="adj-add">add</button>
-      <button class="adj-close" title="done">\u2715</button>
-    </div>
-    <div class="ovr-hint">Nudges the read instead of replacing it \u2014 use <b>override</b> if it's flat wrong.</div>`;
-}
-
-/* Whether a panel state carries any edit at all. */
-function wireAdjustPanel(btn, box, opts){
-  const rowsEl_ = box.querySelector('.adj-rows');
-  const addIn = box.querySelector('.adj-add-in');
-  const call = (k, ...a) => { if (typeof opts[k] === 'function') return opts[k](...a); };
-  let state = null;      // {steps, drops, base, adjusted, max_step, words}
-  let saving = null;     // in-flight POST, so rapid presses coalesce in order
-
-  const wordFor = st => (state && state.words && state.words[String(st)]) || 'as read';
-
-  function render(){
-    if (!state){ rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`; return; }
-    const drops = state.drops || [];
-    const shown = new Map();
-    for (const e of state.adjusted || []) shown.set(e.style, e.score);
-    // A genre pushed all the way down falls out of the top-N. Keep its row on
-    // screen anyway, or the press that removed it leaves nothing to undo it with.
-    for (const g of Object.keys(state.steps || {})) if (!shown.has(g)) shown.set(g, 0);
-    for (const g of drops) shown.delete(g);          // removed: listed below instead
-    const max = state.max_step || 3;
-    const rowsHtml = [...shown.entries()].map(([style, score]) => {
-      const step = (state.steps || {})[style] || 0;
-      const pct = Math.round((score || 0) * 100);
-      return `<div class="adj-row${step ? ' moved' : ''}" data-g="${escapeHtml(style)}">
-        <button class="adj-step" data-d="-1" ${step <= -max ? 'disabled' : ''} title="less">\u2212</button>
-        <button class="adj-step" data-d="1" ${step >= max ? 'disabled' : ''} title="more">\uff0b</button>
-        <span class="adj-meter" title="${escapeHtml(style)} \u2014 ${escapeHtml(wordFor(step))}">
-          <i style="width:${pct}%"></i>
-          <b>${escapeHtml(style)}</b>${step ? `<em>${escapeHtml(wordFor(step))}</em>` : ''}
-        </span>
-        <span class="adj-pct">${pct}%</span>
-        <button class="adj-drop" title="remove ${escapeHtml(style)} from this track">\u2715</button>
-      </div>`;
-    }).join('');
-    // Removed genres are named, not merely gone. A remove you cannot see is a
-    // remove you cannot undo, and "why is this track missing a genre" is a
-    // question the panel should still be able to answer a week later.
-    const dropHtml = drops.length
-      ? `<div class="adj-dropped"><span class="ovr-h">removed</span>` +
-        drops.map(g => `<button class="adj-restore" data-g="${escapeHtml(g)}"` +
-          ` title="put ${escapeHtml(g)} back on this track">${escapeHtml(g)} \u21a9</button>`).join('') +
-        `</div>`
-      : '';
-    if (!shown.size && !drops.length){
-      rowsEl_.innerHTML = `<div class="ovr-h">nothing read for this track</div>`;
-      return;
-    }
-    rowsEl_.innerHTML = rowsHtml + dropHtml;
-    for (const b of rowsEl_.querySelectorAll('.adj-step')){
-      b.onclick = () => bump(b.closest('.adj-row').dataset.g, Number(b.dataset.d));
-    }
-    for (const b of rowsEl_.querySelectorAll('.adj-drop')){
-      b.onclick = () => drop(b.closest('.adj-row').dataset.g);
-    }
-    for (const b of rowsEl_.querySelectorAll('.adj-restore')){
-      b.onclick = () => restore(b.dataset.g);
-    }
-  }
-
-  // Remove a genre outright. Not the same press as -3: "not at all" leaves it in
-  // the read at a trace, this takes it off the track entirely. The share it held
-  // is redistributed by the server, so the rest of the blend closes the gap.
-  function drop(style){
-    if (!state) return;
-    const drops = state.drops || [];
-    if (drops.includes(style)) return;
-    state.drops = [...drops, style];
-    state.steps = {...(state.steps || {})};
-    delete state.steps[style];             // "more of this" and "none of this"
-    render();                              //  cannot both be what you meant
-    save();
-  }
-
-  function restore(style){
-    if (!state) return;
-    state.drops = (state.drops || []).filter(g => g !== style);
-    render();
-    save();
-  }
-
-  // Optimistic: the meter moves on the press and the server's answer replaces it
-  // a moment later. Waiting for the round-trip made +/- feel broken.
-  function bump(style, delta){
-    if (!state) return;
-    const max = state.max_step || 3;
-    const next = Math.max(-max, Math.min(max, ((state.steps || {})[style] || 0) + delta));
-    state.steps = {...(state.steps || {})};
-    if (next) state.steps[style] = next; else delete state.steps[style];
-    render();
-    save();
-  }
-
-  function save(){
-    const hash = opts.hashOf();
-    if (!hash) return;
-    const steps = state.steps || {};
-    const drops = state.drops || [];
-    saving = (saving || Promise.resolve()).then(async () => {
-      try {
-        const r = await fetch(`/api/v1/weights/${hash}`, {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({steps, drops})});
-        const body = await r.json();
-        // Identity, not equality: a press during the round-trip replaced both
-        // objects, and its own save is already queued behind this one.
-        if (steps !== state.steps || drops !== state.drops) return;
-        state.steps = body.steps || {};
-        state.drops = body.drops || [];
-        state.adjusted = (body.adjusted && body.adjusted.length) ? body.adjusted : state.base;
-        render();
-        call('onSaved', state);
-      } catch(_){ /* the meter already moved; the next press retries */ }
-    });
-  }
-
-  const close = () => { box.hidden = true; call('onClose'); };
-
-  btn.onclick = async () => {
-    if (!box.hidden){ close(); return; }
-    box.hidden = false;
-    call('onOpen');
-    fillGenreList([...(call('genres') || []), ...Object.keys((state && state.steps) || {})]);
-    const hash = opts.hashOf();
-    if (!hash){ rowsEl_.innerHTML = `<div class="ovr-h">no hash for this track yet</div>`; return; }
-    rowsEl_.innerHTML = `<span class="pop-bar">\u2026</span>`;
-    try { state = await (await fetch(`/api/v1/weights/${hash}`)).json(); }
-    catch(_){ rowsEl_.innerHTML = `<div class="ovr-h">couldn't load this track's read</div>`; return; }
-    if (state && state.error){
-      rowsEl_.innerHTML = `<div class="ovr-h">${escapeHtml(state.error)}</div>`;
-      state = null; return;
-    }
-    render();
-    call('onLoaded', state);
-  };
-  box.querySelector('.adj-close').onclick = close;
-
-  const complete = text => (opts.complete ? opts.complete(text) : null);
-  const addGenre = () => {
-    const g = complete(addIn.value) || (addIn.value || '').trim();
-    if (!g || !state) return;
-    addIn.value = '';
-    // Enters at "moderately": a genre you had to type out is one you mean, and
-    // +1 read as barely-there next to everything the model already found.
-    if (!(state.steps || {})[g]){
-      state.steps = {...(state.steps || {}), [g]: 2};
-      render(); save();
-    }
-  };
-  box.querySelector('.adj-add').onclick = addGenre;
-  addIn.addEventListener('keydown', e => {
-    if (e.key === 'Enter'){ e.preventDefault(); addGenre(); }
-    else if (e.key === 'Escape'){ close(); }
-    else if (e.key === 'Tab' && addIn.value.trim()){
-      const hit = complete(addIn.value);
-      if (hit && hit.toLowerCase() !== addIn.value.trim().toLowerCase()){
-        e.preventDefault(); addIn.value = hit;
-        addIn.setSelectionRange(hit.length, hit.length);
-      }
-    }
-  });
 }
 
 function failRow(row, msg){
@@ -2400,4 +2040,4 @@ function escapeHtml(s){
   if (location.hash === '#guide') vibeLoadGuide();
 })();
 
-export { EQ_STYLES, GLOBAL, KEYVIEW, PREFS, SIBLING_GROUPS, SIBLING_MAP, THEMES, adjustPanelHtml, applyFolds, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, loadTrackByHash, nameHue, results, runBatch, setKeyView, setPref, statRowsHtml, styleInfo, vibeLoadGuide, vibeWaveSvg, wireAdjustPanel, wireTileToggle };
+export { EQ_STYLES, GLOBAL, KEYVIEW, PREFS, SIBLING_GROUPS, SIBLING_MAP, THEMES, applyFolds, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, loadTrackByHash, nameHue, results, runBatch, setKeyView, setPref, statRowsHtml, styleInfo, vibeLoadGuide, vibeWaveSvg, wireTileToggle };

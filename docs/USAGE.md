@@ -15,7 +15,7 @@ Everything runs on your own machine: **your audio never leaves the computer, and
 3. [Reading a track](#3-reading-a-track)
 4. [A deeper look: Refine](#4-a-deeper-look-refine)
 5. [How the genre is decided — the lens system](#5-how-the-genre-is-decided--the-lens-system)
-6. [Organizing your library: overrides, vibes & playlists](#6-organizing-your-library-overrides-vibes--playlists)
+6. [Organizing your library: corrections, vibes & playlists](#6-organizing-your-library-corrections-vibes--playlists)
 7. [The Library tab — your collection as a sortable list](#7-the-library-tab--your-collection-as-a-sortable-list)
 8. [Exploring the Map](#8-exploring-the-map)
 9. [Harmonic mixing (for DJs)](#9-harmonic-mixing-for-djs)
@@ -62,7 +62,7 @@ Click **⊕ batch folder** and give it the path to a folder of music. It scans t
 
 **Either way, nothing is ever analyzed twice.** If a track has been analyzed before — this session or months ago — the result comes back instantly instead of being recomputed. So re-scanning a folder only spends time on what's new.
 
-A track you drop in that's **already in your library still appears on the list**, marked `· cached`, with every row control a freshly analyzed one gets. That's how you reach **adjust**, **override**, **omit** or **lookup** for a track you already know about without going hunting for it in the Library. Drop the same file twice and the list scrolls to the row it's already on rather than adding a second one. (**⊕ batch folder** still only lists what's *new* — a whole-library re-scan would otherwise put thousands of rows on screen.)
+A track you drop in that's **already in your library still appears on the list**, marked `· cached`, with every row control a freshly analyzed one gets. That's how you reach **correct**, **omit** or **lookup** for a track you already know about without going hunting for it in the Library. Drop the same file twice and the list scrolls to the row it's already on rather than adding a second one. (**⊕ batch folder** still only lists what's *new* — a whole-library re-scan would otherwise put thousands of rows on screen.)
 
 ---
 
@@ -70,7 +70,7 @@ A track you drop in that's **already in your library still appears on the list**
 
 Each analyzed row shows three things:
 
-- **Track** — the title with a **genre-colored waveform** underneath. The colors come from the moment-by-moment genre guesses, so you can literally *see* where a track changes character — an ambient intro, a drop, a half-time breakdown. Hover the waveform to magnify it; click anywhere on it to **play and seek** from that point. **Shift-drag** a time range to **override that section as a genre** — it repaints in the override style and the extracted clip is saved into that genre's training folder (needs a track added from a folder/batch, not a browser-dropped file). To undo one, **shift-click** its span and confirm **remove** (this also deletes the extracted clip).
+- **Track** — the title with a **genre-colored waveform** underneath. The colors come from the moment-by-moment genre guesses, so you can literally *see* where a track changes character — an ambient intro, a drop, a half-time breakdown. Hover the waveform to magnify it; click anywhere on it to **play and seek** from that point. Sections you mark with **✎ correct** (below) repaint their span in the override style.
 - **BPM / Key** — the tempo and musical key. The key is shown in **Camelot** notation (like `8A`), the wheel DJs use for harmonic mixing, alongside the plain key.
 - **Genre** — the breakdown: the dominant genre(s) and their share of the track, tagged with the broad **family** they belong to (House, Trance, Bass Music, …). If a read looks shaky, you may also see a **⚠ "sounds like …"** hint suggesting a better fit (see section 6).
 
@@ -130,14 +130,16 @@ Very minor genres in the stream collapse into a single grey **"Other"** bucket s
 
 ---
 
-## 6. Organizing your library: overrides, vibes & playlists
+## 6. Organizing your library: corrections, vibes & playlists
 
 Per-track actions live on each row (and many are repeated in the Map popup); library-wide tools sit in the footer.
 
 ### Per-track fixes
 
-- **⚖ adjust** — nudge how much of each genre a track is, instead of replacing the read. An override answers *"what is this?"* with one word and throws away everything the model got right; a track reading Techno 66% / House 17% / Tech Trance 16% is *mostly* right. This bends it: **＋** and **−** on each genre move it from *not at all* through *as read* to *very*, and the percentages re-settle around it. You can also **type a genre it missed** to add one, or **✕** a genre to take it off the track entirely — which is a different statement from pushing it all the way down (*"not at all"* leaves it in the read at a trace; **✕** removes it). Anything you remove is listed under **removed**, and clicking it there puts it back. The same panel is on the Map popup, on the same track — adjust it in either place and both agree.
-- **✎ override** — set the genre yourself (say your own *Riddim* or *Tearout*). Your choice **sticks everywhere and survives reloads** — it becomes the track's genre on the Analyzer, the Library, the Map, and exports, and re-adding the file later keeps your label instead of the model's. (It also copies the track into `~/genre_training/<genre>/` — those folders are the training set for a **custom genre head**: once you've labelled enough tracks, the scripts in `training/` can train a model that adds your own genres as a **custom** row in each read. See *Training custom genres* in the README.) The same override is on the **Map popup** and behaves identically. To undo one, **omit** the track and re-scan it.
+- **✎ correct** — the one place a track's genre is corrected, on every row and in the Map popup (the same panel, so a correction made in either place shows in both). It has three sections, each showing what the track holds now, with a **Reset** that undoes it:
+  - **Whole track** — One genre for the whole track. Replaces the read everywhere — use Balance if the read is mostly right. Type a genre (say your own *Riddim* or *Tearout*) and **Set**, or click one of the genres it **already reads as**. It becomes the track's genre on the Analyzer, the Library, the Map and exports, and survives reloads and re-adding the file. It also copies the track into `~/genre_training/<genre>/`, the training set for a **custom genre head** (see *Training custom genres* in the README). **Reset** gives the track its read back and deletes that training copy, so a wrong label doesn't stay behind to keep teaching the head; a copy already archived with a trainset is left alone.
+  - **Sections** — A genre for part of the track, drawn on the waveform. Several allowed; the rest of the track keeps its read. Click **＋ add section**, drag across the waveform (in the Map popup, across the strip the panel shows), name the genre and **Apply**; **Esc** cancels. Each section is listed with its time range: **✕** removes one, **Reset** removes them all. The section's audio is clipped into that genre's training folder, and removing the section deletes the clip. Needs a track added from a folder or batch, not one dropped into the browser.
+  - **Balance** — Nudge several genres up or down. The track stays multi-genre — nothing is replaced. A track reading Techno 66% / House 17% / Tech Trance 16% is *mostly* right; **＋** and **−** on each genre move it from *not at all* through *as read* to *very*, and the percentages re-settle around it. **Type a genre it missed** to add one, or **✕** a genre to take it off the track entirely — a different statement from pushing it all the way down (*not at all* leaves it in the read at a trace; **✕** removes it). Anything removed is listed under **removed**, and clicking it there puts it back. **Reset** returns every genre to *as read*. While **Whole track** is set, the track reads as that one genre; Balance is kept, and shows again once Whole track is reset.
 - **✕ omit** — remove a track's analysis (for a bogus read you don't want cluttering things). It disappears from the Analyzer, the Library, and the Map, and the database entry is deleted. **Your audio file is untouched** — re-scanning brings it back fresh.
 - **Tags** — attach your own labels ("high energy", "opener", "peak time") to tracks for your own organization.
 - **Hovering a chip previews it.** Point at a genre, artist or tag chip in the
@@ -390,7 +392,7 @@ Under **☰ filter** there's **Only tracks with audio**. It hides stars whose au
 
 Arriving this way is a *cut*, not a flight: the map opens already centered on the star rather than framing your whole library and zooming in. Clicking a dot on a map you are already looking at still glides, because there the movement is what tells you which star you picked.
 
-**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **⚖ adjust** / **✎ override** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer, on the same track).
+**Click any dot** (or use the **Search** box to fly to one). The view re-centers to orbit around it, and a popup opens with: its genre, tempo, key, and other reads it was close to ("also reads as"); **similar artists** and **similar tracks** pulled from across your library; a **🎲 "a match for you"** suggestion (with a re-roll) — a quick way to surface something you forgot you had; and **✎ correct** / **✕ omit** / **add to playlist** buttons (same actions as the Analyzer, on the same track).
 
 Above the title is the track's genre, read narrow to wide: **subgenre · genre · archgenre** — *Grime · Dubstep · Bass*. A tier that would repeat the one beside it is dropped rather than printed twice, so a House track says *House* once and a Progressive House track says *Progressive House · House*: House is the top of its own tree, not a room inside something wider. The chips share the star's own colour and get more solid as they widen, so the widest one is the chip the card has always shown and the narrower ones read as detail hanging off it.
 

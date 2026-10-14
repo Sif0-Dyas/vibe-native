@@ -7,7 +7,8 @@
    hooks.vibeKeyViewChanged. */
 
 import { hooks } from './hooks.js';
-import { PREFS, adjustPanelHtml, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, nameHue, vibeLoadGuide, wireAdjustPanel } from './app.js';
+import { PREFS, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, nameHue, vibeLoadGuide } from './app.js';
+import { wireCorrectPanel } from './correct.js';
 import { FSH } from './player.js';
 import { AUDIO } from './audio.js';
 import { playHash } from './nowbar.js';
@@ -3259,21 +3260,10 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
       <div class="pop-ratehint">Rates the selected artist across your whole library, not just
         this track.${artistsOf(n).length > 1 ? ' Pick which one above.' : ''}</div>` : ''}
       <div class="pop-omit-row">
-        <button class="pop-adjust" title="nudge how much of each genre this track is — keeps the rest of the read">⚖ adjust</button>
-        <button class="pop-override" title="set the genre yourself (persists + saved for training)">✎ override</button>
+        <button class="pop-correct" title="correct the genre: the whole track, sections of it, or the balance of its read">✎ correct</button>
         <button class="pop-omit" title="delete this track's analysis (audio file untouched)">✕ omit</button>
       </div>
-      <div class="pop-adj" hidden>${adjustPanelHtml()}</div>
-      <div class="pop-ovr" hidden>
-        <div class="ovr-cands"></div>
-        <div class="ovr-typed">
-          <input class="pop-ovr-in" type="text" placeholder="or type a genre…" list="ovr-genre-list"
-                 autocomplete="off" spellcheck="false">
-          <button class="pop-ovr-save">save</button>
-          <button class="pop-ovr-cancel" title="cancel">✕</button>
-        </div>
-        <div class="ovr-hint">Tab completes · ↓ for the full list</div>
-      </div>`;
+      <div class="pop-cor" hidden></div>`;
     popEl.hidden = false;
     popEl.querySelector('.pop-x').onclick = closePopup;
     const playBtn = popEl.querySelector('.pop-play');
@@ -3315,46 +3305,8 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
         };
       }
     }
-    wireAdjust(popEl, n);
+    wireCorrect(popEl, n);
     popEl.querySelector('.pop-omit').onclick = () => omitTrack(n);
-    const ovrRow = popEl.querySelector('.pop-ovr'), omitRow = popEl.querySelector('.pop-omit-row');
-    const ovrIn = popEl.querySelector('.pop-ovr-in');
-    const closeOvr = () => { ovrRow.hidden = true; omitRow.hidden = false; };
-    popEl.querySelector('.pop-override').onclick = () => {
-      omitRow.hidden = true; ovrRow.hidden = false;
-      // The track's own runner-up reads, as one-click buttons. This is the usual
-      // fix -- the correct genre is normally already in the list, just not first.
-      const cands = (n.cands || []).filter(c => c.style && c.style !== n.style);
-      const cbox = popEl.querySelector('.ovr-cands');
-      cbox.innerHTML = cands.length
-        ? `<div class="ovr-h">already reads as</div>` + cands.map(c =>
-            `<button class="ovr-cand" data-g="${escapeHtml(c.style)}">${escapeHtml(c.style)}`
-            + `<i>${(c.score * 100).toFixed(0)}%</i></button>`).join('')
-        : `<div class="ovr-h">no runner-up read</div>`;
-      for (const b of cbox.querySelectorAll('.ovr-cand')) {
-        b.onclick = () => overrideTrack(n, b.dataset.g);
-      }
-      ovrIn.value = '';                       // the buttons carry the suggestion now
-      ovrIn.placeholder = n.suggest ? `or type… (neighbours say ${n.suggest})` : 'or type a genre…';
-      refreshGenreList();
-      ovrIn.focus();
-    };
-    popEl.querySelector('.pop-ovr-cancel').onclick = closeOvr;
-    popEl.querySelector('.pop-ovr-save').onclick = () => overrideTrack(n, ovrIn.value);
-    ovrIn.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { overrideTrack(n, ovrIn.value); return; }
-      if (e.key === 'Escape') { closeOvr(); return; }
-      if (e.key === 'Tab' && ovrIn.value.trim()) {
-        // Tab completes to the first genre that starts with what's typed. Only
-        // when there IS a match, so Tab still moves focus normally otherwise.
-        const hit = completeGenre(ovrIn.value);
-        if (hit && hit.toLowerCase() !== ovrIn.value.trim().toLowerCase()) {
-          e.preventDefault();
-          ovrIn.value = hit;
-          ovrIn.setSelectionRange(hit.length, hit.length);
-        }
-      }
-    });
     try{
       simCache = await fetch(`/api/v1/similar/${n.hash}?k=12`).then(r=>r.ok?r.json():[]);
     }catch(_){ simCache = []; }
@@ -3467,28 +3419,46 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
         || null;
   }
 
-  // --- adjust: nudge the blend instead of replacing it ----------------------
-  // The shared panel (wireAdjustPanel, app.js) with the popup's chrome around
-  // it: the omit row gives way while it is open, and the map re-clusters once,
-  // when the user is done -- doing it per-press would slide the dot away from
-  // the cursor between clicks.
-  function wireAdjust(popEl, n){
-    const btn  = popEl.querySelector('.pop-adjust');
-    const box  = popEl.querySelector('.pop-adj');
+  // --- correct: the shared panel (correct.js) ---------------------------------
+  // The same panel as every Analyzer row, with the popup's chrome around it:
+  // the omit row gives way while it is open, the dot recolours on every change,
+  // and the map re-clusters once, when the user is done -- doing it per-press
+  // would slide the dot away from the cursor between clicks. The popup has no
+  // waveform, so Sections draws its own strip (no drawRange here).
+  function wireCorrect(popEl, n){
+    const btn  = popEl.querySelector('.pop-correct');
+    const box  = popEl.querySelector('.pop-cor');
     const omitRow = popEl.querySelector('.pop-omit-row');
     if (!btn || !box) return;
     let moved = false;         // did anything actually change? -> re-cluster on close
-    wireAdjustPanel(btn, box, {
+    const model = (n.cands || []).slice();   // the read as the map got it, for the one-click choices
+    wireCorrectPanel(btn, box, {
       hashOf: () => n.hash,
       genres: knownGenres,
       complete: completeGenre,
-      onOpen: () => { omitRow.hidden = true; },
-      onSaved: state => { applyToNode(n, state.adjusted); moved = true; },
+      cands: () => model,
+      onIdentity: j => { applyIdentity(n, j); moved = true; },
+      onOpen: () => { omitRow.hidden = true; refreshGenreList(); },
       onClose: () => {
         omitRow.hidden = false;
         if (moved){ moved = false; if (NODES.length) layout(); }
       },
     });
+  }
+
+  // The dot follows the server's identity: one colour for a whole-track
+  // override (no blend -- that is the point of one), the adjusted blend otherwise.
+  function applyIdentity(n, j){
+    if (j.dominant_source === 'override'){
+      n.style = j.dominant_style; n.score = 1;
+      n.fam = familyOf(j.dominant_style) || 'Other';
+      n.mix = null;
+      setShade(n, styleShade(n.fam, j.dominant_style));
+      n.flag = false; n.suggest = null;
+      return;
+    }
+    applyToNode(n, j.dominant_read && j.dominant_read.length ? j.dominant_read
+      : [{style: j.dominant_style, score: j.dominant_score || 1}]);
   }
 
   // Recolour one dot from an adjusted blend. Deliberately does NOT re-cluster:
@@ -3557,23 +3527,6 @@ let mapFilterPopulate, mapGenrePopulate; // assigned below, where the file sets 
         : k === 'arch' ? FILT.arch === v : false;
       b.classList.toggle('on', on);
     }
-  }
-
-  // override: persist a manual genre; the track moves to its new cluster
-  async function overrideTrack(n, genre){
-    genre = (genre || '').trim(); if (!genre) return;
-    try{
-      await fetch(`/api/v1/override/${n.hash}`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ genre }) });
-    }catch(_){ /* still relabel locally */ }
-    n.style = genre;
-    n.fam = familyOf(genre) || 'Other';
-    n.mix = null;                          // manual override -> pure genre, no blend
-    setShade(n, styleShade(n.fam, genre));
-    n.flag = false; n.suggest = null;
-    closePopup();
-    if (NODES.length) layout();          // re-cluster with the new genre
   }
 
   // omit/forget: delete this track's analysis from the DB and drop it off the map

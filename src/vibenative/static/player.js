@@ -189,7 +189,8 @@ function attachPlayer(row, container, controls, c, file, data, dur){
     }
     playBtn.addEventListener('click', togglePlay);
     c.addEventListener('pointerdown', e => {
-      if (e.shiftKey) return;            // shift-drag is a segment-override selection, not a seek
+      // Armed by the Correct panel's "add section": this drag marks a range, not a seek.
+      if (c.classList.contains('drawing')) return;
       const rect = c.getBoundingClientRect();
       startPlay((e.clientX - rect.left) / rect.width);
     });

@@ -41,6 +41,7 @@ def test_deletes_are_delete_verbs_and_the_post_forms_are_gone(client):
     assert deletes == {
         "/api/v1/playlists/<int:pid>",
         "/api/v1/tracks/<h>",
+        "/api/v1/override/<h>",
         "/api/v1/override_segment/<int:oid>",
         "/api/v1/vibes/<int:vid>",
         "/api/v1/vibes/<int:vid>/tracks",
