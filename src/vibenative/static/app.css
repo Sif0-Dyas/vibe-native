@@ -323,6 +323,11 @@ input[type=file]{display:none}
   color:#ffb03b; cursor:pointer;
 }
 .row-flag:hover{ text-decoration:underline; }
+/* Under the genre: the model's own read (when an override hides it) and the
+   file's genre tag -- amber when the tag names a different keystone. */
+.opinion{ margin-top:4px; font-family:'JetBrains Mono',monospace; font-size:9.5px;
+  color:var(--dim); line-height:1.4; }
+.opinion.file-tag.disagrees{ color:#ffb03b; }
 .row-flag b{ color:#ffcf8a; }
 /* 🔎 external metadata lookup panel */
 .lookup-btn:hover{ color:var(--trance); border-color:var(--trance); }
@@ -1437,6 +1442,8 @@ body.view-options .lensbar{ display:none; }
 .cor-hint{ font-size:10px; line-height:1.4; color:var(--dim); }
 .cor-note{ font-size:10px; line-height:1.4; color:#ffb03b; }
 .cor-note[hidden]{ display:none; }
+.cor-model{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--dim); }
+.cor-model[hidden]{ display:none; }
 .cor-line{ display:flex; gap:6px; align-items:center; }
 .cor-line[hidden]{ display:none; }
 /* "1:15-1:55 as [genre] Apply Cancel" in a 320px popup: let the box take its own line. */

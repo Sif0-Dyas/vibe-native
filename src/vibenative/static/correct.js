@@ -28,7 +28,7 @@
                          track's training copy, which the server cannot)
      onOpen(), onClose() */
 
-import { escapeHtml, fillGenreList, fmtTime } from './app.js';
+import { escapeHtml, fillGenreList, fmtTime, readLine } from './app.js';
 import { hooks } from './hooks.js';
 
 // The words the panel shows, and the words docs/USAGE.md uses for the same tools.
@@ -51,6 +51,7 @@ function correctPanelHtml(){
     <section class="cor-sec cor-whole">
       ${head('Whole track')}
       <div class="cor-hint">${HINTS.whole}</div>
+      <div class="cor-model" hidden></div>
       <div class="cor-cands"></div>
       <div class="cor-line">${genreInput('cor-in cor-whole-in', 'a genre, e.g. Riddim')}
         <button class="cor-btn cor-whole-set" type="button">Set</button></div>
@@ -350,10 +351,19 @@ function wireCorrectPanel(btn, box, opts){
   // Every change answers with the track's identity: the host repaints from it,
   // and the Library tab -- which lists tracks by that style -- reloads, as it
   // does after a key correction.
+  // Under a Whole-track genre: what the model heard, which the override hides.
+  function paintModel(j){
+    const el = q('.cor-model');
+    const line = override && j && readLine(j.model_read);
+    el.hidden = !line;
+    el.textContent = line ? `model read: ${line}` : '';
+  }
+
   function identity(j){
     if (!j || j.dominant_source === undefined) return;
     override = j.dominant_source === 'override' ? j.dominant_style : null;
     paintHeads();
+    paintModel(j);
     holdStill(box, () => call('onIdentity', j));
     paintCands();                          // the one-click choices follow the read
     // Once a burst of Balance presses settles, not per press: a reload is the
@@ -518,6 +528,7 @@ function wireCorrectPanel(btn, box, opts){
       duration = t.duration || 0;
       sections = (t.segment_overrides || []).slice();
       override = t.dominant_source === 'override' ? t.dominant_style : null;
+      paintModel(t);
       wholeIn.value = prefill || override || '';
       balance.set(w);
       paintSections(); paintCands();

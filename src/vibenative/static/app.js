@@ -1024,7 +1024,7 @@ function finishRow(row, data, file){
         `<div class="genre-src">manual override</div>` +
         `<span class="chip overridden" style="--c:${oc}" title="manually set">` +
         `<span class="dot ${oi.shape}" style="background:${oc}"></span>` +
-        `${escapeHtml(ident.style)}</span>`;
+        `${escapeHtml(ident.style)}</span>` + opinionsHtml(ident);
       row._genreList = [{style: ident.style, score: 1}];
       return;
     }
@@ -1104,7 +1104,7 @@ function finishRow(row, data, file){
         title="${escapeHtml(head.style)} \u2014 ${srcLabel}">
         <span class="dot ${hshape}" style="background:${hcol}"></span>${escapeHtml(head.style)}</span>${famHtml}
       <div class="blend">${segHtml}</div>
-      <div class="breakdown">${itemsHtml}</div>${customHtml}`;
+      <div class="breakdown">${itemsHtml}</div>${customHtml}` + opinionsHtml(ident);
 
     row._genreList = shown;
   };
@@ -1382,7 +1382,38 @@ function identityOf(d){
     score: d.dominant_score || 0,
     source: d.dominant_source || null,
     read: d.dominant_read || [],
+    modelRead: d.model_read || null,   // under an override: what the model itself heard
+    fileTag: d.file_tag || null,       // {text, keystone, agrees}: the file's own genre tag
   };
+}
+
+/* "House 72% · Jungle 28%": a read in one line, its top genres only. */
+function readLine(read){
+  const named = (read || []).filter(s => s && s.style && (s.score || 0) >= 0.03).slice(0, 3);
+  return named.map(s => `${s.style} ${Math.round((s.score || 0) * 100)}%`).join(' · ');
+}
+
+/* Under the genre: the two other opinions of the track. What the model heard,
+   when an override hides it; and the file's own genre tag, highlighted when it
+   names a different keystone than the genre shown -- the cheapest misread
+   detector there is. */
+function opinionsHtml(ident){
+  let html = '';
+  if (ident.source === 'override' && ident.modelRead && ident.modelRead.length){
+    html += `<div class="opinion model-read" title="what the model heard, before your override">` +
+      `model read: ${escapeHtml(readLine(ident.modelRead))}</div>`;
+  }
+  const tag = ident.fileTag;
+  if (tag && tag.text){
+    const off = tag.agrees === false;
+    const fam = familyOf(ident.style) || ident.style;
+    const why = off
+      ? `the file's tag says ${tag.keystone}, a different family from ${fam} — one of them is probably wrong`
+      : 'the genre tag written in the file';
+    html += `<div class="opinion file-tag${off ? ' disagrees' : ''}" title="${escapeHtml(why)}">` +
+      `${off ? '⚠ ' : ''}file tag: ${escapeHtml(tag.text)}</div>`;
+  }
+  return html;
 }
 
 function failRow(row, msg){
@@ -2090,4 +2121,4 @@ function escapeHtml(s){
   if (location.hash === '#guide') vibeLoadGuide();
 })();
 
-export { EQ_STYLES, GLOBAL, KEYVIEW, PREFS, SIBLING_GROUPS, SIBLING_MAP, THEMES, applyFolds, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, loadTrackByHash, nameHue, results, runBatch, setKeyView, setPref, statRowsHtml, styleInfo, vibeLoadGuide, vibeWaveSvg, wireTileToggle };
+export { EQ_STYLES, GLOBAL, KEYVIEW, PREFS, SIBLING_GROUPS, SIBLING_MAP, THEMES, applyFolds, escapeHtml, familyOf, fillGenreList, fmtTime, keyText, loadTrackByHash, nameHue, readLine, results, runBatch, setKeyView, setPref, statRowsHtml, styleInfo, vibeLoadGuide, vibeWaveSvg, wireTileToggle };

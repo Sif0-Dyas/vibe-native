@@ -187,7 +187,7 @@ def test_every_row_and_edit_response_carries_the_identity(client, tmp_path):
     def stored(h):
         from vibenative.repo.tracks import payload
 
-        return identity_fields(json.loads(payload(h)))
+        return _identity_of(identity_fields(json.loads(payload(h))))
 
     wav = b"RIFF" + b"\x00" * 64  # the fake engine reads nothing but the bytes
     fresh = client.post(

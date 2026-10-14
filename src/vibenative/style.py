@@ -88,17 +88,31 @@ def identity_fields(payload, top=8):
     """identity() as the flat fields every analysis response, cached row and
     edit response carries, so a client shows the server's answer instead of
     working one out: dominant_style, dominant_score, dominant_source and
-    dominant_read (the top ``top`` entries of the read)."""
+    dominant_read (the top ``top`` entries of the read).
+
+    Two more, to set the shown genre against other opinions of the track:
+    ``model_read`` -- under a manual override only -- is what the model itself
+    heard (``weights.base_read``: re-label, salience or flat styles, no hand
+    edits), which the override hides; ``file_tag`` (tagcheck.file_tag_fields)
+    is the file's own genre tag and whether it agrees at keystone level."""
+    from .tagcheck import file_tag_fields  # taxonomy is heavier than this module
+
+    def flat(read):
+        return [
+            {"style": e.get("style"), "score": float(e.get("score", 0) or 0)} for e in read[:top]
+        ]
+
     ident = identity(payload)
-    return {
+    fields = {
         "dominant_style": ident["style"],
         "dominant_score": ident["score"],
         "dominant_source": ident["source"],
-        "dominant_read": [
-            {"style": e.get("style"), "score": float(e.get("score", 0) or 0)}
-            for e in ident["read"][:top]
-        ],
+        "dominant_read": flat(ident["read"]),
     }
+    if ident["source"] == "override":
+        fields["model_read"] = flat(base_read(payload or {}))
+    fields.update(file_tag_fields(payload, ident["style"]))
+    return fields
 
 
 def ranked_read(payload):
