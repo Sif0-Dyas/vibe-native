@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .venv/
+# tools/bakeoff.py's own environment (the bakeoff group: torch, TensorFlow)
+.venv-bakeoff/
 .ruff_cache/
 .pytest_cache/
 # large artifacts kept local (back them up separately)

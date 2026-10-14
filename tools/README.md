@@ -27,6 +27,7 @@ produce a complete-looking `dist/` folder that dies on the target machine.
 | script | what it does |
 |---|---|
 | `convert_models.py` | Builds `models/*.onnx` from MTG's TensorFlow originals. Needs the conversion venv (Python ≤3.12 + `requirements-convert.txt`); see `CONVERSION_NOTES.md`. |
+| `bakeoff.py` | Scores candidate embedders (YAMNet, OpenL3, PANNs, CLAP) against the current EffNet: keystone-level logistic-regression head, stratified 5-fold CV, per-keystone precision/recall and macro-F1. Input is `export_labels.py`'s CSV. Needs the `bakeoff` group in its own venv: `UV_PROJECT_ENVIRONMENT=.venv-bakeoff uv run --group bakeoff python tools/bakeoff.py ...`. Licences: `../docs/PROVENANCE.md`, "Candidate embedders". |
 
 ## The key detector
 

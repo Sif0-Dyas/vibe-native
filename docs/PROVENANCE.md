@@ -220,6 +220,47 @@ creates no obligation of any kind. What the WSL references point at is:
 None of this is encumbered. It should be tidied because it is confusing and
 serves almost nobody, not because it is risky.
 
+## Candidate embedders (not shipped)
+
+Possible replacements for the MTG EffNet embedder (#1), compared by
+`tools/bakeoff.py`. None of them ships: they live in the `bakeoff` dependency
+group, outside the runtime lock, and nothing under `src/` imports them. Checked
+2026-10-13 against the repository and the place the weights are actually
+downloaded from, not a summary. Code and weights are licensed separately and both
+are listed; for a model, the weights are what matter.
+
+| Candidate | Code licence | Weights licence | Weights the harness loads | Verdict |
+|---|---|---|---|---|
+| **YAMNet** (Google) | Apache-2.0 — [tensorflow/models LICENSE](https://github.com/tensorflow/models/blob/master/LICENSE) | Apache 2.0 — Kaggle model metadata, `licenseName` on every instance: [kaggle.com/models/google/yamnet](https://www.kaggle.com/models/google/yamnet) | Kaggle `google/yamnet/tensorFlow2/yamnet` v1 | OK |
+| **OpenL3** (Cramer et al., MARL/NYU) | MIT — [marl/openl3](https://github.com/marl/openl3) | CC BY 4.0 — README, "Model Weights License": "The model weights are made available under a Creative Commons Attribution 4.0 International (CC BY 4.0) License." | The PyTorch port's conversion, [torchopenl3/torchopenl3-models](https://github.com/torchopenl3/torchopenl3-models) `torchopenl3_mel256_music_512.pth.tar` (that repo says Apache-2.0; code of the port: Apache-2.0, [torchopenl3/torchopenl3](https://github.com/torchopenl3/torchopenl3)) | OK, attribution required |
+| **PANNs** Cnn14 (Kong et al.) | MIT — [qiuqiangkong/audioset_tagging_cnn](https://github.com/qiuqiangkong/audioset_tagging_cnn) (`LICENSE.MIT`) | CC BY 4.0 — the Zenodo record the weights are served from: [zenodo.org/records/3987831](https://zenodo.org/records/3987831) (`license: cc-by-4.0` in its metadata) | `Cnn14_mAP=0.431.pth` from that record | OK, attribution required |
+| **CLAP** (LAION) | CC0-1.0 — [LAION-AI/CLAP](https://github.com/LAION-AI/CLAP); the loader is `transformers` (Apache-2.0) | Apache-2.0 — model card of [laion/larger_clap_music](https://huggingface.co/laion/larger_clap_music). The original checkpoints it converts, [lukewys/laion_clap](https://huggingface.co/lukewys/laion_clap), are CC0-1.0 | `laion/larger_clap_music` | OK |
+
+**No candidate is skipped.** None has non-commercial or unclear weights, given
+the sources above. Two near misses decided which copy of the weights the harness
+uses:
+
+- YAMNet's README links `storage.googleapis.com/audioset/yamnet.h5`, and that
+  bucket states no licence. The harness loads only the Kaggle copy, which is
+  marked Apache 2.0.
+- The original OpenL3 weights are CC BY 4.0. The torchopenl3 conversion
+  relabels them Apache-2.0, but converting the weights to another format can't
+  drop the original attribution term. Treat them as CC BY 4.0.
+
+Not used: Microsoft's CLAP ([microsoft/msclap](https://huggingface.co/microsoft/msclap)),
+whose weights are under MS-PL — a weak copyleft licence, with obligations on distributing source.
+
+**Open for counsel, as with #1–2.** Every candidate was trained on AudioSet. CLAP also used
+other audio–text collections. AudioSet is YouTube audio whose
+rights were never cleared for this; the dataset licenses only its labels (CC BY 4.0). The licences above are what each set of authors
+grants on their weights. They do not settle whether training data affects a
+commercial product built on those weights. The same question applies to any
+pretrained audio model, the MTG ones included. It is the second question to ask,
+after "are the weights licensed for commercial use", which all four are.
+
+If one of these replaces EffNet, the attribution for OpenL3 or PANNs (CC BY 4.0) joins
+the in-app notices, the way #7's does.
+
 ---
 
 ## What would make this clean

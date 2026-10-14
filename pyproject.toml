@@ -46,6 +46,27 @@ desktop = [
     "pywebview>=5.0",
     "pyinstaller>=6",
 ]
+# tools/bakeoff.py: candidate embedders for the genre-head retrain (Phase 4).
+# Never installed by `uv sync`, never imported by src/, never shipped: run it
+# with `uv run --group bakeoff python tools/bakeoff.py ...`. Licences of the
+# code and weights: docs/PROVENANCE.md, "Candidate embedders (not shipped)".
+bakeoff = [
+    "scikit-learn>=1.5",
+    "scipy>=1.13",
+    "tensorflow>=2.18",  # YAMNet (Kaggle SavedModel)
+    "kagglehub>=0.3",
+    "torch>=2.5",
+    "torchopenl3>=1.0.1",  # OpenL3 (PyTorch port)
+    "panns-inference>=0.1.1",  # PANNs Cnn14
+    "transformers>=4.45",  # CLAP (laion/larger_clap_music)
+]
+
+[tool.uv]
+# torchopenl3 (bakeoff group only) pins resampy<0.3, whose only release is an
+# sdist that imports `imp` and cannot build on Python 3.12. It calls nothing but
+# resampy.resample, unchanged in 0.4. Nothing in the runtime or dev groups uses
+# resampy, so this moves no shipped pin (checked: `uv export --no-dev` unchanged).
+override-dependencies = ["resampy>=0.4"]
 
 # The package lives under src/ (standard src-layout). Both the engine modules and
 # the ported app share one importable `vibenative` package. Its subpackages are
