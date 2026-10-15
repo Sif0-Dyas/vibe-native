@@ -29,7 +29,9 @@ built-in tables -> lexicon, taxonomy/README.md) is in the report instead.
 A tag holding several genres ("Trance; Electronic") keeps the one specific genre
 in it; a tag naming several (a store's whole genre menu pasted into one field)
 is skipped as ambiguous, and one naming only a shelf ("Electronic", "Dance") as
-carrying no genre.
+carrying no genre. A bare "Electro" tag is skipped as ambiguous too
+(tagcheck.VAGUE_TAGS): stores print it for electro house and their whole
+electronic shelf. Typed as an override or a blind label it is a genre.
 
 Reads the database read-only and never migrates it. Point it at a copy:
 
@@ -50,6 +52,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from vibenative.style import identity  # noqa: E402
+from vibenative.tagcheck import vague_tag  # noqa: E402
 from vibenative.taxonomy import lexicon  # noqa: E402
 from vibenative.taxonomy.classify import discogs_labels, keystone_of  # noqa: E402
 
@@ -158,14 +161,19 @@ class Normaliser:
 
     def tag(self, value: str):
         """(genre, kind) for a whole tag value, which may hold several genres.
-        kind as for ``one``, plus "ambiguous" (several specific genres)."""
+        kind as for ``one``, plus "ambiguous": several specific genres, or only
+        a vague one (tagcheck.VAGUE_TAGS, which as one part of several drops out
+        like an umbrella)."""
         # Split first, so "House, Deep House, Tech House, ..." -- a store's whole
         # genre menu in one field -- is seen as the several genres it names.
         parts = [s for s in _SPLIT.split(str(value)) if s.strip()]
         if len(parts) <= 1:
-            return self.one(value)
-        found, umbrella = {}, False
+            return (None, "ambiguous") if vague_tag(value) else self.one(value)
+        found, umbrella, vague = {}, False, False
         for part in parts:
+            if vague_tag(part):
+                vague = True
+                continue
             g, k = self.one(part)
             if g:
                 found.setdefault(g, k)
@@ -175,6 +183,8 @@ class Normaliser:
             return None, "ambiguous"
         if found:
             return next(iter(found.items()))
+        if vague:
+            return None, "ambiguous"
         return (None, "umbrella") if umbrella else (None, None)
 
 

@@ -132,12 +132,67 @@ def test_forgetting_a_track_forgets_its_label(client):
     assert client.get("/api/v1/labels").get_json() == {"labelled": 0, "labels": []}
 
 
+# --- contested first ----------------------------------------------------------
+
+
+def _contested(h, tag="Tech House", read="Techno", **kw):
+    """A track whose file tag and the model's read are in different keystones; the
+    TELLTALE second in the read, so a leak of the read would show."""
+    salience = [{"style": read, "score": 0.6}, {"style": TELLTALE, "score": 0.4}]
+    return _seed(h, salience=salience, styles=salience, tags={"tag": {"genre": tag}}, **kw)
+
+
+def test_contested_first_serves_only_contested_tracks(client):
+    _seed("a" * 40)  # the read has no keystone: not contested
+    _contested("b" * 40)
+    _contested("c" * 40, filepath="D:/moved/away.mp3")  # contested, but gone
+    j = client.get("/api/v1/labels/next?order=contested").get_json()
+    assert j == {
+        "track": {"hash": "b" * 40, "title": f"Title {'b' * 40}", "artist": ""},
+        "labelled": 0,
+        "contested_left": 2,
+    }
+    client.put(f"/api/v1/labels/{'b' * 40}", json={"genre": "Techno", "order": "contested"})
+    j = client.get("/api/v1/labels/next?order=contested").get_json()
+    assert j == {"track": None, "labelled": 1, "contested_left": 1}
+    # random order still has the rest
+    assert client.get("/api/v1/labels/next").get_json()["track"]["hash"] == "a" * 40
+
+
+def test_contested_first_leaves_out_skipped_tracks(client):
+    for h in ("a" * 40, "b" * 40):
+        _contested(h)
+    j = client.get(f"/api/v1/labels/next?order=contested&skip={'a' * 40}").get_json()
+    assert j["track"]["hash"] == "b" * 40 and j["contested_left"] == 2
+
+
+def test_contested_first_sees_a_track_analysed_since(client):
+    _contested("a" * 40)
+    client.put(f"/api/v1/labels/{'a' * 40}", json={"genre": "Techno"})
+    assert client.get("/api/v1/labels/next?order=contested").get_json()["track"] is None
+    _contested("b" * 40)  # bumps the library revision
+    assert client.get("/api/v1/labels/next?order=contested").get_json()["track"]["hash"] == "b" * 40
+
+
+def test_a_contested_label_records_how_it_was_picked(client):
+    from vibenative.repo import reading
+
+    a, b = _contested("a" * 40), _seed("b" * 40)
+    client.put(f"/api/v1/labels/{a}", json={"genre": "Techno", "order": "contested"})
+    client.put(f"/api/v1/labels/{b}", json={"genre": "House"})
+    with reading() as c:
+        got = dict(c.execute("SELECT hash, source FROM genre_labels").fetchall())
+    assert got == {a: "blind-contested", b: "blind"}
+
+
 # --- blind --------------------------------------------------------------------
 
 
 def test_no_labels_response_carries_the_read(client):
     h = _seed("a" * 40)
+    _contested("b" * 40)
     bodies = [client.get("/api/v1/labels/next").get_data(as_text=True)]
+    bodies.append(client.get("/api/v1/labels/next?order=contested").get_data(as_text=True))
     bodies.append(client.put(f"/api/v1/labels/{h}", json={"genre": "House"}).get_data(as_text=True))
     bodies.append(client.get("/api/v1/labels").get_data(as_text=True))
     bodies.append(client.get("/api/v1/labels/vocabulary").get_data(as_text=True))
@@ -232,10 +287,19 @@ def test_normaliser_one(norm, raw, expected):
         ("Deep House; deep house", ("Deep House", "style")),
         ("Phonk; Electronic", ("Phonk", "other")),
         ("Tech House", ("Tech House", "style")),
+        ("Electro", (None, "ambiguous")),  # a store's word for anything electronic
+        ("electro", (None, "ambiguous")),
+        ("Trance; Electro", ("Trance", "style")),
+        ("Electro; Electronic", (None, "ambiguous")),
     ],
 )
 def test_normaliser_tag(norm, raw, expected):
     assert norm.tag(raw) == expected
+
+
+def test_electro_typed_by_a_person_is_a_genre(norm):
+    # Only a file's tag is vague; an override or a blind label of Electro is kept.
+    assert norm.one("Electro")[0] == "Electro"
 
 
 def test_other_names_keep_the_first_spelling(norm):

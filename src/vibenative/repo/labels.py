@@ -1,7 +1,9 @@
 """Blind genre labels (``genre_labels``, db._migration_12): a genre a person chose
 on the /label page without seeing the model's read -- the benchmark's ground
 truth. Nothing here reads or returns the payload, on purpose: the page is blind
-because its API never has the read to give away."""
+because its API never has the read to give away. (The contested-first order is
+worked out from the payloads by tagcheck.contested_order, in the route; it
+decides which track comes next and never travels with it.)"""
 
 import time
 
@@ -27,6 +29,20 @@ def next_unlabelled(skip=()):
             "ORDER BY random() LIMIT 1",
             skip,
         ).fetchone()
+
+
+def card(h: str):
+    """(hash, title, filename, tag_artist, filepath) of track ``h``, or None."""
+    with reading() as c:
+        return c.execute(
+            "SELECT hash, title, filename, tag_artist, filepath FROM tracks WHERE hash=?", (h,)
+        ).fetchone()
+
+
+def labelled() -> set:
+    """The hashes that have a blind label."""
+    with reading() as c:
+        return {r[0] for r in c.execute("SELECT hash FROM genre_labels")}
 
 
 def put(h: str, genre: str, source: str = "blind") -> bool:

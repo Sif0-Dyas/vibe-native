@@ -30,6 +30,8 @@
   .lbl-status{color:var(--dim); font-size:13px; min-height:1.2em}
   .lbl-status.err{color:var(--err)}
   .lbl-count{font-family:'JetBrains Mono',monospace; color:var(--dim); font-size:13px}
+  .lbl-opts{display:flex; gap:16px; align-items:baseline; flex-wrap:wrap}
+  .lbl-opts label{font-size:13px; display:flex; gap:6px; align-items:center; cursor:pointer}
   .lbl-recent{list-style:none; display:flex; flex-direction:column; gap:6px}
   .lbl-recent li{display:flex; gap:10px; align-items:baseline; font-size:13px}
   .lbl-recent .t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dim)}
@@ -46,7 +48,12 @@
       page never asks for it, so these labels can measure the model instead of echoing it.
       They are kept apart from overrides and adjustments. <a href="/">Back to the app</a></p>
   </div>
-  <div class="lbl-count" id="lbl-count"></div>
+  <div class="lbl-opts">
+    <div class="lbl-count" id="lbl-count"></div>
+    <label title="Tracks whose file tag and the model disagree on the genre family come first, so a label settles something. Neither the tag nor the read is shown.">
+      <input type="checkbox" id="lbl-contested" checked> Contested first
+    </label>
+  </div>
   <section class="lbl-card" id="lbl-card" hidden>
     <div>
       <div class="lbl-title" id="lbl-title"></div>

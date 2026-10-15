@@ -2,11 +2,13 @@
 read under an override (style.identity_fields' model_read), and the file's
 genre tag (tagcheck), flagged when it names a different keystone."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from conftest import seed_track
 from vibenative.style import identity_fields
-from vibenative.tagcheck import file_tag_fields, tag_keystone
+from vibenative.tagcheck import contested_order, file_tag_fields, tag_keystone
 
 # What "Known You Before (Original Mix)" looks like in the library: tagged
 # Trance, read House 72% / Jungle 28%.
@@ -27,6 +29,10 @@ KNOWN_YOU_BEFORE = {
         ("Tech House", "House"),
         ("Riddim", "Dubstep"),
         ("Electronic", None),  # a shelf, not a genre
+        ("Electro", None),  # as a tag, a store's word for anything electronic
+        ("ELECTRO", None),
+        ("Trance; Electro", "Trance"),  # drops out like an umbrella
+        ("Electro House", "House"),  # only the bare word is vague
         ("House, Techno", None),  # two families: no single answer
         ("", None),
     ],
@@ -92,3 +98,54 @@ def test_the_track_route_carries_both(client):
 
 def readline(read):
     return " / ".join(f"{e['style']} {round(e['score'] * 100)}%" for e in read)
+
+
+def test_a_bare_electro_tag_is_not_flagged():
+    p = {**KNOWN_YOU_BEFORE, "tags": {"tag": {"genre": "Electro"}}}
+    assert file_tag_fields(p, "House") == {
+        "file_tag": {"text": "Electro", "keystone": None, "agrees": None}
+    }
+
+
+# --- /label's contested-first order -------------------------------------------
+
+
+def _read(tag, style, **extra):
+    return {"salience": [{"style": style, "score": 0.9}], "tags": {"tag": {"genre": tag}}} | extra
+
+
+NO_SHUFFLE = SimpleNamespace(shuffle=lambda xs: None)
+
+
+def test_contested_order_interleaves_the_largest_boundaries():
+    rows = {
+        # House / Techno, both ways round: one boundary of 4
+        "ht1": _read("Tech House", "Techno"),
+        "ht2": _read("Tech House", "Techno"),
+        "ht3": _read("Progressive House", "Deep Techno"),
+        "ht4": _read("Techno", "House"),
+        # Trance / House: 3, one of them under an override that agrees with the tag
+        "th1": _read("Trance", "House"),
+        "th2": _read("Trance", "Progressive House"),
+        "th3": _read("Trance", "House", override="Trance"),
+        # Techno / Trance: 2
+        "tt1": _read("Techno", "Trance"),
+        "tt2": _read("Techno", "Tech Trance"),
+        # Hip Hop / Trap: 1, after the top three
+        "hh1": _read("Hip Hop", "Trap"),
+        # not contested: agrees, vague tag, no tag, no read
+        "ok": _read("Tech House", "Deep House"),
+        "vague": _read("Electro", "House"),
+        "untagged": {"salience": [{"style": "House", "score": 0.9}]},
+        "unread": {"tags": {"tag": {"genre": "Trance"}}},
+    }
+    order = contested_order(rows.items(), rng=NO_SHUFFLE)
+    assert [h[:2] for h in order] == ["ht", "th", "tt", "ht", "th", "tt", "ht", "th", "ht", "hh"]
+    assert set(order) == {h for h in rows if h[:2] in ("ht", "th", "tt", "hh")}
+
+
+def test_contested_order_shuffles_within_a_boundary():
+    rows = [(f"h{i:02}", _read("Tech House", "Techno")) for i in range(30)]
+    a = contested_order(rows, rng=__import__("random").Random(1))
+    b = contested_order(rows, rng=__import__("random").Random(2))
+    assert sorted(a) == sorted(b) == [h for h, _ in rows] and a != b

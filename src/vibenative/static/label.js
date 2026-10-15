@@ -7,6 +7,11 @@ const API = '/api/v1';
 const $ = id => document.getElementById(id);
 const skipped = [];
 let current = null;
+const ORDER_KEY = 'vibeLabelOrder';
+
+// "Contested first" is remembered per browser; on unless turned off.
+function contested(){ return $('lbl-contested').checked; }
+try { $('lbl-contested').checked = localStorage.getItem(ORDER_KEY) !== 'random'; } catch (_){ /* private mode */ }
 
 function setStatus(text, isErr){
   const el = $('lbl-status');
@@ -14,8 +19,8 @@ function setStatus(text, isErr){
   el.classList.toggle('err', !!isErr);
 }
 
-function showCount(n){
-  $('lbl-count').textContent = `${n} labelled`;
+function showCount(n, left){
+  $('lbl-count').textContent = left == null ? `${n} labelled` : `${n} labelled · ${left} contested left`;
 }
 
 async function getJSON(url, opts){
@@ -65,12 +70,18 @@ async function loadRecent(){
 }
 
 async function nextTrack(){
-  const q = skipped.length ? `?skip=${encodeURIComponent(skipped.join(','))}` : '';
+  const params = new URLSearchParams();
+  if (skipped.length) params.set('skip', skipped.join(','));
+  if (contested()) params.set('order', 'contested');
+  const q = params.toString() ? `?${params}` : '';
   const j = await getJSON(`${API}/labels/next${q}`);
-  showCount(j.labelled);
+  showCount(j.labelled, j.contested_left);
   current = j.track;
   $('lbl-card').hidden = !current;
   $('lbl-done').hidden = !!current;
+  $('lbl-done').textContent = contested()
+    ? 'No contested track left with a file on disk. Untick “Contested first” to label random tracks.'
+    : 'Every library track with a file on disk has a label.';
   if (!current) return;
   $('lbl-title').textContent = current.title;
   $('lbl-artist').textContent = current.artist;
@@ -90,7 +101,7 @@ $('lbl-form').addEventListener('submit', async ev => {
   try {
     await getJSON(`${API}/labels/${encodeURIComponent(current.hash)}`, {
       method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({genre}),
+      body: JSON.stringify(contested() ? {genre, order: 'contested'} : {genre}),
     });
     setStatus(`saved: ${genre}`);
     $('lbl-audio').pause();
@@ -107,6 +118,12 @@ $('lbl-skip').addEventListener('click', async () => {
   skipped.push(current.hash);
   $('lbl-audio').pause();
   setStatus('skipped');
+  try { await nextTrack(); } catch (e){ setStatus(e.message, true); }
+});
+
+$('lbl-contested').addEventListener('change', async () => {
+  try { localStorage.setItem(ORDER_KEY, contested() ? 'contested' : 'random'); } catch (_){ /* private mode */ }
+  $('lbl-audio').pause();
   try { await nextTrack(); } catch (e){ setStatus(e.message, true); }
 });
 
