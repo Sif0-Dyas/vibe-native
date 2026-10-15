@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import ntpath
 import os
 import sqlite3
 import sys
@@ -228,7 +229,7 @@ def select_tracks(labels, folds, exists=os.path.exists, mounted=drive_mounted):
         elif not fp:
             info["no_path"] += 1
         elif not mounted(fp):
-            info["unavailable"][os.path.splitdrive(fp)[0] or "?"] += 1
+            info["unavailable"][ntpath.splitdrive(fp)[0] or "?"] += 1
         elif not exists(fp):
             info["missing"] += 1
         else:
