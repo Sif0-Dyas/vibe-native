@@ -1,7 +1,7 @@
 """Export the library's genre labels as a CSV: hash, filepath, genre, source.
 
 The labels a genre head could be trained on, or an engine benchmarked against,
-from four sources -- one row per (track, source), so a track with an override
+from five sources -- one row per (track, source), so a track with an override
 and a tag appears twice and the sources can be compared:
 
 * ``override`` -- ``payload["override"]``: "it IS this", set in the app.
@@ -9,13 +9,18 @@ and a tag appears twice and the sources can be compared:
   ``["drops"]``, vibenative.weights), for tracks that have adjustments.
 * ``id3-genre`` -- the file's own genre tag, as metadata.read_tags read it at
   analysis time (stored in ``payload["tags"]``; ``--probe`` re-reads the files).
-* ``manual``   -- a blind label from the /label page (``genre_labels``, v12).
+* ``blind``    -- a label from the /label page (``genre_labels``, v12), chosen
+  without seeing the model's read, on a track served at random.
+* ``blind-contested`` -- the same, on a track /label served because its file tag
+  and the model's read name different keystones ("Contested first"). Written
+  as the row's stored ``source``, not collapsed into ``blind``: contested
+  accuracy is not library accuracy, and a benchmark reports the two apart.
 
 Overrides and weights are chosen looking at the model's read, so they are
-anchored to it; only ``manual`` is blind. A benchmark should score against
-``manual`` and use the others for training at most.
+anchored to it; only the two blind sources are blind. A benchmark should score
+against them and use the others for training at most.
 
-Every genre goes through one normaliser, so the four sources share a spelling:
+Every genre goes through one normaliser, so the five sources share a spelling:
 the classifier's style name when the name is one of its 400 -- case and
 ``&``/``and``/``'n'`` folded, a parenthesised qualifier or one half of an
 ``A / B`` allowed, or reached through one of the lexicon's 1,137 aliases
@@ -56,7 +61,8 @@ from vibenative.tagcheck import vague_tag  # noqa: E402
 from vibenative.taxonomy import lexicon  # noqa: E402
 from vibenative.taxonomy.classify import discogs_labels, keystone_of  # noqa: E402
 
-SOURCES = ("override", "weight", "id3-genre", "manual")
+SOURCES = ("override", "weight", "id3-genre", "blind", "blind-contested")
+BLIND = SOURCES[3:]
 FIELDS = ("hash", "filepath", "genre", "source")
 
 # Tag values that name a shelf, not a genre. Compared on ASCII letters only, so
@@ -226,8 +232,8 @@ def collect(db_path, probe=False, norm=None):
     try:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         tracks = conn.execute("SELECT hash, filepath, payload FROM tracks").fetchall()
-        manual = (
-            conn.execute("SELECT hash, genre FROM genre_labels").fetchall()
+        blind = (
+            conn.execute("SELECT hash, genre, source FROM genre_labels").fetchall()
             if "genre_labels" in tables
             else []
         )
@@ -260,14 +266,16 @@ def collect(db_path, probe=False, norm=None):
                 rows.append((h, filepath or "", g, "id3-genre"))
                 tag_genres[g] += 1
                 tag_kind[g] = kind
-    for h, value in manual:
+    for h, value, source in blind:
         if h not in filepaths:
             continue  # an orphan row; forget_track clears genre_labels too
+        if source not in BLIND:
+            source = "blind"  # rows from before the contested order recorded nothing
         g, kind = norm.one(value)
         if g:
-            rows.append((h, filepaths[h], g, "manual"))
-            kinds["manual"][kind] += 1
-            changed["manual"] += g != value
+            rows.append((h, filepaths[h], g, source))
+            kinds[source][kind] += 1
+            changed[source] += g != value
 
     stats = {
         "tracks": len(tracks),
@@ -297,7 +305,7 @@ def report(stats, top=15):
     for s in SOURCES:
         k = stats["kinds"][s]
         detail = ", ".join(f"{n} {kind}" for kind, n in sorted(k.items()))
-        out.append(f"  {s:<10} {stats['rows'][s]:>6}   ({detail or 'none'})")
+        out.append(f"  {s:<15} {stats['rows'][s]:>6}   ({detail or 'none'})")
     resp = {s: n for s, n in stats["respelled"].items() if n}
     if resp:
         out.append(f"  respelled by the normaliser: {resp}")

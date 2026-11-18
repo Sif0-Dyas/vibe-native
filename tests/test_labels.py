@@ -313,7 +313,9 @@ def test_export_reads_every_source(client, settings, tmp_path, norm):
     _seed("w" * 40, weights={"House": 3, TELLTALE: -3})  # House is now the top
     _seed("m" * 40, tags={"tag": {"genre": "Electronic"}})
     _seed("n" * 40, override="Techno", weights={"House": 3, TELLTALE: -3})
+    _contested("c" * 40)
     client.put(f"/api/v1/labels/{'m' * 40}", json={"genre": "Tech House"})
+    client.put(f"/api/v1/labels/{'c' * 40}", json={"genre": "Trance", "order": "contested"})
 
     rows, stats = ex.collect(settings.db_path, norm=norm)
     got = {(h[0], g, s) for h, _, g, s in rows}
@@ -323,11 +325,19 @@ def test_export_reads_every_source(client, settings, tmp_path, norm):
         ("w", "House", "weight"),
         ("n", "Techno", "override"),
         ("n", "House", "weight"),  # the override does not hide the adjustments
-        ("m", "Tech House", "manual"),
+        ("m", "Tech House", "blind"),
+        ("c", "Trance", "blind-contested"),  # the stored source, not "manual"
+        ("c", "Tech House", "id3-genre"),  # the tag that made it contested
     }
     assert all(fp == f"C:/music/{h}.mp3" for h, fp, _, _ in rows)
-    assert stats["rows"] == {"override": 2, "weight": 2, "id3-genre": 1, "manual": 1}
-    assert stats["kinds"]["id3-genre"] == {"style": 1, "umbrella": 1}
+    assert stats["rows"] == {
+        "override": 2,
+        "weight": 2,
+        "id3-genre": 2,
+        "blind": 1,
+        "blind-contested": 1,
+    }
+    assert stats["kinds"]["id3-genre"] == {"style": 2, "umbrella": 1}
 
     out = tmp_path / "labels.csv"
     ex.write_csv(rows, out)

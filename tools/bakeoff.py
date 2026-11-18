@@ -18,10 +18,11 @@ and why each is allowed here: docs/PROVENANCE.md, "Candidate embedders (not
 shipped)". A candidate whose weights are non-commercial or of unclear licence is
 not in CANDIDATES and must not be added.
 
-Labels: one per track, from labels.csv, by source priority manual > override >
-weight > id3-genre (``--sources``), mapped to its keystone. Overrides and weights
-were set looking at EffNet's read, so they favour the reference line; only
-``manual`` labels are blind (see export_labels.py). Keystones with fewer tracks
+Labels: one per track, from labels.csv, by source priority blind >
+blind-contested > override > weight > id3-genre (``--sources``), mapped to its
+keystone. Overrides and weights were set looking at EffNet's read, so they
+favour the reference line; only the ``blind`` and ``blind-contested`` labels are
+blind (see export_labels.py; a track has at most one of the two). Keystones with fewer tracks
 than folds are dropped and listed.
 
 Files: a track counts only if its file exists. A file on a drive that is not
@@ -60,7 +61,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from vibenative.taxonomy.classify import keystone_of  # noqa: E402
 
-SOURCE_PRIORITY = ("manual", "override", "weight", "id3-genre")
+SOURCE_PRIORITY = ("blind", "blind-contested", "override", "weight", "id3-genre")
 DECODE_SR = 48000
 REFERENCE = "effnet"
 
