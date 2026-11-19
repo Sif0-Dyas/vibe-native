@@ -1,10 +1,12 @@
-"""tools/bakeoff.py -- the parts that run without the bakeoff group: picking one
-label per track, telling an unmounted drive from a missing file, the embedding
-cache, and the smoke-test stamp. The embedders and the CV head need torch /
+"""tools/bakeoff.py -- the parts that run without the bakeoff group: the
+train / test split and its disjointness, telling an unmounted drive from a
+missing file, trimming thin training keystones, the CLAP windowing, the
+embedding cache, and the report. The embedders and the head need torch /
 TensorFlow / scikit-learn and are exercised by running the tool, not here."""
 
 import csv
 import sys
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -23,21 +25,40 @@ def _csv(path, rows):
     return path
 
 
-def test_one_label_per_track_by_source_priority(tmp_path):
+def test_a_blind_track_is_test_only_and_train_is_one_label_per_track(tmp_path):
     p = _csv(
         tmp_path / "labels.csv",
         [
             ("a", "X:/a.mp3", "Techno", "id3-genre"),
             ("a", "X:/a.mp3", "Deep House", "override"),
             ("b", "X:/b.mp3", "Trance", "id3-genre"),
+            ("b", "X:/b.mp3", "Tech House", "blind"),  # its id3 row must not train
             ("c", "X:/c.mp3", "Dubstep", "weight"),
+            ("c", "X:/c.mp3", "Techno", "id3-genre"),
+            ("d", "X:/d.mp3", "Trance", "blind-contested"),
+            ("e", "X:/e.mp3", "Moombahton", "blind"),  # no keystone: left out
+            ("e", "X:/e.mp3", "House", "id3-genre"),  # ... and still test-only
+            ("f", "X:/f.mp3", "Spoken Word", "id3-genre"),  # no keystone
         ],
     )
-    labels = bo.load_labels(p)
-    assert labels["a"] == ("X:/a.mp3", "Deep House", "override")
-    assert labels["b"][1] == "Trance"
-    # A source left out of --sources is ignored entirely.
-    assert "c" not in bo.load_labels(p, ["override", "id3-genre"])
+    train, test, info = bo.split(bo.load_rows(p))
+    assert train == {
+        "a": ("X:/a.mp3", "House", "override"),  # override outranks the tag
+        "c": ("X:/c.mp3", "Dubstep", "weight"),  # weight outranks the tag
+    }
+    assert test == {
+        "b": ("X:/b.mp3", "House", "blind"),
+        "d": ("X:/d.mp3", "Trance", "blind-contested"),
+    }
+    assert not (set(train) & set(test))
+    assert info == {"train_rows_of_test_tracks": 2, "test_no_keystone": 1, "train_no_keystone": 1}
+
+
+def test_evaluate_refuses_a_track_in_both_sets():
+    # split() cannot build an overlap; evaluate_lines re-checks the invariant on
+    # whatever it is handed, so a future caller cannot leak a test track either.
+    with pytest.raises(AssertionError):
+        bo.evaluate_lines({}, {"a": "House"}, {"a": ("House", "blind")})
 
 
 def test_unmounted_drive_is_not_a_missing_file():
@@ -46,11 +67,9 @@ def test_unmounted_drive_is_not_a_missing_file():
         "gone": ("G:/old/y.mp3", "Techno", "id3-genre"),
         "here": ("G:/new/z.mp3", "Techno", "id3-genre"),
         "nopath": ("", "Techno", "id3-genre"),
-        "nokey": ("G:/new/w.mp3", "Spoken Word", "id3-genre"),  # keystone_of -> None
     }
     tracks, info = bo.select_tracks(
         labels,
-        folds=1,
         exists=lambda p: p.startswith("G:/new"),
         mounted=lambda p: not p.startswith("F:"),
     )
@@ -58,15 +77,16 @@ def test_unmounted_drive_is_not_a_missing_file():
     assert info["unavailable"] == {"F:": 1}
     assert info["missing"] == 1
     assert info["no_path"] == 1
-    assert info["no_keystone"] == 1
+    assert info["sources"] == {"id3-genre": 1}
+    assert info["keystones"] == {"Techno": 1}
 
 
-def test_keystones_with_fewer_tracks_than_folds_are_dropped():
-    labels = {f"h{i}": (f"G:/{i}.mp3", "Techno", "id3-genre") for i in range(5)}
-    labels["t"] = ("G:/t.mp3", "Trance", "id3-genre")
-    tracks, info = bo.select_tracks(labels, folds=5, exists=lambda p: True, mounted=lambda p: True)
-    assert {ks for _, ks in tracks.values()} == {"Techno"}
-    assert info["dropped_keystones"] == {"Trance": 1}
+def test_thin_training_keystones_are_dropped():
+    train = {f"h{i}": (f"G:/{i}.mp3", "Techno", "id3-genre") for i in range(5)}
+    train["t"] = ("G:/t.mp3", "Trance", "id3-genre")
+    kept, dropped = bo.trim_train(train, 5)
+    assert {ks for _, ks, _ in kept.values()} == {"Techno"}
+    assert dropped == {"Trance": 1}
 
 
 def test_centre_cut():
@@ -74,6 +94,28 @@ def test_centre_cut():
     assert bo.centre_cut(a, 10, 4).tolist() == list(range(30, 70))
     assert len(bo.centre_cut(a, 10, 0)) == 100  # 0 = whole track
     assert len(bo.centre_cut(a, 10, 60)) == 100  # shorter than the cut
+
+
+@pytest.mark.parametrize(
+    "length, starts",
+    [
+        (3, [0]),  # shorter than a window: one window, the processor pads
+        (10, [0]),
+        (14, [0, 4]),  # the tail is covered by a window aligned to the end
+        (20, [0, 10]),
+        (25, [0, 10, 15]),
+        (60, [0, 10, 20, 30, 40, 50]),
+        (65, [0, 10, 20, 30, 40, 50, 55]),
+    ],
+)
+def test_clap_windows_cover_the_audio_and_never_exceed_the_window(length, starts):
+    n = 10
+    got = bo.CLAP.windows(length, n)
+    assert got == starts
+    assert all(s + n >= min(length, n) for s in got)
+    if length > n:
+        assert got[-1] + n == length  # nothing dropped
+        assert all(s + n <= length for s in got)  # no window the processor would crop
 
 
 class _Fake:
@@ -87,7 +129,7 @@ class _Fake:
         return np.array([audio.mean(), len(audio)], dtype=np.float32)
 
 
-def test_extract_caches_and_skips_failures(tmp_path):
+def test_extract_caches_skips_failures_and_counts_what_it_timed(tmp_path):
     tracks = {"a": ("a.wav", "Techno"), "b": ("b.wav", "Techno"), "bad": ("bad.wav", "Techno")}
 
     def decode(fp):
@@ -100,45 +142,78 @@ def test_extract_caches_and_skips_failures(tmp_path):
     assert set(embs["fake"]) == {"a", "b"}
     assert embs["fake"]["a"][1] == bo.DECODE_SR  # cut to 1 s
     assert failed == {"decode": 1}
+    assert timing["fake_n"] == 2 and timing["decode_n"] == 2
     assert (tmp_path / "fake.npz").exists()
 
     again = _Fake()
-    embs2, _, _ = bo.extract(tracks, [again], tmp_path, 1, decode=decode, log=lambda m: 0)
+    embs2, timing2, _ = bo.extract(tracks, [again], tmp_path, 1, decode=decode, log=lambda m: 0)
     assert again.calls == 0  # everything that worked came from the cache
+    assert "fake_n" not in timing2
     assert np.array_equal(embs2["fake"]["b"], embs["fake"]["b"])
 
 
-def _results():
-    per = {
-        "House": {"precision": 0.9, "recall": 0.8, "f1": 0.85, "n": 7},
-        "Trance": {"precision": 0.5, "recall": 0.5, "f1": 0.5, "n": 3},
-    }
-    return {n: {"macro_f1": 0.6, "accuracy": 0.7, "per_keystone": per} for n in ("effnet", "x")}
-
-
-def _info():
+def _score(n_house=12, n_trance=3):
     return {
-        "labels": 12,
-        "no_keystone": 0,
-        "no_path": 1,
-        "unavailable": {"F:": 1},
-        "missing": 0,
-        "dropped_keystones": {},
-        "sources": {"id3-genre": 10},
+        "n": n_house + n_trance,
+        "accuracy": 0.7,
+        "macro_f1": 0.6,
+        "per_keystone": {"House": {"precision": 0.9, "recall": 0.8, "n": n_house}},
+        "confusion": {f"{a}->{b}": 1 for a, b in bo.CONFUSION_PAIRS},
+        "support": {"House": n_house, "Trance": n_trance},
     }
+
+
+def _results():
+    return {
+        n: {"blind": _score(), "blind-contested": _score(20, 5), "fit_s": 1.5}
+        for n in (bo.REFERENCE, bo.MODEL_READ, "x")
+    }
+
+
+def _info(n):
+    return {
+        "labels": n + 2,
+        "no_path": 1,
+        "unavailable": Counter({"F:": 1}),
+        "missing": 0,
+        "sources": Counter({"id3-genre": n}),
+        "keystones": Counter({"House": n}),
+    }
+
+
+def _report(smoke):
+    return bo.report(
+        _results(),
+        {"train_rows_of_test_tracks": 3},
+        _info(40),
+        _info(15),
+        {"Disco": 2},
+        {"x": 10.0, "x_n": 4, "decode": 8.0, "decode_n": 4},
+        smoke=smoke,
+    )
+
+
+def test_report_marks_the_model_read_as_selected_against_only_on_the_contested_table():
+    text = _report(smoke=False)
+    blind, contested = text.split("== blind-contested")
+    assert "SELECTED AGAINST THIS MODEL" in contested
+    assert "model-read*" in contested
+    assert "SELECTED AGAINST" not in blind
+    assert "model-read*" not in blind
+    assert "train and test share no track (asserted)" in text
+    assert "3 training rows dropped because their track is a test track" in text
+    assert "dropped from training (too few tracks): {'Disco': 2}" in text
+    assert "1 on an unmounted drive" in text
+    assert "House->Techno" in text and "Trance->House" in text
+    assert "2.50 (4)" in text  # x: 10 s over 4 new tracks
+    assert "SMOKE" not in text
 
 
 def test_smoke_report_is_stamped_on_every_line():
-    text = bo.report(_results(), _info(), 10, {"x": 1.0}, smoke=True)
+    text = _report(smoke=True)
     lines = [ln for ln in text.splitlines() if ln and not set(ln) <= {"="}]
     assert lines[0].startswith("SMOKE TEST -- NOT A RESULT")
     assert all("SMOKE TEST" in ln or ln.startswith("set is not") for ln in lines)
-    assert "unbalanced" in text  # House is 70%
-    assert "1 on an unmounted drive" in text
-
-
-def test_real_report_is_not_stamped():
-    assert "SMOKE" not in bo.report(_results(), _info(), 10, {}, smoke=False)
 
 
 def test_every_candidate_is_documented_in_provenance():
